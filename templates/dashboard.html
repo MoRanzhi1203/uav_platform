@@ -1,0 +1,49 @@
+{% load static %}
+{% extends "base.html" %}
+{% block title %}管理员主页{% endblock %}
+{% block page_id %}dashboard{% endblock %}
+{% block page_title %}管理员主页{% endblock %}
+{% block page_subtitle %}统一查看各业务模块 overview 指标与快速入口{% endblock %}
+{% block content %}
+<section class="hero-panel">
+    <div class="hero-copy">
+        <div class="hero-kicker">Control Center</div>
+        <h1>山地无人机群协同指挥总览</h1>
+        <p>页面会自动请求各模块 overview 接口，汇总飞手、无人机、林区、农田、联邦和遥测关键数据。</p>
+    </div>
+    <div class="hero-badges">
+        <span>central_db</span>
+        <span>forest_db</span>
+        <span>agri_db</span>
+    </div>
+</section>
+<section class="card-grid" id="overview-cards"></section>
+<section class="panel-grid">
+    <article class="panel">
+        <div class="panel-header">
+            <h3>模块导航</h3>
+        </div>
+        <div class="quick-links">
+            <a href="/fleet/">机群资源</a>
+            <a href="/forest/">森林业务</a>
+            <a href="/agri/">农业业务</a>
+            <a href="/tasking/">任务调度</a>
+            <a href="/federation/">联邦聚合</a>
+            <a href="/telemetry/">实时遥测</a>
+        </div>
+    </article>
+    <article class="panel">
+        <div class="panel-header">
+            <h3>系统提示</h3>
+        </div>
+        <ul class="info-list">
+            <li>overview 指标来自已生成的 JSON API。</li>
+            <li>登录状态依赖 Django Session。</li>
+            <li>后续只需补模板路由即可直接作为演示界面使用。</li>
+        </ul>
+    </article>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/dashboard.js' %}"></script>
+{% endblock %}

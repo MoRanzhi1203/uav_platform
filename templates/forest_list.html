@@ -1,0 +1,24 @@
+{% load static %}
+{% extends "base.html" %}
+{% block title %}森林防火{% endblock %}
+{% block page_id %}forest-list{% endblock %}
+{% block page_title %}森林防火业务{% endblock %}
+{% block page_subtitle %}林区、巡林任务、火情监测页面{% endblock %}
+{% block content %}
+<section class="module-toolbar">
+    <div class="tab-strip">
+        <button class="tab-button active" data-endpoint="/api/forest/areas/">林区</button>
+        <button class="tab-button" data-endpoint="/api/forest/patrol-tasks/">巡林任务</button>
+        <button class="tab-button" data-endpoint="/api/forest/fire-detections/">火情监测</button>
+    </div>
+    <a class="primary-link" href="/forest/detail/">查看详情页</a>
+</section>
+<section class="panel">
+    <div class="panel-header"><h3>森林业务数据</h3></div>
+    <div id="module-summary" class="module-summary"></div>
+    <div id="data-table" class="table-shell"></div>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/module-list.js' %}"></script>
+{% endblock %}

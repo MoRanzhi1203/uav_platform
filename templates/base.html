@@ -1,0 +1,32 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}重庆山地无人机群林农协同作业与风险管控系统{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body data-page="{% block page_id %}base{% endblock %}">
+    <div class="app-shell">
+        {% include "partials/sidebar.html" %}
+        <main class="app-main">
+            {% include "partials/topbar.html" %}
+            <section class="page-content">
+                {% block content %}{% endblock %}
+            </section>
+            {% include "partials/footer.html" %}
+        </main>
+    </div>
+    <div id="toast-container" class="toast-container"></div>
+    <script>
+        window.APP_CONFIG = {
+            apiBase: "/api",
+            csrfToken: "{{ csrf_token|default:'' }}"
+        };
+    </script>
+    <script src="{% static 'js/core.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,53 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统登录</title>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="login-body" data-page="login">
+    <div class="login-scene">
+        <div class="login-card">
+            <div class="login-brand">重庆山地无人机群林农协同作业与风险管控系统</div>
+            <h1>后台登录</h1>
+            <p>使用已初始化的管理员账号进入系统，前端通过 fetch 直接对接现有 JSON API。</p>
+            <form id="login-form" class="stack-form">
+                <label>
+                    <span>用户名</span>
+                    <input type="text" name="username" value="admin" placeholder="请输入用户名">
+                </label>
+                <label>
+                    <span>密码</span>
+                    <input type="password" name="password" value="admin123456" placeholder="请输入密码">
+                </label>
+                <button type="submit" class="primary-button">登录系统</button>
+            </form>
+            <div class="login-hint">
+                <div>默认账号：admin</div>
+                <div>默认密码：admin123456</div>
+            </div>
+        </div>
+        <div class="login-sidepanel">
+            <div class="sidepanel-tag">Scenario</div>
+            <h2>山地机群协同</h2>
+            <ul class="feature-list">
+                <li>森林防火巡查与火情监测</li>
+                <li>农田植保任务与病虫害识别</li>
+                <li>全局任务统一调度</li>
+                <li>三库联邦聚合与态势总览</li>
+            </ul>
+        </div>
+    </div>
+    <div id="toast-container" class="toast-container"></div>
+    <script>
+        window.APP_CONFIG = {
+            apiBase: "/api",
+            csrfToken: "{{ csrf_token|default:'' }}"
+        };
+    </script>
+    <script src="{% static 'js/core.js' %}"></script>
+    <script src="{% static 'js/login.js' %}"></script>
+</body>
+</html>

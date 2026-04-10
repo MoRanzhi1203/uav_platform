@@ -1,0 +1,16 @@
+{% load static %}
+{% extends "base.html" %}
+{% block title %}森林详情{% endblock %}
+{% block page_id %}forest-detail{% endblock %}
+{% block page_title %}森林业务详情{% endblock %}
+{% block page_subtitle %}支持林区、巡林任务、火情监测详情查看{% endblock %}
+{% block content %}
+<section class="panel">
+    <div class="panel-header"><h3>详情参数说明</h3></div>
+    <p>示例：<code>/forest/detail/?endpoint=/api/forest/areas/&id=1</code></p>
+    <pre id="detail-json" class="json-block"></pre>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/module-detail.js' %}"></script>
+{% endblock %}

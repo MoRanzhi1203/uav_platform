@@ -1,0 +1,26 @@
+{% load static %}
+{% extends "base.html" %}
+{% block title %}机群管理{% endblock %}
+{% block page_id %}fleet-list{% endblock %}
+{% block page_title %}机群资源管理{% endblock %}
+{% block page_subtitle %}飞手、起降点、无人机、编队与编队成员总览{% endblock %}
+{% block content %}
+<section class="module-toolbar">
+    <div class="tab-strip">
+        <button class="tab-button active" data-endpoint="/api/fleet/pilots/">飞手</button>
+        <button class="tab-button" data-endpoint="/api/fleet/launch-sites/">起降点</button>
+        <button class="tab-button" data-endpoint="/api/fleet/drones/">无人机</button>
+        <button class="tab-button" data-endpoint="/api/fleet/drone-groups/">编队</button>
+        <button class="tab-button" data-endpoint="/api/fleet/drone-group-members/">编队成员</button>
+    </div>
+    <a class="primary-link" href="/fleet/detail/">查看实体详情演示页</a>
+</section>
+<section class="panel">
+    <div class="panel-header"><h3>列表数据</h3></div>
+    <div id="module-summary" class="module-summary"></div>
+    <div id="data-table" class="table-shell"></div>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/module-list.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% load static %}
+{% extends "base.html" %}
+{% block title %}任务调度{% endblock %}
+{% block page_id %}tasking-list{% endblock %}
+{% block page_title %}统一任务调度{% endblock %}
+{% block page_subtitle %}全局任务与任务分派列表页面{% endblock %}
+{% block content %}
+<section class="module-toolbar">
+    <div class="tab-strip">
+        <button class="tab-button active" data-endpoint="/api/tasking/global-tasks/">全局任务</button>
+        <button class="tab-button" data-endpoint="/api/tasking/dispatches/">任务分派</button>
+    </div>
+    <a class="primary-link" href="/tasking/detail/">查看详情页</a>
+</section>
+<section class="panel">
+    <div class="panel-header"><h3>调度数据</h3></div>
+    <div id="module-summary" class="module-summary"></div>
+    <div id="data-table" class="table-shell"></div>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/module-list.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% load static %}
+{% extends "base.html" %}
+{% block title %}联邦汇总{% endblock %}
+{% block page_id %}federation{% endblock %}
+{% block page_title %}跨库联邦汇总{% endblock %}
+{% block page_subtitle %}展示 central_db / forest_db / agri_db 聚合统计与区域汇总{% endblock %}
+{% block content %}
+<section class="hero-panel federation-hero">
+    <div class="hero-copy">
+        <div class="hero-kicker">Federation Summary</div>
+        <h1>三库联动态势板</h1>
+        <p>页面会调用联邦聚合接口，展示风险事件、任务总量、区域分布和全局任务关联结果。</p>
+    </div>
+</section>
+<section class="card-grid" id="federation-cards"></section>
+<section class="panel-grid federation-grid">
+    <article class="panel">
+        <div class="panel-header"><h3>区域聚合</h3></div>
+        <div id="region-table" class="table-shell"></div>
+    </article>
+    <article class="panel">
+        <div class="panel-header"><h3>任务联邦对照</h3></div>
+        <div id="pair-table" class="table-shell"></div>
+    </article>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/federation.js' %}"></script>
+{% endblock %}
