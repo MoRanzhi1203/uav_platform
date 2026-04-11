@@ -1,10 +1,10 @@
 from django.contrib.auth import authenticate, login, logout
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from common.request_utils import parse_request_data
-from common.responses import api_error, api_response
 from system.models import OperationLog, RolePermission, SystemUser
 
 
@@ -35,28 +35,85 @@ def overview(request):
 
 
 @csrf_exempt
-@api_view(["POST"])
-@permission_classes([AllowAny])
 def login_view(request):
-    payload = parse_request_data(request)
-    username = payload.get("username", "")
-    password = payload.get("password", "")
-    user = authenticate(request, username=username, password=password)
-    if not user:
-        return api_error(msg="invalid_credentials", code=1001, status=400)
-    login(request, user)
-    user.last_login_ip = request.META.get("REMOTE_ADDR", "")
-    user.save(update_fields=["last_login_ip", "last_login"])
-    _write_log(request, module="system", action="login")
-    return api_response(
-        data={
-            "id": user.id,
-            "username": user.username,
-            "real_name": user.real_name,
-            "user_type": user.user_type,
-            "roles": user.roles,
+    import logging
+    import json
+    logger = logging.getLogger(__name__)
+    
+    if request.method == 'POST':
+        payload = parse_request_data(request)
+        username = payload.get("username", "")
+        password = payload.get("password", "")
+        
+        logger.info(f"Login attempt: username={username}, password_length={len(password)}")
+        
+        user = authenticate(request, username=username, password=password)
+        if not user:
+            logger.info(f"Login failed: username={username}")
+            return HttpResponse(
+                json.dumps({"code": 1001, "msg": "invalid_credentials", "data": None}),
+                content_type="application/json",
+                status=400
+            )
+        
+        logger.info(f"Login success: username={username}")
+        login(request, user)
+        logger.info(f"After login - user authenticated: {request.user.is_authenticated}")
+        logger.info(f"After login - username: {request.user.username}")
+        user.last_login_ip = request.META.get("REMOTE_ADDR", "")
+        user.save(update_fields=["last_login_ip", "last_login"])
+        _write_log(request, module="system", action="login")
+        
+        # 确保 session 被保存
+        if hasattr(request, 'session'):
+            if not request.session.session_key:
+                request.session.save()
+            logger.info(f"Session ID: {request.session.session_key}")
+            # 手动将用户 ID 存储在会话中
+            request.session['user_id'] = user.id
+            request.session.save()
+            logger.info(f"Session user_id: {request.session.get('user_id')}")
+        
+        # 创建响应
+        response_data = {
+            "code": 0, 
+            "msg": "success", 
+            "data": {
+                "id": user.id,
+                "username": user.username,
+                "real_name": user.real_name,
+                "user_type": user.user_type,
+                "roles": user.roles,
+            }
         }
-    )
+        
+        response = HttpResponse(
+            json.dumps(response_data),
+            content_type="application/json"
+        )
+        
+        # 确保 session cookie 被设置
+        if hasattr(request, 'session') and request.session.session_key:
+            from django.conf import settings
+            response.set_cookie(
+                'sessionid', 
+                request.session.session_key, 
+                max_age=request.session.get_expiry_age(),
+                path=settings.SESSION_COOKIE_PATH,
+                domain=settings.SESSION_COOKIE_DOMAIN,
+                secure=settings.SESSION_COOKIE_SECURE,
+                httponly=settings.SESSION_COOKIE_HTTPONLY,
+                samesite=settings.SESSION_COOKIE_SAMESITE,
+            )
+            logger.info(f"Set sessionid cookie: {request.session.session_key}")
+        
+        return response
+    else:
+        return HttpResponse(
+            json.dumps({"code": 405, "msg": "Method not allowed", "data": None}),
+            content_type="application/json",
+            status=405
+        )
 
 
 @api_view(["POST"])
@@ -143,3 +200,45 @@ def operation_log_list(request):
         for item in logs
     ]
     return api_response(data=data)
+
+
+@csrf_exempt
+def test_session(request):
+    import logging
+    import json
+    logger = logging.getLogger(__name__)
+    
+    if request.method == 'GET':
+        # 记录请求头中的 cookie
+        logger.info(f"Test session - cookies: {request.COOKIES}")
+        # 记录会话信息
+        if hasattr(request, 'session'):
+            logger.info(f"Test session - session key: {request.session.session_key}")
+            logger.info(f"Test session - session user_id: {request.session.get('user_id')}")
+            logger.info(f"Test session - session items: {dict(request.session.items())}")
+        else:
+            logger.info("Test session - No session")
+        # 记录用户认证状态
+        logger.info(f"Test session - user authenticated: {request.user.is_authenticated}")
+        logger.info(f"Test session - username: {request.user.username if request.user.is_authenticated else 'anonymous'}")
+        
+        return HttpResponse(
+            json.dumps({
+                "code": 0, 
+                "msg": "success", 
+                "data": {
+                    "authenticated": request.user.is_authenticated,
+                    "username": request.user.username if request.user.is_authenticated else "anonymous",
+                    "session_key": request.session.session_key if hasattr(request, 'session') else "No session",
+                    "session_user_id": request.session.get('user_id') if hasattr(request, 'session') else None,
+                    "cookies": dict(request.COOKIES)
+                }
+            }),
+            content_type="application/json"
+        )
+    else:
+        return HttpResponse(
+            json.dumps({"code": 405, "msg": "Method not allowed", "data": None}),
+            content_type="application/json",
+            status=405
+        )

@@ -5,6 +5,7 @@ class ForestArea(models.Model):
     area_code = models.CharField(max_length=64, unique=True)
     area_name = models.CharField(max_length=128)
     region = models.CharField(max_length=128)
+    terrain_id = models.BigIntegerField(default=0, blank=True, null=True)
     risk_level = models.CharField(max_length=32, default="medium")
     coverage_km2 = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     manager_name = models.CharField(max_length=64, blank=True)

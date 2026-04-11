@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     "tasking",
     "federation",
     "telemetry",
+    "terrain",
 ]
 
 MIDDLEWARE = [
@@ -108,6 +109,22 @@ DATABASES = {
             "COLLATION": "utf8_general_ci",
         },
     },
+    "terrain": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": "terrain_db",
+        "USER": "root",
+        "PASSWORD": "123456",
+        "HOST": "127.0.0.1",
+        "PORT": "3306",
+        "OPTIONS": {
+            "charset": "utf8",
+            "init_command": "SET NAMES utf8 COLLATE utf8_general_ci",
+        },
+        "TEST": {
+            "CHARSET": "utf8",
+            "COLLATION": "utf8_general_ci",
+        },
+    },
 }
 
 DATABASE_ROUTERS = ["uav_platform.db_router.MultiDBRouter"]
@@ -139,4 +156,5 @@ REST_FRAMEWORK = {
 }
 
 SESSION_COOKIE_AGE = 60 * 60 * 12
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 CSRF_TRUSTED_ORIGINS = []

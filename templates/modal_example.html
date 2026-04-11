@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}弹窗示例 - 重庆山地无人机群林农协同作业与风险管控系统{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">首页</a></li>
+    <li class="breadcrumb-item active" aria-current="page">弹窗示例</li>
+{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">弹窗示例</h5>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#exampleModal">
+                    <i class="bi bi-plus"></i> 新增示例数据
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">点击上方按钮打开弹窗，体验 Vue + Bootstrap Modal + jQuery Ajax 的组合使用。</p>
+            
+            <!-- 数据展示 -->
+            <div class="mt-4">
+                <h6>已保存的数据：</h6>
+                <div id="dataList" class="mt-2">
+                    <div v-for="item in items" :key="item.id" class="card mb-2">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6>{{ item.name }}</h6>
+                                    <p class="text-sm text-muted">{{ item.description }}</p>
+                                </div>
+                                <div>
+                                    <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#exampleModal" :data-id="item.id">
+                                        <i class="bi bi-pencil"></i> 编辑
+                                    </button>
+                                    <button class="btn btn-sm btn-danger ms-2" @click="deleteItem(item.id)">
+                                        <i class="bi bi-trash"></i> 删除
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="items.length === 0" class="text-center py-4 text-muted">
+                        暂无数据
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 示例模态框 -->
+    <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="exampleModalLabel">{% raw %}{{ isEdit ? '编辑数据' : '新增数据' }}{% endraw %}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="exampleForm">
+                        <input type="hidden" id="itemId" v-model="formData.id">
+                        <div class="mb-3">
+                            <label for="itemName" class="form-label">名称</label>
+                            <input type="text" class="form-control" id="itemName" v-model="formData.name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="itemDescription" class="form-label">描述</label>
+                            <textarea class="form-control" id="itemDescription" rows="3" v-model="formData.description"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="itemStatus" class="form-label">状态</label>
+                            <select class="form-select" id="itemStatus" v-model="formData.status">
+                                <option value="active">激活</option>
+                                <option value="inactive">未激活</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" @click="saveData">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+    <script>
+        // Vue 实例
+        new Vue({
+            el: '#dataList',
+            data: {
+                items: [],
+                formData: {
+                    id: '',
+                    name: '',
+                    description: '',
+                    status: 'active'
+                },
+                isEdit: false
+            },
+            methods: {
+                loadData: function() {
+                    // 模拟加载数据
+                    Http.get('/api/example/')
+                        .done((response) => {
+                            this.items = response;
+                        })
+                        .fail(() => {
+                            Common.showMessage('加载数据失败', 'error');
+                        });
+                },
+                saveData: function() {
+                    // 表单验证
+                    if (!this.formData.name) {
+                        alert('请填写名称');
+                        return;
+                    }
+                    
+                    // 模拟保存操作
+                    const url = this.formData.id ? '/api/example/' + this.formData.id + '/' : '/api/example/';
+                    const method = this.formData.id ? 'put' : 'post';
+                    
+                    Http[method](url, this.formData)
+                        .done((response) => {
+                            Common.showMessage('保存成功');
+                            $('#exampleModal').modal('hide');
+                            // 重新加载数据
+                            this.loadData();
+                        })
+                        .fail(() => {
+                            Common.showMessage('保存失败', 'error');
+                        });
+                },
+                deleteItem: function(id) {
+                    if (confirm('确定要删除吗？')) {
+                        Http.delete('/api/example/' + id + '/')
+                            .done(() => {
+                                Common.showMessage('删除成功');
+                                // 重新加载数据
+                                this.loadData();
+                            })
+                            .fail(() => {
+                                Common.showMessage('删除失败', 'error');
+                            });
+                    }
+                }
+            },
+            mounted: function() {
+                // 加载初始数据
+                this.loadData();
+                
+                // 监听模态框显示事件
+                $('#exampleModal').on('show.bs.modal', (e) => {
+                    const button = $(e.relatedTarget);
+                    const itemId = button.data('id');
+                    
+                    // 重置表单
+                    this.formData = {
+                        id: '',
+                        name: '',
+                        description: '',
+                        status: 'active'
+                    };
+                    this.isEdit = false;
+                    
+                    // 如果是编辑模式，加载数据
+                    if (itemId) {
+                        this.isEdit = true;
+                        Http.get('/api/example/' + itemId + '/')
+                            .done((response) => {
+                                this.formData = response;
+                            });
+                    }
+                });
+            }
+        });
+    </script>
+{% endblock %}

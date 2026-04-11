@@ -1,4 +1,5 @@
 from django.urls import include, path
+from django.views.generic import TemplateView
 
 from common.page_views import (
     agri_detail_page,
@@ -13,8 +14,11 @@ from common.page_views import (
     tasking_detail_page,
     tasking_list_page,
     telemetry_dashboard_page,
+    terrain_detail_page,
+    terrain_list_page,
 )
 from common.views import health_view, index_view
+from system.views import test_session
 
 urlpatterns = [
     path("", index_view, name="index"),
@@ -39,4 +43,9 @@ urlpatterns = [
     path("api/tasking/", include("tasking.urls")),
     path("api/federation/", include("federation.urls")),
     path("api/telemetry/", include("telemetry.urls")),
+    path("api/terrain/", include("terrain.urls")),
+    path("api/test-session/", test_session, name="test-session"),
+    path("test/", TemplateView.as_view(template_name="test.html"), name="test"),
+    path("terrain/", terrain_list_page, name="page-terrain-list"),
+    path("terrain/detail/", terrain_detail_page, name="page-terrain-detail"),
 ]

@@ -12,6 +12,7 @@ CENTRAL_DB_APPS = {
 
 FOREST_DB_APPS = {"forest"}
 AGRI_DB_APPS = {"agri"}
+TERRAIN_DB_APPS = {"terrain"}
 
 
 class MultiDBRouter:
@@ -19,6 +20,7 @@ class MultiDBRouter:
         **{app_label: "default" for app_label in CENTRAL_DB_APPS},
         **{app_label: "forest" for app_label in FOREST_DB_APPS},
         **{app_label: "agri" for app_label in AGRI_DB_APPS},
+        **{app_label: "terrain" for app_label in TERRAIN_DB_APPS},
     }
 
     def _database_for_app(self, app_label):

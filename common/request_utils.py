@@ -4,12 +4,27 @@ from decimal import Decimal
 
 
 def parse_request_data(request):
+    # DRF's Request may already have consumed the underlying stream.
+    if hasattr(request, "data"):
+        data = request.data
+        if isinstance(data, dict):
+            return dict(data)
+        if data is not None:
+            try:
+                return dict(data)
+            except (TypeError, ValueError):
+                return {}
+
     if request.content_type and "application/json" in request.content_type:
         try:
             return json.loads(request.body or "{}")
         except json.JSONDecodeError:
             return {}
-    return request.POST.dict()
+
+    if hasattr(request, "POST"):
+        return request.POST.dict()
+
+    return {}
 
 
 def serialize_instance(instance):

@@ -10,6 +10,7 @@ class FarmPlot(models.Model):
     area_mu = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     longitude = models.DecimalField(max_digits=10, decimal_places=6, default=0)
     latitude = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    terrain_id = models.BigIntegerField(default=0, blank=True, null=True)
     risk_level = models.CharField(max_length=32, default="medium")
     created_at = models.DateTimeField(auto_now_add=True)
 

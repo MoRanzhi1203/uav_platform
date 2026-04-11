@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}测试页面 - 重庆山地无人机群林农协同作业与风险管控系统{% endblock %}
+
+{% block page_title %}测试页面{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item active">测试页面</li>
+{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <h1>测试页面</h1>
+                <p>这是一个测试页面，用于测试会话管理和 Vue 实例初始化。</p>
+                
+                <div id="testApp">
+                    <h2>Vue 测试</h2>
+                    <p>消息: {{ message }}</p>
+                    <button @click="changeMessage">更改消息</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    new Vue({
+        el: '#testApp',
+        data: {
+            message: 'Hello, Vue!'
+        },
+        methods: {
+            changeMessage: function() {
+                this.message = 'Hello, World!';
+            }
+        }
+    });
+</script>
+{% endblock %}

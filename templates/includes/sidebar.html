@@ -1,0 +1,95 @@
+<aside id="sidebar" class="sidebar">
+
+  <ul class="sidebar-nav" id="sidebar-nav">
+
+    <li class="nav-item">
+      <a class="nav-link active" href="{% url 'page-dashboard' %}">
+        <i class="bi bi-grid"></i>
+        <span>仪表盘</span>
+      </a>
+    </li><!-- End Dashboard Nav -->
+
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'page-fleet-list' %}">
+        <i class="bi bi-drone"></i>
+        <span>无人机管理</span>
+      </a>
+    </li><!-- End Drone Management Nav -->
+
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'page-forest-list' %}">
+        <i class="bi bi-tree"></i>
+        <span>林区管理</span>
+      </a>
+    </li><!-- End Forest Management Nav -->
+
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'page-agri-list' %}">
+        <i class="bi bi-geo-alt"></i>
+        <span>农田管理</span>
+      </a>
+    </li><!-- End Agriculture Management Nav -->
+
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'page-tasking-list' %}">
+        <i class="bi bi-list-check"></i>
+        <span>任务调度</span>
+      </a>
+    </li><!-- End Task Management Nav -->
+
+    <li class="nav-item">
+      <a class="nav-link collapsed" data-bs-target="#monitoring-nav" data-bs-toggle="collapse" href="#">
+        <i class="bi bi-activity"></i><span>监控管理</span><i class="bi bi-chevron-down ms-auto"></i>
+      </a>
+      <ul id="monitoring-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+        <li>
+          <a href="#">
+            <i class="bi bi-circle"></i><span>地图监控</span>
+          </a>
+        </li>
+        <li>
+          <a href="#">
+            <i class="bi bi-circle"></i><span>风险预警</span>
+          </a>
+        </li>
+        <li>
+          <a href="#">
+            <i class="bi bi-circle"></i><span>总控大屏</span>
+          </a>
+        </li>
+      </ul>
+    </li><!-- End Monitoring Nav -->
+
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'page-terrain-list' %}">
+        <i class="bi bi-geo"></i>
+        <span>地形管理</span>
+      </a>
+    </li><!-- End Terrain Management Nav -->
+
+    <li class="nav-heading">系统设置</li>
+
+    <li class="nav-item">
+      <a class="nav-link collapsed" href="#">
+        <i class="bi bi-person"></i>
+        <span>用户管理</span>
+      </a>
+    </li><!-- End User Management Nav -->
+
+    <li class="nav-item">
+      <a class="nav-link collapsed" href="#">
+        <i class="bi bi-gear"></i>
+        <span>系统配置</span>
+      </a>
+    </li><!-- End System Configuration Nav -->
+
+    <li class="nav-item">
+      <a class="nav-link collapsed" href="#">
+        <i class="bi bi-clock-history"></i>
+        <span>操作日志</span>
+      </a>
+    </li><!-- End Operation Log Nav -->
+
+  </ul>
+
+</aside><!-- End Sidebar -->

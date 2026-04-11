@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}地形管理{% endblock %}
+{% block page_id %}terrain-list{% endblock %}
+{% block page_title %}地形管理业务{% endblock %}
+{% block page_subtitle %}地形类型、地形特征、地形数据页面{% endblock %}
+{% block content %}
+<section class="module-toolbar">
+    <div class="tab-strip">
+        <button class="tab-button active" data-endpoint="/api/terrain/">地形</button>
+        <button class="tab-button" data-endpoint="/api/terrain/types/">地形类型</button>
+        <button class="tab-button" data-endpoint="/api/terrain/features/">地形特征</button>
+    </div>
+    <a class="primary-link" href="/terrain/detail/">查看详情页</a>
+</section>
+<section class="panel">
+    <div class="panel-header"><h3>地形业务数据</h3></div>
+    <div id="module-summary" class="module-summary"></div>
+    <div class="map-container" style="height: 400px; margin: 20px 0; border: 1px solid #ddd;">
+        <div id="map" style="width: 100%; height: 100%;"></div>
+    </div>
+    <div id="data-table" class="table-shell"></div>
+</section>
+{% endblock %}
+{% block extra_js %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{% static 'js/module-list.js' %}"></script>
+<script src="{% static 'js/terrain-visualization.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        TerrainVisualization.init();
+    });
+</script>
+{% endblock %}

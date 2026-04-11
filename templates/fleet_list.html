@@ -1,26 +1,87 @@
-{% load static %}
 {% extends "base.html" %}
-{% block title %}机群管理{% endblock %}
-{% block page_id %}fleet-list{% endblock %}
+{% load static %}
+{% block title %}机群管理 - 重庆山地无人机群林农协同作业与风险管控系统{% endblock %}
 {% block page_title %}机群资源管理{% endblock %}
-{% block page_subtitle %}飞手、起降点、无人机、编队与编队成员总览{% endblock %}
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item active">机群管理</li>
+{% endblock %}
 {% block content %}
-<section class="module-toolbar">
-    <div class="tab-strip">
-        <button class="tab-button active" data-endpoint="/api/fleet/pilots/">飞手</button>
-        <button class="tab-button" data-endpoint="/api/fleet/launch-sites/">起降点</button>
-        <button class="tab-button" data-endpoint="/api/fleet/drones/">无人机</button>
-        <button class="tab-button" data-endpoint="/api/fleet/drone-groups/">编队</button>
-        <button class="tab-button" data-endpoint="/api/fleet/drone-group-members/">编队成员</button>
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <!-- 模块工具栏 -->
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5 class="card-title">机群资源管理 <span>| 飞手、起降点、无人机、编队与编队成员总览</span></h5>
+                        <a class="btn btn-primary" href="/fleet/detail/">
+                            <i class="bi bi-eye"></i> 查看实体详情演示页
+                        </a>
+                    </div>
+
+                    <!-- 标签页 -->
+                    <div class="mb-4">
+                        <ul class="nav nav-tabs" id="fleetTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="pilots-tab" data-bs-toggle="tab" data-bs-target="#pilots" type="button" role="tab" aria-controls="pilots" aria-selected="true" data-endpoint="/api/fleet/pilots/">飞手</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="launch-sites-tab" data-bs-toggle="tab" data-bs-target="#launch-sites" type="button" role="tab" aria-controls="launch-sites" aria-selected="false" data-endpoint="/api/fleet/launch-sites/">起降点</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="drones-tab" data-bs-toggle="tab" data-bs-target="#drones" type="button" role="tab" aria-controls="drones" aria-selected="false" data-endpoint="/api/fleet/drones/">无人机</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="drone-groups-tab" data-bs-toggle="tab" data-bs-target="#drone-groups" type="button" role="tab" aria-controls="drone-groups" aria-selected="false" data-endpoint="/api/fleet/drone-groups/">编队</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="drone-group-members-tab" data-bs-toggle="tab" data-bs-target="#drone-group-members" type="button" role="tab" aria-controls="drone-group-members" aria-selected="false" data-endpoint="/api/fleet/drone-group-members/">编队成员</button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- 标签页内容 -->
+                    <div class="tab-content" id="fleetTabsContent">
+                        <div class="tab-pane fade show active" id="pilots" role="tabpanel" aria-labelledby="pilots-tab">
+                            <div id="module-summary" class="module-summary mb-4"></div>
+                            <div id="data-table" class="table-shell"></div>
+                        </div>
+                        <div class="tab-pane fade" id="launch-sites" role="tabpanel" aria-labelledby="launch-sites-tab">
+                            <div class="module-summary mb-4"></div>
+                            <div class="table-shell"></div>
+                        </div>
+                        <div class="tab-pane fade" id="drones" role="tabpanel" aria-labelledby="drones-tab">
+                            <div class="module-summary mb-4"></div>
+                            <div class="table-shell"></div>
+                        </div>
+                        <div class="tab-pane fade" id="drone-groups" role="tabpanel" aria-labelledby="drone-groups-tab">
+                            <div class="module-summary mb-4"></div>
+                            <div class="table-shell"></div>
+                        </div>
+                        <div class="tab-pane fade" id="drone-group-members" role="tabpanel" aria-labelledby="drone-group-members-tab">
+                            <div class="module-summary mb-4"></div>
+                            <div class="table-shell"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    <a class="primary-link" href="/fleet/detail/">查看实体详情演示页</a>
-</section>
-<section class="panel">
-    <div class="panel-header"><h3>列表数据</h3></div>
-    <div id="module-summary" class="module-summary"></div>
-    <div id="data-table" class="table-shell"></div>
 </section>
 {% endblock %}
 {% block extra_js %}
 <script src="{% static 'js/module-list.js' %}"></script>
+<script>
+    // 初始化标签页切换事件
+    document.addEventListener('DOMContentLoaded', function() {
+        const tabButtons = document.querySelectorAll('.nav-link');
+        tabButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const endpoint = this.getAttribute('data-endpoint');
+                // 这里可以添加加载对应数据的逻辑
+                console.log('切换到标签页，请求端点:', endpoint);
+            });
+        });
+    });
+</script>
 {% endblock %}

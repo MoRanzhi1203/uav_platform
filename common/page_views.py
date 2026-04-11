@@ -3,7 +3,7 @@ from django.shortcuts import render
 
 
 def login_page(request):
-    return render(request, "login.html")
+    return render(request, "login.html", {"hide_nav": True})
 
 
 @login_required(login_url="/login/")
@@ -59,3 +59,13 @@ def federation_dashboard_page(request):
 @login_required(login_url="/login/")
 def telemetry_dashboard_page(request):
     return render(request, "telemetry_dashboard.html")
+
+
+@login_required(login_url="/login/")
+def terrain_list_page(request):
+    return render(request, "terrain_list.html")
+
+
+@login_required(login_url="/login/")
+def terrain_detail_page(request):
+    return render(request, "terrain_detail.html")

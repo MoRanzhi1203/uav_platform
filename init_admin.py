@@ -22,7 +22,7 @@ def main():
             "region": "重庆市",
         },
     )
-    user.set_password("admin123456")
+    user.set_password("Admin@123456")
     user.save(using="default")
 
     default_roles = [
@@ -54,7 +54,7 @@ def main():
     for role in default_roles:
         RolePermission.objects.using("default").update_or_create(role_code=role["role_code"], defaults=role)
 
-    print(f"admin initialized: created={created}, username=admin, password=admin123456")
+    print(f"admin initialized: created={created}, username=admin, password=Admin@123456")
 
 
 if __name__ == "__main__":
