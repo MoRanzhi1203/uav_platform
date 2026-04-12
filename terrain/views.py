@@ -1,3 +1,4 @@
+from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from terrain.models import TerrainType, TerrainFeature, Terrain
@@ -230,3 +231,8 @@ class TerrainDetail(APIView):
             return Response({"code": 0, "msg": "success", "data": None})
         except Terrain.DoesNotExist:
             return Response({"code": 404, "msg": "not found", "data": None})
+
+
+def terrain_index(request):
+    """地形管理首页"""
+    return render(request, "terrain/index.html")

@@ -1,3 +1,4 @@
+from django.shortcuts import render
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
@@ -218,3 +219,8 @@ def _pest_monitor_update(request, instance):
 def _pest_monitor_delete(request, instance):
     instance.delete(using=DB_ALIAS)
     return api_response(data={"deleted": True})
+
+
+def agri_index(request):
+    """农田管理首页"""
+    return render(request, "agri/index.html")

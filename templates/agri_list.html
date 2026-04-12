@@ -1,24 +1,472 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 {% load static %}
-{% block title %}农业植保{% endblock %}
-{% block page_id %}agri-list{% endblock %}
-{% block page_title %}农业植保业务{% endblock %}
-{% block page_subtitle %}农田地块、植保任务、病虫害监测数据页面{% endblock %}
-{% block content %}
-<section class="module-toolbar">
-    <div class="tab-strip">
-        <button class="tab-button active" data-endpoint="/api/agri/farm-plots/">农田地块</button>
-        <button class="tab-button" data-endpoint="/api/agri/tasks/">植保任务</button>
-        <button class="tab-button" data-endpoint="/api/agri/pest-monitors/">病虫害监测</button>
-    </div>
-    <a class="primary-link" href="/agri/detail/">查看详情页</a>
-</section>
-<section class="panel">
-    <div class="panel-header"><h3>农业业务数据</h3></div>
-    <div id="module-summary" class="module-summary"></div>
-    <div id="data-table" class="table-shell"></div>
-</section>
+
+{% block title %}农田管理 - 农业植保业务中心{% endblock %}
+
+{% block extra_css %}
+  <link href="{% static 'css/agri.css' %}" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 {% endblock %}
+
+{% block page_title %}农田管理{% endblock %}
+
+{% block breadcrumb_items %}
+  <li class="breadcrumb-item active">农业植保业务中心</li>
+{% endblock %}
+
+{% block content %}
+{% verbatim %}
+  <!-- 统计卡片 -->
+  <div class="row">
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card sales-card">
+        <div class="card-body">
+          <h5 class="card-title">农田总数 <span>| 全部</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-geo-alt text-success"></i>
+            </div>
+            <div class="ps-3">
+              <h6 v-text="stats.totalFarms"></h6>
+              <span class="text-success small pt-1 fw-bold">8%</span>
+              <span class="text-muted small pt-2 ps-1">较上月</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card revenue-card">
+        <div class="card-body">
+          <h5 class="card-title">病虫害预警 <span>| 今日</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-exclamation-triangle text-warning"></i>
+            </div>
+            <div class="ps-3">
+              <h6 v-text="stats.pestAlerts"></h6>
+              <span class="text-warning small pt-1 fw-bold">5%</span>
+              <span class="text-muted small pt-2 ps-1">较昨日</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card customers-card">
+        <div class="card-body">
+          <h5 class="card-title">植保任务 <span>| 进行中</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-clock text-primary"></i>
+            </div>
+            <div class="ps-3">
+              <h6 v-text="stats.activeTasks"></h6>
+              <span class="text-primary small pt-1 fw-bold">12%</span>
+              <span class="text-muted small pt-2 ps-1">较上周</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">作物健康 <span>| 良好</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-heart-pulse text-success"></i>
+            </div>
+            <div class="ps-3">
+              <h6 v-text="stats.healthyCrops + '%'">92%</h6>
+              <span class="text-success small pt-1 fw-bold">3%</span>
+              <span class="text-muted small pt-2 ps-1">较上月</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 查询筛选栏 -->
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title">查询筛选</h5>
+      <form class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">农田名称</label>
+          <input type="text" class="form-control" v-model="searchForm.name" placeholder="请输入农田名称">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">作物类型</label>
+          <select class="form-select" v-model="searchForm.cropType">
+            <option value="">全部作物</option>
+            <option value="rice">水稻</option>
+            <option value="wheat">小麦</option>
+            <option value="corn">玉米</option>
+            <option value="vegetable">蔬菜</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">状态</label>
+          <select class="form-select" v-model="searchForm.status">
+            <option value="">全部状态</option>
+            <option value="normal">正常</option>
+            <option value="warning">预警</option>
+            <option value="danger">危险</option>
+          </select>
+        </div>
+        <div class="col-md-2 align-self-end">
+          <button type="button" class="btn btn-success w-100" @click="searchFarms">
+            <i class="bi bi-search"></i> 查询
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 主业务区 -->
+  <div class="row">
+    <!-- 左侧表格 -->
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">农田列表</h5>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">农田名称</th>
+                  <th scope="col">面积</th>
+                  <th scope="col">作物类型</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(farm, index) in farms" :key="farm.id" @click="selectFarm(farm)" :class="{ 'table-active': selectedFarm && selectedFarm.id === farm.id }">
+                  <th scope="row">{{ index + 1 }}</th>
+                  <td>{{ farm.name }}</td>
+                  <td>{{ farm.area }} 亩</td>
+                  <td>{{ farm.cropTypeText }}</td>
+                  <td>
+                    <span :class="{
+                      'badge bg-success': farm.status === 'normal',
+                      'badge bg-warning': farm.status === 'warning',
+                      'badge bg-danger': farm.status === 'danger'
+                    }">{{ farm.statusText }}</span>
+                  </td>
+                  <td>
+                    <div class="btn-group">
+                      <button type="button" class="btn btn-sm btn-primary" @click.stop="editFarm(farm)">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <button type="button" class="btn btn-sm btn-danger" @click.stop="deleteFarm(farm.id)">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- 分页 -->
+          <div class="d-flex justify-content-center mt-3">
+            <nav aria-label="Page navigation">
+              <ul class="pagination">
+                <li class="page-item" :class="{ 'disabled': currentPage === 1 }">
+                  <a class="page-link" href="#" @click.prevent="changePage(currentPage - 1)">
+                    <i class="bi bi-chevron-left"></i>
+                  </a>
+                </li>
+                <li class="page-item" v-for="page in totalPages" :key="page" :class="{ 'active': page === currentPage }">
+                  <a class="page-link" href="#" @click.prevent="changePage(page)">{{ page }}</a>
+                </li>
+                <li class="page-item" :class="{ 'disabled': currentPage === totalPages }">
+                  <a class="page-link" href="#" @click.prevent="changePage(currentPage + 1)">
+                    <i class="bi bi-chevron-right"></i>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 中间地图 -->
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">农田地图</h5>
+          <div id="farmMap" class="map-container" style="height: 500px;"></div>
+          <div class="mt-3">
+            <div class="btn-group" role="group">
+              <button type="button" class="btn btn-sm btn-outline-primary" @click="toggleLayer('farm')">
+                农田边界
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-warning" @click="toggleLayer('pest')">
+                病虫害
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-success" @click="toggleLayer('task')">
+                植保轨迹
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" @click="resetMap">
+                重置视图
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧详情面板 -->
+    <div class="col-lg-3">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">农田详情</h5>
+          <div v-if="selectedFarm" class="detail-panel">
+            <div class="mb-3">
+              <label class="form-label">农田名称</label>
+              <p class="form-control-plaintext">{{ selectedFarm.name }}</p>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">面积</label>
+              <p class="form-control-plaintext">{{ selectedFarm.area }} 亩</p>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">作物类型</label>
+              <p class="form-control-plaintext">{{ selectedFarm.cropTypeText }}</p>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">种植时间</label>
+              <p class="form-control-plaintext">{{ selectedFarm.plantingDate }}</p>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">状态</label>
+              <p class="form-control-plaintext">
+                <span :class="{
+                  'badge bg-success': selectedFarm.status === 'normal',
+                  'badge bg-warning': selectedFarm.status === 'warning',
+                  'badge bg-danger': selectedFarm.status === 'danger'
+                }">{{ selectedFarm.statusText }}</span>
+              </p>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">最近植保</label>
+              <p class="form-control-plaintext">{{ selectedFarm.lastTreatment }}</p>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">负责人</label>
+              <p class="form-control-plaintext">{{ selectedFarm.manager }}</p>
+            </div>
+            <div class="d-grid gap-2">
+              <button type="button" class="btn btn-primary" @click="startTreatment(selectedFarm.id)">
+                <i class="bi bi-drone"></i> 开始植保
+              </button>
+              <button type="button" class="btn btn-success" @click="viewDetails(selectedFarm.id)">
+                <i class="bi bi-eye"></i> 查看详情
+              </button>
+            </div>
+          </div>
+          <div v-else class="text-center py-5">
+            <i class="bi bi-geo-alt text-muted" style="font-size: 3rem;"></i>
+            <p class="text-muted mt-2">请选择一个农田查看详情</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 下方 tab 内容 -->
+  <div class="card mt-4">
+    <div class="card-body">
+      <ul class="nav nav-tabs" id="farmTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="pest-tab" data-bs-toggle="tab" data-bs-target="#pest" type="button" role="tab" aria-controls="pest" aria-selected="true">
+            病虫害预警
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="treatment-tab" data-bs-toggle="tab" data-bs-target="#treatment" type="button" role="tab" aria-controls="treatment" aria-selected="false">
+            植保记录
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis" type="button" role="tab" aria-controls="analysis" aria-selected="false">
+            数据分析
+          </button>
+        </li>
+      </ul>
+      <div class="tab-content mt-3" id="farmTabsContent">
+        <div class="tab-pane fade show active" id="pest" role="tabpanel" aria-labelledby="pest-tab">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">农田</th>
+                  <th scope="col">病虫害类型</th>
+                  <th scope="col">发现时间</th>
+                  <th scope="col">严重程度</th>
+                  <th scope="col">处理状态</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(alert, index) in pestAlerts" :key="alert.id">
+                  <th scope="row">{{ index + 1 }}</th>
+                  <td>{{ alert.farmName }}</td>
+                  <td>{{ alert.pestType }}</td>
+                  <td>{{ alert.time }}</td>
+                  <td>
+                    <span :class="{
+                      'badge bg-danger': alert.severity === 'high',
+                      'badge bg-warning': alert.severity === 'medium',
+                      'badge bg-info': alert.severity === 'low'
+                    }">{{ alert.severityText }}</span>
+                  </td>
+                  <td>
+                    <span :class="{
+                      'badge bg-success': alert.status === 'resolved',
+                      'badge bg-warning': alert.status === 'processing',
+                      'badge bg-danger': alert.status === 'pending'
+                    }">{{ alert.statusText }}</span>
+                  </td>
+                  <td>
+                    <button type="button" class="btn btn-sm btn-primary" @click="handlePest(alert.id)">
+                      处理
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="treatment" role="tabpanel" aria-labelledby="treatment-tab">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">植保任务</th>
+                  <th scope="col">农田</th>
+                  <th scope="col">无人机</th>
+                  <th scope="col">开始时间</th>
+                  <th scope="col">结束时间</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(treatment, index) in treatments" :key="treatment.id">
+                  <th scope="row">{{ index + 1 }}</th>
+                  <td>{{ treatment.taskName }}</td>
+                  <td>{{ treatment.farmName }}</td>
+                  <td>{{ treatment.droneName }}</td>
+                  <td>{{ treatment.startTime }}</td>
+                  <td>{{ treatment.endTime || '进行中' }}</td>
+                  <td>
+                    <span :class="{
+                      'badge bg-success': treatment.status === 'completed',
+                      'badge bg-info': treatment.status === 'in_progress',
+                      'badge bg-warning': treatment.status === 'pending'
+                    }">{{ treatment.statusText }}</span>
+                  </td>
+                  <td>
+                    <button type="button" class="btn btn-sm btn-info" @click="viewTreatment(treatment.id)">
+                      查看
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="analysis" role="tabpanel" aria-labelledby="analysis-tab">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="card-title">作物健康度趋势</h6>
+                  <div id="healthChart" style="height: 200px;"></div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="card-title">病虫害分布</h6>
+                  <div id="pestChart" style="height: 200px;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑弹窗 -->
+  <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editModalLabel">{{ isEdit ? '编辑农田' : '新增农田' }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form>
+            <div class="mb-3">
+              <label class="form-label">农田名称</label>
+              <input type="text" class="form-control" v-model="formData.name" placeholder="请输入农田名称">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">面积（亩）</label>
+              <input type="number" class="form-control" v-model="formData.area" placeholder="请输入面积">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">作物类型</label>
+              <select class="form-select" v-model="formData.cropType">
+                <option value="rice">水稻</option>
+                <option value="wheat">小麦</option>
+                <option value="corn">玉米</option>
+                <option value="vegetable">蔬菜</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">种植时间</label>
+              <input type="date" class="form-control" v-model="formData.plantingDate">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">负责人</label>
+              <input type="text" class="form-control" v-model="formData.manager" placeholder="请输入负责人">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">联系电话</label>
+              <input type="tel" class="form-control" v-model="formData.phone" placeholder="请输入联系电话">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">描述</label>
+              <textarea class="form-control" v-model="formData.description" rows="3" placeholder="请输入农田描述"></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" @click="saveFarm">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endverbatim %}
+{% endblock %}
+
 {% block extra_js %}
-<script src="{% static 'js/module-list.js' %}"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="{% static 'js/agri.js' %}"></script>
 {% endblock %}

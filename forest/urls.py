@@ -5,12 +5,14 @@ from forest.views import (
     fire_detection_list_create,
     forest_area_detail,
     forest_area_list_create,
+    forest_index,
     forest_patrol_task_detail,
     forest_patrol_task_list_create,
     overview,
 )
 
 urlpatterns = [
+    path("", forest_index, name="forest-index"),
     path("overview/", overview, name="forest-overview"),
     path("areas/", forest_area_list_create, name="forest-area-list-create"),
     path("areas/<int:pk>/", forest_area_detail, name="forest-area-detail"),

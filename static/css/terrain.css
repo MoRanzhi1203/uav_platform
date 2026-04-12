@@ -1,0 +1,124 @@
+/* 地形管理页面样式 */
+
+/* 蓝灰棕系配色 */
+.terrain-primary {
+  color: #3b82f6;
+}
+
+.terrain-secondary {
+  color: #64748b;
+}
+
+.terrain-tertiary {
+  color: #92400e;
+}
+
+.terrain-bg-primary {
+  background-color: #3b82f6;
+}
+
+.terrain-bg-secondary {
+  background-color: #64748b;
+}
+
+.terrain-bg-tertiary {
+  background-color: #92400e;
+}
+
+.terrain-card {
+  border-left: 4px solid #3b82f6;
+}
+
+/* 地图容器样式 */
+.map-container {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+/* 详情面板样式 */
+.detail-panel {
+  border-radius: 0.5rem;
+  padding: 1rem;
+  background-color: #f8fafc;
+}
+
+/* 统计卡片样式 */
+.info-card {
+  transition: all 0.3s ease;
+}
+
+.info-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* 表格样式 */
+.table-hover tbody tr:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* 按钮样式 */
+.btn-primary {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.btn-primary:hover {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+
+/* 标签样式 */
+.badge-success {
+  background-color: #10b981;
+}
+
+.badge-warning {
+  background-color: #f59e0b;
+}
+
+.badge-danger {
+  background-color: #ef4444;
+}
+
+/* 表单样式 */
+.form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25);
+}
+
+/* 分页样式 */
+.pagination .page-item.active .page-link {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+/* Tab 样式 */
+.nav-tabs .nav-item .nav-link.active {
+  color: #3b82f6;
+  border-bottom: 2px solid #3b82f6;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .map-container {
+    height: 300px;
+  }
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.detail-panel {
+  animation: fadeIn 0.3s ease-in-out;
+}

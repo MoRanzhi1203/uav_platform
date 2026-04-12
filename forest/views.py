@@ -1,3 +1,4 @@
+from django.shortcuts import render
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
@@ -214,3 +215,8 @@ def _fire_detection_update(request, instance):
 def _fire_detection_delete(request, instance):
     instance.delete(using=DB_ALIAS)
     return api_response(data={"deleted": True})
+
+
+def forest_index(request):
+    """林区管理首页"""
+    return render(request, "forest/index.html")

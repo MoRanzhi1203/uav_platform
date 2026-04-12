@@ -1,6 +1,7 @@
 from django.urls import path
 
 from agri.views import (
+    agri_index,
     agri_task_detail,
     agri_task_list_create,
     farm_plot_detail,
@@ -11,6 +12,7 @@ from agri.views import (
 )
 
 urlpatterns = [
+    path("", agri_index, name="agri-index"),
     path("overview/", overview, name="agri-overview"),
     path("farm-plots/", farm_plot_list_create, name="agri-farm-plot-list-create"),
     path("farm-plots/<int:pk>/", farm_plot_detail, name="agri-farm-plot-detail"),

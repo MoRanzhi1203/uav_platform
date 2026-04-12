@@ -1,0 +1,91 @@
+{
+  "type": "FeatureCollection",
+  "terrain_types": [
+    {
+      "type_code": "mountain",
+      "type_name": "山地",
+      "description": "海拔较高，坡度较陡的地形，适合林业种植"
+    },
+    {
+      "type_code": "hilly",
+      "type_name": "丘陵",
+      "description": "海拔较低，坡度适中的地形，适合农林混合"
+    },
+    {
+      "type_code": "valley",
+      "type_name": "山谷",
+      "description": "地势较低，水源充足，适合农业种植"
+    }
+  ],
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "terrain_code": "TER001",
+        "terrain_name": "北部山地林区",
+        "terrain_type_code": "mountain",
+        "region": "重庆市北部山区",
+        "area_mu": 2500.0,
+        "farm_plot_id": null,
+        "forest_area_id": 1,
+        "description": "主要用于林业种植，包含马尾松、杉木等树种",
+        "feature": {
+          "slope": 35.5,
+          "elevation": 1200.0,
+          "soil_type": "黄壤",
+          "vegetation_coverage": 85.0
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.85, 29.50]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "terrain_code": "TER002",
+        "terrain_name": "东部农林混合区",
+        "terrain_type_code": "hilly",
+        "region": "重庆市东部丘陵",
+        "area_mu": 1800.0,
+        "farm_plot_id": 1,
+        "forest_area_id": 2,
+        "description": "农业和林业混合经营区，种植水稻和经济林",
+        "feature": {
+          "slope": 15.0,
+          "elevation": 550.0,
+          "soil_type": "红壤",
+          "vegetation_coverage": 70.0
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [107.10, 29.45]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "terrain_code": "TER003",
+        "terrain_name": "南部山谷农田",
+        "terrain_type_code": "valley",
+        "region": "重庆市南部山谷",
+        "area_mu": 1200.0,
+        "farm_plot_id": 2,
+        "forest_area_id": null,
+        "description": "主要用于农业种植，种植水稻、玉米等作物",
+        "feature": {
+          "slope": 5.0,
+          "elevation": 300.0,
+          "soil_type": "水稻土",
+          "vegetation_coverage": 60.0
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.95, 29.30]
+      }
+    }
+  ]
+}
