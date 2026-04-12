@@ -12,6 +12,10 @@ class TerrainEditor {
     this.currentBasemap = 'grayscale';
     this.baseLayers = window.baseLayers;
     
+    // 等高线叠加管理
+    this.isContourOverlayEnabled = false;
+    this.contourLayer = null;
+    
     // 状态管理
     this.currentTool = 'select';
     this.selectedFeatures = [];
@@ -87,6 +91,14 @@ class TerrainEditor {
     this.map.on('mousemove', (e) => {
       this.updateCursorPosition(e.latlng);
     });
+    
+    // 等高线叠加开关事件
+    const contourCheckbox = document.getElementById('contourOverlay');
+    if (contourCheckbox) {
+      contourCheckbox.addEventListener('change', (e) => {
+        this.toggleContourOverlay(e.target.checked);
+      });
+    }
   }
   
   // 初始化绘制控件
@@ -871,6 +883,47 @@ class TerrainEditor {
         item.classList.remove('active');
       }
     });
+  }
+  
+  // 切换等高线叠加
+  toggleContourOverlay(enabled) {
+    console.log('=== 切换等高线叠加 ===');
+    console.log('状态:', enabled);
+    
+    // 确保等高线图层只创建一次
+    if (!this.contourLayer) {
+      // 创建等高线图层
+      this.contourLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+        opacity: 0.6
+      });
+    }
+    
+    if (enabled) {
+      // 添加到地图
+      if (!this.map.hasLayer(this.contourLayer)) {
+        this.contourLayer.addTo(this.map);
+        
+        // 调整图层顺序，确保等高线在底图之上，业务图层之下
+        this.map.eachLayer((layer) => {
+          if (layer instanceof L.TileLayer && layer !== this.contourLayer && 
+              (layer === this.baseLayers.grayscale || layer === this.baseLayers.satellite)) {
+            this.map.removeLayer(layer);
+            this.map.addLayer(layer);
+          }
+        });
+        
+        console.log('等高线叠加已开启');
+      }
+    } else {
+      // 从地图中移除
+      if (this.map.hasLayer(this.contourLayer)) {
+        this.map.removeLayer(this.contourLayer);
+        console.log('等高线叠加已关闭');
+      }
+    }
+    
+    this.isContourOverlayEnabled = enabled;
   }
   
   // 计算面积（公顷）

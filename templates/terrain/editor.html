@@ -221,9 +221,17 @@
       <div class="layer-list">
         <h5 class="mb-3">图层管理</h5>
         
-        <!-- 基础图层 -->
+        <!-- 底图模式 -->
         <div class="mb-4">
-          <h6>基础图层</h6>
+          <h6>底图模式</h6>
+          <div class="layer-item">
+            <span>当前底图：<span id="currentBasemapName">标准底图</span></span>
+          </div>
+        </div>
+        
+        <!-- 业务图层 -->
+        <div class="mb-4">
+          <h6>业务图层</h6>
           <div class="layer-item">
             <input type="checkbox" class="layer-checkbox" checked>
             <span>地形边界</span>
@@ -236,11 +244,6 @@
             <input type="checkbox" class="layer-checkbox">
             <span>禁飞区</span>
           </div>
-        </div>
-        
-        <!-- 业务区域 -->
-        <div class="mb-4">
-          <h6>业务区域</h6>
           <div class="layer-item">
             <input type="checkbox" class="layer-checkbox" checked>
             <span>林区边界</span>
@@ -248,6 +251,15 @@
           <div class="layer-item">
             <input type="checkbox" class="layer-checkbox" checked>
             <span>农田边界</span>
+          </div>
+        </div>
+        
+        <!-- 辅助图层 -->
+        <div class="mb-4">
+          <h6>辅助图层</h6>
+          <div class="layer-item">
+            <input type="checkbox" class="layer-checkbox" id="contourOverlay">
+            <span>等高线叠加</span>
           </div>
         </div>
         
