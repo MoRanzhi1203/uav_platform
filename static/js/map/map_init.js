@@ -1,8 +1,8 @@
 // 地图初始化配置
 const mapConfig = {
-  // 重庆中心坐标
-  center: [29.5630, 106.5516],
-  zoom: 12,
+  // 与模拟数据匹配的中心坐标
+  center: [30.600, 106.570],
+  zoom: 14,
   minZoom: 8,
   maxZoom: 18
 };
@@ -200,6 +200,7 @@ class LayerManager {
 // 全局变量
 try {
   window.initMap = initMap;
+  window.baseLayers = baseLayers;
   window.polygonStyles = polygonStyles;
   window.markerStyles = markerStyles;
   window.pathStyles = pathStyles;

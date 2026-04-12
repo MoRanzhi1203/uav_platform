@@ -126,11 +126,8 @@ function initTables() {
 function initEvents() {
   // 新增地形按钮
   document.getElementById('addTerrainBtn').addEventListener('click', function() {
-    const modal = new bootstrap.Modal(document.getElementById('editModal'));
-    document.getElementById('editModalLabel').textContent = '新增地形';
-    document.getElementById('terrainForm').reset();
-    document.getElementById('terrainId').value = '';
-    modal.show();
+    // 跳转到地块编辑器页面
+    window.location.href = '/terrain/editor/';
   });
 
   // 保存地形按钮

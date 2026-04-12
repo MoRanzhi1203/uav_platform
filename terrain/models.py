@@ -1,58 +1,32 @@
 from django.db import models
 
-
-class TerrainType(models.Model):
-    type_code = models.CharField(max_length=32, unique=True)
-    type_name = models.CharField(max_length=64)
-    description = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = "terrain_type"
-        verbose_name = "terrain_type"
-        verbose_name_plural = "terrain_type"
-        ordering = ["-id"]
-
-    def __str__(self):
-        return f"{self.type_name}({self.type_code})"
-
-
-class TerrainFeature(models.Model):
-    terrain_id = models.BigIntegerField(default=0)
-    slope = models.DecimalField(max_digits=5, decimal_places=2, default=0)  # 坡度
-    elevation = models.DecimalField(max_digits=8, decimal_places=2, default=0)  # 海拔
-    soil_type = models.CharField(max_length=64, blank=True)  # 土壤类型
-    vegetation_coverage = models.DecimalField(max_digits=5, decimal_places=2, default=0)  # 植被覆盖率
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = "terrain_feature"
-        verbose_name = "terrain_feature"
-        verbose_name_plural = "terrain_feature"
-        ordering = ["-id"]
-
-    def __str__(self):
-        return f"feature-{self.terrain_id}"
-
-
 class Terrain(models.Model):
-    terrain_code = models.CharField(max_length=64, unique=True)
-    terrain_name = models.CharField(max_length=128)
-    terrain_type_id = models.BigIntegerField(default=0)
-    region = models.CharField(max_length=128, blank=True)
-    area_mu = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    longitude = models.DecimalField(max_digits=10, decimal_places=6, default=0)
-    latitude = models.DecimalField(max_digits=10, decimal_places=6, default=0)
-    farm_plot_id = models.BigIntegerField(default=0, blank=True, null=True)
-    forest_area_id = models.BigIntegerField(default=0, blank=True, null=True)
-    description = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
+    """地形模型"""
+    name = models.CharField(max_length=100, verbose_name='地形名称')
+    type = models.CharField(max_length=50, verbose_name='地形类型', choices=[
+        ('mountain', '山地'),
+        ('hill', '丘陵'),
+        ('valley', '山谷'),
+        ('plateau', '高原'),
+        ('plain', '平原'),
+        ('forest', '林区'),
+        ('farm', '农田'),
+        ('mixed', '混合')
+    ])
+    risk_level = models.CharField(max_length=20, verbose_name='风险等级', choices=[
+        ('low', '低'),
+        ('medium', '中'),
+        ('high', '高')
+    ])
+    area = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='面积（公顷）', default=0)
+    description = models.TextField(blank=True, verbose_name='描述')
+    coordinates = models.JSONField(verbose_name='坐标数据', default=list)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    
     class Meta:
-        db_table = "terrain"
-        verbose_name = "terrain"
-        verbose_name_plural = "terrain"
-        ordering = ["-id"]
-
+        verbose_name = '地形'
+        verbose_name_plural = '地形'
+    
     def __str__(self):
-        return f"{self.terrain_name}({self.terrain_code})"
+        return self.name

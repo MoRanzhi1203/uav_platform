@@ -1,12 +1,9 @@
 from django.urls import path
-from terrain import views
+from . import views
 
 urlpatterns = [
-    path("", views.terrain_index, name="terrain-index"),
-    path("api/types/", views.TerrainTypeList.as_view(), name="terrain-type-list"),
-    path("api/types/<int:pk>/", views.TerrainTypeDetail.as_view(), name="terrain-type-detail"),
-    path("api/features/", views.TerrainFeatureList.as_view(), name="terrain-feature-list"),
-    path("api/features/<int:pk>/", views.TerrainFeatureDetail.as_view(), name="terrain-feature-detail"),
-    path("api/terrains/", views.TerrainList.as_view(), name="terrain-list"),
-    path("api/terrains/<int:pk>/", views.TerrainDetail.as_view(), name="terrain-detail"),
+    path('', views.terrain_index, name='terrain_index'),
+    path('editor/', views.terrain_editor, name='terrain_editor'),
+    path('api/save-plot/', views.save_plot, name='save_plot'),
+    path('api/get-terrain-data/', views.get_terrain_data, name='get_terrain_data'),
 ]
