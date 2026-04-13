@@ -139,6 +139,16 @@
       right: 0;
       bottom: 0;
     }
+    .admin-label {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      font-weight: bold;
+      color: #333;
+      text-shadow: 1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white;
+      font-size: 14px;
+      pointer-events: none;
+    }
   </style>
 {% endblock %}
 
@@ -246,9 +256,12 @@
             <input type="checkbox" class="layer-checkbox" id="gridToggle1km">
             <span>1000m 参考网格</span>
           </div>
-          <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" id="adminBoundaryToggle">
-            <span>行政区划边界</span>
+          <div class="layer-item" style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <input type="checkbox" class="layer-checkbox" id="adminBoundaryToggle">
+              <span>行政区划边界</span>
+            </div>
+            <input type="color" id="adminBoundaryColor" value="#4a90e2" style="width: 24px; height: 24px; border: none; padding: 0; cursor: pointer; border-radius: 4px;" title="自定义边界颜色">
           </div>
           <div class="layer-item">
             <input type="checkbox" class="layer-checkbox" id="historyToggle">

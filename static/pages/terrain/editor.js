@@ -242,9 +242,15 @@ function bindAssistLayerEvents() {
 
   // 行政区划边界切换
   const adminToggle = document.getElementById('adminBoundaryToggle');
+  const adminColor = document.getElementById('adminBoundaryColor');
   if (adminToggle) {
     adminToggle.addEventListener('change', function() {
       if (terrainEditor) terrainEditor.toggleAdminBoundaries(this.checked);
+    });
+  }
+  if (adminColor) {
+    adminColor.addEventListener('input', function(e) {
+      if (terrainEditor) terrainEditor.updateAdminBoundaryColor(e.target.value);
     });
   }
 

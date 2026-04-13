@@ -132,28 +132,75 @@ class TerrainEditor {
   // 加载行政区划边界 (调用 shp 文件)
   async loadAdminBoundaries() {
     try {
-      // 指向 static 下的 shp 文件目录 (shpjs 支持直接读取同名 shp/dbf 等)
-      const shpUrl = '/static/shp/chongqing-260411-free.shp/gis_osm_adminareas_a_free_1';
+      // 指向 static 下的 shp 文件目录
+      const shpUrl = '/static/shp/chongqing_admin_3857/chongqing_admin_3857';
+      this.adminBoundaryColor = document.getElementById('adminBoundaryColor')?.value || '#4a90e2';
       
       // 使用 shpjs 的通用方法加载并转换 GeoJSON
-      // 注意：此方法会尝试 fetch .shp, .dbf 等后缀文件
       const geojson = await shp(shpUrl);
       
-      if (geojson) {
-        L.geoJSON(geojson, {
-          style: {
-            color: '#34495e', // 深灰色边框
-            weight: 1.5,
-            opacity: 0.8,
-            fillOpacity: 0,
-            dashArray: '2, 4',
-            interactive: false
+      if (geojson && geojson.features) {
+        // 过滤区县级边界，提高性能
+        const districts = geojson.features.filter(f => f.properties.fclass === 'admin_level6');
+        
+        // 分块加载以避免 UI 卡顿
+        const chunkSize = 10;
+        let index = 0;
+        
+        const loadChunk = () => {
+          const chunk = districts.slice(index, index + chunkSize);
+          if (chunk.length === 0) {
+            console.log('行政区划边界加载完成');
+            return;
           }
-        }).addTo(this.adminBoundaryLayer);
-        console.log('行政区划边界加载成功');
+          
+          L.geoJSON({ type: 'FeatureCollection', features: chunk }, {
+            style: () => ({
+              color: this.adminBoundaryColor,
+              weight: 2,
+              opacity: 0.8,
+              fillOpacity: 0.05,
+              fillColor: this.adminBoundaryColor,
+              dashArray: '5, 5',
+              interactive: false // 确保不影响用户点击和绘制地块
+            }),
+            onEachFeature: (feature, layer) => {
+              // 显示区名标签
+              if (feature.properties && feature.properties.name) {
+                layer.bindTooltip(feature.properties.name, {
+                  permanent: true,
+                  direction: 'center',
+                  className: 'admin-label',
+                  opacity: 0.9,
+                  interactive: false
+                });
+              }
+            }
+          }).addTo(this.adminBoundaryLayer);
+          
+          index += chunkSize;
+          setTimeout(loadChunk, 10); // 分散到下一个事件循环
+        };
+        
+        loadChunk();
       }
     } catch (error) {
       console.warn('行政区划边界加载失败，请检查 static/shp 路径或 shpjs 库是否引入:', error);
+    }
+  }
+
+  // 更新行政边界颜色
+  updateAdminBoundaryColor(color) {
+    this.adminBoundaryColor = color;
+    if (this.adminBoundaryLayer) {
+      this.adminBoundaryLayer.eachLayer(layer => {
+        if (layer.setStyle) {
+          layer.setStyle({
+            color: color,
+            fillColor: color
+          });
+        }
+      });
     }
   }
 
