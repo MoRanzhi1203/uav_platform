@@ -222,7 +222,7 @@ new Vue({
     // 初始化地图
     initMap() {
       // 初始化 Leaflet 地图
-      this.map = L.map('farmMap').setView([29.5630, 106.5516], 12);
+      this.map = L.map('farmMap').setView([30.05, 107.60], 7);
       
       // 添加底图
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

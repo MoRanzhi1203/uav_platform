@@ -25,8 +25,8 @@ function initPage() {
   terrainMap = new TerrainMap('terrainMap');
   terrainMap.init();
 
-  // 加载假数据
-  loadMockData();
+  // 加载真实数据 (已清理伪数据)
+  loadRealData();
 
   // 初始化筛选表单
   initFilterForm();
@@ -38,50 +38,70 @@ function initPage() {
   initEvents();
 }
 
-// 加载假数据
-function loadMockData() {
-  // 模拟API请求延迟
-  setTimeout(() => {
-    // 检查假数据是否加载
-    if (window.terrainMockData) {
-      // 加载地形数据
-      terrainData.terrains = window.terrainMockData.terrains.map(terrain => ({
-        ...terrain,
-        risk_level: terrain.riskLevel,
-        coordinates: window.terrainMockData.mapData.terrainBoundaries.find(b => b.id === terrain.id)?.coordinates || []
+// 加载真实数据
+async function loadRealData() {
+  try {
+    // 1. 加载地块列表
+    const response = await fetch('/terrain/api/plots/list/');
+    const result = await response.json();
+    
+    if (result.code === 0) {
+      // 转换后端数据为前端格式
+      terrainData.terrains = result.data.map(item => ({
+        id: item.id,
+        name: item.name,
+        area: item.area,
+        type: translateLandType(item.land_type),
+        land_type: item.land_type,
+        risk_level: translateRiskLevel(item.risk_level),
+        riskLevelRaw: item.risk_level,
+        description: item.description,
+        coordinates: item.geom_json?.geometry?.coordinates || [],
+        center: [item.center_lat, item.center_lng],
+        geom_json: item.geom_json,
+        updated_at: item.updated_at
       }));
 
-      // 加载风险区域数据
-      terrainData.riskAreas = window.terrainMockData.dangerZones.map(area => ({
-        ...area,
-        terrain_name: area.name,
-        risk_level: area.level,
-        discovery_time: area.time,
-        coordinates: []
-      }));
-
-      // 加载测绘记录数据
-      terrainData.surveys = window.terrainMockData.surveyRecords.map(task => ({
-        ...task,
-        start_time: task.time,
-        end_time: task.time,
-        coordinates: []
-      }));
-
-      // 更新页面数据
+      // 更新页面显示
       updatePageData();
 
-      // 加载地图数据
+      // 同步到地图
       if (terrainMap) {
         terrainMap.loadTerrains(terrainData.terrains);
-        terrainMap.loadRiskAreas(terrainData.riskAreas);
-        terrainMap.loadSurveyPaths(terrainData.surveys);
       }
     } else {
-      console.error('假数据未加载');
+      console.error('加载地块数据失败:', result.message);
     }
+  } catch (e) {
+    console.error('请求地块数据异常:', e);
+  }
+}
 
-  }, 500);
+// 类型转换辅助函数
+function translateLandType(type) {
+  const mapping = {
+    'forest': '林区',
+    'farmland': '农田',
+    'water': '水域',
+    'road': '道路',
+    'building': '建筑',
+    'mixed': '混合'
+  };
+  return mapping[type] || type;
+}
+
+function translateRiskLevel(level) {
+  const mapping = {
+    'high': '高',
+    'medium': '中',
+    'low': '低'
+  };
+  return mapping[level] || level;
+}
+
+// 废弃旧的假数据加载逻辑
+function loadMockData() {
+  console.warn('loadMockData 已废弃，请使用 loadRealData');
 }
 
 // 初始化筛选表单
@@ -124,10 +144,25 @@ function initTables() {
 
 // 初始化事件绑定
 function initEvents() {
+  // 监听跨页面数据同步标记
+  window.addEventListener('focus', function() {
+    if (localStorage.getItem('terrain_plot_changed') === '1') {
+      console.log('检测到地块数据变动，自动刷新列表');
+      loadRealData();
+      localStorage.removeItem('terrain_plot_changed');
+    }
+  });
+
   // 新增地形按钮
   document.getElementById('addTerrainBtn').addEventListener('click', function() {
     // 跳转到地块编辑器页面
     window.location.href = '/terrain/editor/';
+  });
+
+  // 刷新按钮
+  document.getElementById('refreshBtn').addEventListener('click', function() {
+    console.log('手动刷新数据');
+    loadRealData();
   });
 
   // 保存地形按钮
@@ -231,8 +266,8 @@ function initVue() {
         offcanvas.show();
       },
       viewDetail: function(terrain) {
-        // 查看详情
-        console.log('查看详情:', terrain);
+        // 跳转到编辑器进行编辑
+        window.location.href = `/terrain/editor/?id=${terrain.id}`;
       }
     }
   });

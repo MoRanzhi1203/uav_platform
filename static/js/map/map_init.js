@@ -1,26 +1,43 @@
 // 地图初始化配置
 const mapConfig = {
-  // 与模拟数据匹配的中心坐标
-  center: [30.600, 106.570],
-  zoom: 14,
-  minZoom: 8,
+  // 重庆市地理中心坐标，确保初始加载时位于画面中心
+  center: [30.05, 107.60],
+  // 初始缩放级别调整，使重庆全境在画面中占约 1/3 高度和宽度
+  zoom: 7,
+  minZoom: 5,
   maxZoom: 18
 };
 
-// 基础地图图层
+// 基础地图图层配置 (供参考，实际使用时请通过 getBaseLayer 获取新实例)
+const baseLayerConfig = {
+  grayscale: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    options: {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 20,
+      maxNativeZoom: 19
+    }
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    options: {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      maxZoom: 20,
+      maxNativeZoom: 18
+    }
+  }
+};
+
+// 获取底图新实例的辅助函数 (解决多个地图实例共用图层对象的问题)
+function getBaseLayer(type) {
+  const config = baseLayerConfig[type] || baseLayerConfig.grayscale;
+  return L.tileLayer(config.url, config.options);
+}
+
+// 基础地图图层实例管理 (保留旧变量名以兼容现有代码，但建议使用 getBaseLayer)
 const baseLayers = {
-  // 标准底图 (带有中文地名)
-  grayscale: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 20,
-    maxNativeZoom: 19
-  }),
-  // 卫星地图
-  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-    maxZoom: 20,
-    maxNativeZoom: 18
-  })
+  get grayscale() { return getBaseLayer('grayscale'); },
+  get satellite() { return getBaseLayer('satellite'); }
 };
 
 // 辅助图层
@@ -44,8 +61,8 @@ function initMap(mapId, options = {}) {
   const mapOptions = { ...mapConfig, ...options };
   const map = L.map(mapId, mapOptions);
 
-  // 默认添加灰色底图
-  baseLayers.grayscale.addTo(map);
+  // 默认添加卫星底图 (确保是新实例)
+  getBaseLayer('satellite').addTo(map);
 
   return map;
 }

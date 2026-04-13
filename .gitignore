@@ -6,19 +6,26 @@ __pycache__/
 local_settings.py
 .env
 
-# Python
+# Python artifacts
+*.pyo
+*.pyd
+*.db
 venv/
 env/
+.venv/
+.python-version
 
-# IDE
+# IDE & Editor
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS
 Thumbs.db
 .DS_Store
 
-# Static files (if using collectstatic)
+# Static files
 # static/
 
 # Media files
@@ -29,9 +36,20 @@ media/
 
 # Test coverage
 coverage/
+.coverage
+htmlcov/
 
 # Temporary files
 tmp/
 temp/
-
+CHANGELOG.md
 changelog.md
+
+# Log files
+logs/
+*.log
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class

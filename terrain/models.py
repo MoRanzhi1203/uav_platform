@@ -30,3 +30,48 @@ class Terrain(models.Model):
     
     def __str__(self):
         return self.name
+
+class TerrainPlot(models.Model):
+    """地块主表"""
+    map_id = models.IntegerField(null=True, blank=True, verbose_name="所属地图ID")
+    name = models.CharField(max_length=255, verbose_name="地块名称")
+    land_type = models.CharField(max_length=50, verbose_name="地块类型", choices=[
+        ('forest', '林区'),
+        ('farmland', '农田'),
+        ('water', '水域'),
+        ('road', '道路'),
+        ('building', '建筑'),
+        ('mixed', '混合')
+    ])
+    risk_level = models.CharField(max_length=20, verbose_name="风险等级", choices=[
+        ('low', '低'),
+        ('medium', '中'),
+        ('high', '高')
+    ])
+    area = models.FloatField(default=0.0, verbose_name="面积")
+    description = models.TextField(null=True, blank=True, verbose_name="描述")
+    center_lng = models.FloatField(null=True, blank=True, verbose_name="中心点经度")
+    center_lat = models.FloatField(null=True, blank=True, verbose_name="中心点纬度")
+    
+    # JSON 字段
+    geom_json = models.JSONField(default=dict, verbose_name="GeoJSON 轮廓")
+    grid_json = models.JSONField(default=dict, verbose_name="网格绘制数据")
+    style_json = models.JSONField(default=dict, verbose_name="样式和图层信息")
+    meta_json = models.JSONField(default=dict, verbose_name="扩展信息")
+    
+    created_by = models.CharField(max_length=255, null=True, blank=True, verbose_name="创建者")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
+
+    class Meta:
+        db_table = 'terrain_plot'
+        verbose_name = '地块'
+        verbose_name_plural = '地块'
+        indexes = [
+            models.Index(fields=['map_id']),
+            models.Index(fields=['is_deleted']),
+        ]
+
+    def __str__(self):
+        return self.name

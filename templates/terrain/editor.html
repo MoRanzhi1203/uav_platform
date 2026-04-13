@@ -168,11 +168,11 @@
     <div class="tool-group">
       <div class="dropdown">
         <button class="tool-btn dropdown-toggle" type="button" id="basemapDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-          <i class="bi bi-map"></i> <span id="currentBasemapName">标准底图</span>
+          <i class="bi bi-map"></i> <span id="currentBasemapName">卫星底图</span>
         </button>
         <ul class="dropdown-menu" aria-labelledby="basemapDropdown">
-          <li><a class="dropdown-item active" href="#" data-basemap="grayscale">标准底图</a></li>
-          <li><a class="dropdown-item" href="#" data-basemap="satellite">卫星底图</a></li>
+          <li><a class="dropdown-item" href="#" data-basemap="grayscale">标准底图</a></li>
+          <li><a class="dropdown-item active" href="#" data-basemap="satellite">卫星底图</a></li>
         </ul>
       </div>
     </div>
@@ -239,7 +239,7 @@
         <div class="mb-4">
           <h6>底图模式</h6>
           <div class="layer-item">
-            <span>当前底图：<span id="currentBasemapNameSidebar">标准底图</span></span>
+            <span>当前底图：<span id="currentBasemapNameSidebar">卫星底图</span></span>
           </div>
         </div>
         
@@ -264,7 +264,7 @@
           </div>
           <div class="layer-item" style="display: flex; align-items: center; justify-content: space-between;">
             <div>
-              <input type="checkbox" class="layer-checkbox" id="adminBoundaryToggle">
+              <input type="checkbox" class="layer-checkbox" id="adminBoundaryToggle" checked>
               <span>行政区划边界</span>
             </div>
             <input type="color" id="adminBoundaryColor" value="#4a90e2" style="width: 24px; height: 24px; border: none; padding: 0; cursor: pointer; border-radius: 4px;" title="自定义边界颜色">

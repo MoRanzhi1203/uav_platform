@@ -3,21 +3,26 @@ class TerrainEditor {
   constructor(mapId) {
     // 初始化地图
     this.map = window.initMap(mapId, {
-      center: [29.5630, 106.5516],
-      zoom: 12,
-      minZoom: 9,
-      maxZoom: 18, // 限制最大缩放级别，避免瓦片丢失
-      maxBounds: [
-        [28.16, 105.11], // 重庆西南角
-        [32.20, 110.19]  // 重庆东北角
-      ],
-      maxBoundsViscosity: 1.0
+      center: [30.05, 107.60],
+      zoom: 7,
+      minZoom: 5,
+      maxZoom: 18,
+      zoomSnap: 0.1, // 允许更精细的缩放级别以精确匹配重庆占比
     });
+    
+    // 默认缩放占比配置
+    this.viewportConfig = {
+      targetHeightRatio: 1/3,
+      targetWidthRatio: 1/2,
+      chongqingBounds: [[28.16, 105.18], [32.20, 110.19]]
+    };
+
     this.layerManager = new window.LayerManager(this.map);
     
-    // 底图管理
-    this.currentBasemap = 'grayscale';
+    // 底图管理 (使用实例存储)
     this.baseLayers = window.baseLayers;
+    this.currentBasemap = 'satellite';
+    this.activeBaseLayer = null; // 存储当前正在使用的底图实例
     
     // 等高线叠加管理
     this.isContourOverlayEnabled = false;
@@ -31,6 +36,7 @@ class TerrainEditor {
     this.activePlotId = null;
     this.history = [];
     this.historyIndex = -1;
+    this.mapId = 1; // 默认地图 ID
     
     // 网格配置 (10m x 10m)
     this.gridLatStep = 0.0000898;
@@ -106,8 +112,65 @@ class TerrainEditor {
     this.addLayerGroups();
     this.initReferenceGrid();
     this.bindEvents();
+    
+    // 初始化视口配置：居中并根据比例计算缩放级别
+    this.updateMapViewportForChongqing();
+    
+    // 强制切换一次卫星底图，确保实例被正确管理和显示
+    this.currentBasemap = null; 
+    this.switchBasemap('satellite');
+    
     this.captureHistorySnapshot();
   }
+  
+  /**
+   * 计算并设置地图视口，使重庆市在画面中居中并按指定比例显示
+   * @param {number} heightRatio 高度占比
+   * @param {number} widthRatio 宽度占比
+   */
+  updateMapViewportForChongqing(heightRatio, widthRatio) {
+    if (heightRatio) this.viewportConfig.targetHeightRatio = heightRatio;
+    if (widthRatio) this.viewportConfig.targetWidthRatio = widthRatio;
+    
+    const bounds = L.latLngBounds(this.viewportConfig.chongqingBounds);
+    const center = bounds.getCenter();
+    
+    // 获取地图容器大小
+    const container = this.map.getContainer();
+    const containerWidth = container.offsetWidth;
+    const containerHeight = container.offsetHeight;
+    
+    // 只有在容器大小有效时才进行计算，否则等待一会（可能由于初始化时 DOM 未就绪）
+    if (containerWidth === 0 || containerHeight === 0) {
+      setTimeout(() => this.updateMapViewportForChongqing(), 100);
+      return;
+    }
+    
+    // 使用 Leaflet 的 getBoundsZoom 进行精准计算
+    // 我们需要通过 padding 来实现目标占比
+    // paddingTopBottom = (1 - heightRatio) / 2 * containerHeight
+    // paddingLeftRight = (1 - widthRatio) / 2 * containerWidth
+    const paddingY = (1 - this.viewportConfig.targetHeightRatio) / 2 * containerHeight;
+    const paddingX = (1 - this.viewportConfig.targetWidthRatio) / 2 * containerWidth;
+    
+    // 计算适应指定 Padding 后的最佳缩放级别
+    const optimalZoom = this.map.getBoundsZoom(bounds, false, [paddingX, paddingY]);
+    
+    console.log(`计算得出重庆市最优缩放级别: ${optimalZoom} (H:${this.viewportConfig.targetHeightRatio}, W:${this.viewportConfig.targetWidthRatio})`);
+     
+     // 更新地图设置
+      this.map.setMinZoom(optimalZoom); // 修正：这是最小缩放级别，确保用户缩到最小时重庆仍符合占比
+      this.map.setMaxZoom(18);          // 恢复最大缩放级别，确保绘图工具（10m网格）在放大后可用
+      this.map.setView(center, optimalZoom);
+      
+      // 画面限制逻辑：锁定视野范围，禁止用户平移到当前“最小缩放”视图之外
+      // 即使在放大后，用户也无法拖拽出最初定义的这个区域
+      this.map.once('moveend', () => {
+        const initialBounds = this.map.getBounds();
+        this.map.setMaxBounds(initialBounds);
+        console.log('地图视野已锁定，禁止越界移动');
+      });
+    }
   
   // 初始化参考网格 (10m, 1km)
   initReferenceGrid() {
@@ -322,11 +385,11 @@ class TerrainEditor {
   // 绘制 10m x 10m 参考网格
   drawReferenceGrid10m() {
     this.refGridLayer10m.clearLayers();
-    // 调低缩放限制，使其在缩放级别 16 也能显示（由于优化了绘制逻辑，性能影响较小）
+    // 仅在足够大的缩放级别下显示 10m 网格，避免渲染压力
     if (this.map.getZoom() < 16) return;
     
     this._drawGridGeneric(this.refGridLayer10m, this.gridLatStep, this.gridLngStep, {
-      color: '#888888', // 稍微加深颜色
+      color: '#888888',
       weight: 0.5, 
       opacity: 0.3
     });
@@ -335,14 +398,14 @@ class TerrainEditor {
   // 绘制 1km x 1km 参考网格
   drawReferenceGrid1km() {
     this.refGridLayer1km.clearLayers();
-    // 调低缩放限制，使其在缩放级别 10 也能显示
+    // 仅在足够大的缩放级别下显示 1km 网格
     if (this.map.getZoom() < 10) return;
 
     this._drawGridGeneric(this.refGridLayer1km, this.gridLatStep1km, this.gridLngStep1km, {
-      color: '#4a90e2', // 改为较深的蓝色，更容易辨认
-      weight: 1.2,      // 稍微加宽
-      opacity: 0.5,     // 增加不透明度
-      dashArray: '10, 10' // 调整虚线比例
+      color: '#4a90e2',
+      weight: 1.2,
+      opacity: 0.5,
+      dashArray: '10, 10'
     });
   }
 
@@ -402,7 +465,7 @@ class TerrainEditor {
     console.log('=== 调整地图视野到 GeoJSON 图层 ===');
     
     // 设置默认中心为重庆的大致位置
-    this.map.setView([29.5630, 106.5516], 10);
+    this.map.setView([30.05, 107.60], 7);
   }
   
   // 显示要素信息
@@ -699,9 +762,33 @@ class TerrainEditor {
   }
   
   // 移除地块
-  removePlot(plotId) {
+  async removePlot(plotId) {
     const plot = this.userPlots.find(p => p.id === plotId);
     if (!plot) return;
+
+    if (plot.db_id) {
+      if (!confirm('该地块已保存到数据库，确定要从数据库中彻底删除吗？')) {
+        return;
+      }
+      try {
+        const response = await fetch(`/terrain/api/plots/${plot.db_id}/delete/`, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': this.getCookie('csrftoken')
+          }
+        });
+        const result = await response.json();
+        if (result.code === 0) {
+          // 标记地块数据已变动，通知列表页刷新
+          localStorage.setItem('terrain_plot_changed', '1');
+          return;
+        }
+      } catch (e) {
+        console.error('删除请求异常:', e);
+        alert('删除请求失败');
+        return;
+      }
+    }
 
     if (plot.layer) {
       this.layerManager.layerGroups.working.removeLayer(plot.layer);
@@ -1240,11 +1327,14 @@ class TerrainEditor {
     }
     
     let combinedFeature = null;
+    const cells = [];
     
     this.paintedGrids.forEach(key => {
       const parts = key.split(',');
       const latIndex = parseInt(parts[0]);
       const lngIndex = parseInt(parts[1]);
+      
+      cells.push({ x: lngIndex, y: latIndex });
       
       const bounds = this.getGridBounds(latIndex, lngIndex);
       const sLat = bounds[0][0], wLng = bounds[0][1];
@@ -1272,6 +1362,7 @@ class TerrainEditor {
       const properties = this.getCurrentPlotPropertiesFromForm();
 
       let mergedFeature = combinedFeature;
+      let mergedGridData = { grid_size: 10, cells: cells };
       const toMerge = [];
       this.userPlots.forEach(plot => {
         if (!this.canAutoMergePlot(plot, properties)) return;
@@ -1288,6 +1379,16 @@ class TerrainEditor {
       toMerge.forEach(plot => {
         try {
           mergedFeature = turf.union(mergedFeature, plot.geojson);
+          // 合并网格数据
+          if (plot.gridData && plot.gridData.cells) {
+            mergedGridData.cells = [...mergedGridData.cells, ...plot.gridData.cells];
+            // 去重
+            const seen = new Set();
+            mergedGridData.cells = mergedGridData.cells.filter(c => {
+              const k = `${c.x},${c.y}`;
+              return seen.has(k) ? false : seen.add(k);
+            });
+          }
         } catch (_) {}
         this._removePlotInternal(plot.id);
       });
@@ -1295,7 +1396,7 @@ class TerrainEditor {
       const areaHa = turf.area(mergedFeature) / 10000;
       properties.areaHa = Number(areaHa.toFixed(2));
 
-      const plot = this.createPlotFromGeoJSON(mergedFeature, properties);
+      const plot = this.createPlotFromGeoJSON(mergedFeature, properties, mergedGridData);
       this.userPlots.push(plot);
       this.activePlotId = plot.id;
 
@@ -1315,7 +1416,9 @@ class TerrainEditor {
       currentBasemap: this.currentBasemap,
       plots: this.userPlots.map(plot => ({
         id: plot.id,
+        db_id: plot.db_id,
         geojson: plot.geojson,
+        gridData: plot.gridData,
         properties: plot.properties,
         visible: plot.visible !== false,
         locked: !!plot.locked
@@ -1356,7 +1459,9 @@ class TerrainEditor {
       }
       this.userPlots.push({
         id: p.id,
+        db_id: p.db_id,
         geojson: p.geojson,
+        gridData: p.gridData,
         properties: p.properties,
         visible: p.visible,
         locked: p.locked,
@@ -1382,9 +1487,220 @@ class TerrainEditor {
     this.restoreHistorySnapshot(this.historyIndex);
   }
 
-  save() {
-    this.exportGeoJSON();
+  // 保存地块数据到后端
+  async save() {
+    if (!this.userPlots.length) {
+      alert('没有需要保存的地块');
+      return;
+    }
+
+    const errors = [];
+    let savedCount = 0;
+
+    for (const plot of this.userPlots) {
+      if (!plot.geojson) continue;
+
+      // 提取当前属性
+      const properties = plot.properties || this.getCurrentPlotPropertiesFromForm();
+      
+      // 计算中心点 (使用 Turf)
+      let center_lng = 0, center_lat = 0;
+      try {
+        if (typeof turf !== 'undefined' && plot.geojson.geometry) {
+          const center = turf.center(plot.geojson);
+          center_lng = center.geometry.coordinates[0];
+          center_lat = center.geometry.coordinates[1];
+        }
+      } catch (e) {
+        console.error('计算中心点失败', e);
+      }
+
+      // 构建请求负载
+      let landType = properties.type || 'farmland';
+      // 兼容处理：前端 plural 映射到后端 singular
+      if (landType === 'buildings') landType = 'building';
+      if (landType === 'roads') landType = 'road';
+
+      const payload = {
+        map_id: this.mapId || 1,
+        name: properties.name || '未命名地块',
+        land_type: landType,
+        risk_level: properties.riskLevel || 'low',
+        area: properties.areaHa || 0,
+        description: properties.description || '',
+        center_lng: center_lng,
+        center_lat: center_lat,
+        geom_json: plot.geojson,
+        grid_json: plot.gridData || { grid_size: 10, cells: [] },
+        style_json: {
+          fill_color: this.getPlotColor(properties.type),
+          stroke_color: this.colorScheme.selected,
+          layer_name: properties.name,
+          visible: plot.visible !== false,
+          locked: !!plot.locked
+        },
+        meta_json: {
+          source: 'manual_draw',
+          editor_mode: 'pixel_brush',
+          sub_type: properties.subType || '',
+          remark: properties.remark || ''
+        }
+      };
+
+      try {
+        let url = '/terrain/api/plots/create/';
+        if (plot.db_id) {
+          url = `/terrain/api/plots/${plot.db_id}/update/`;
+        }
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': this.getCookie('csrftoken')
+          },
+          body: JSON.stringify(payload)
+        });
+
+        // 稳健解析 JSON
+        const text = await response.text();
+        let result;
+        try {
+          result = JSON.parse(text);
+        } catch (e) {
+          console.error('解析响应失败:', text);
+          throw new Error(`服务器返回了非 JSON 内容 (状态码: ${response.status})。请检查网络面板查看具体报错。`);
+        }
+
+        if (result.code === 0) {
+          plot.db_id = result.data.id; // 回填 ID
+          savedCount++;
+          // 标记地块数据已变动，通知列表页刷新
+          localStorage.setItem('terrain_plot_changed', '1');
+        } else {
+          const errorMsg = result.msg || result.message || result.detail || JSON.stringify(result) || '未知错误';
+          errors.push(`地块[${payload.name}]保存失败: ${errorMsg}`);
+        }
+      } catch (e) {
+        console.error(`保存地块 ${plot.id} 失败:`, e);
+        errors.push(`地块[${payload.name}]保存异常: ${e.message}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      alert('保存完成，但部分地块失败:\n' + errors.join('\n'));
+    } else {
+      alert(`成功保存 ${savedCount} 个地块！`);
+    }
+    
+    this.updateSelectedPlotsList();
   }
+
+  // 加载地块列表并回显
+  async loadPlots() {
+    try {
+      const response = await fetch(`/terrain/api/plots/list/?map_id=${this.mapId || 1}`);
+      const result = await response.json();
+      
+      if (result.code === 0 && result.data) {
+        // 清理当前工作图层和列表
+        this.userPlots.forEach(p => {
+          if (p.layer) this.layerManager.layerGroups.working.removeLayer(p.layer);
+        });
+        this.userPlots = [];
+
+        // 逐个渲染
+        result.data.forEach(plotData => {
+          this.renderPlotFromData(plotData);
+        });
+        
+        this.updateSelectedPlotsList();
+        console.log(`成功加载并渲染 ${result.data.length} 个地块`);
+
+        // 检查 URL 是否有 ID 需要选中
+        const urlParams = new URLSearchParams(window.location.search);
+        const dbId = urlParams.get('id');
+        if (dbId) {
+          const plot = this.userPlots.find(p => p.db_id == dbId);
+          if (plot) {
+            this.selectPlot(plot.id);
+            if (plot.layer) {
+              const bounds = plot.layer.getBounds();
+              if (bounds.isValid()) this.map.fitBounds(bounds);
+            }
+          }
+        }
+      } else {
+        console.warn('加载地块列表失败:', result.msg);
+      }
+    } catch (e) {
+      console.error('加载地块请求异常:', e);
+    }
+  }
+
+  // 从数据库数据渲染地块到地图
+  renderPlotFromData(data) {
+    const properties = {
+      name: data.name,
+      type: data.land_type,
+      riskLevel: data.risk_level,
+      description: data.description,
+      areaHa: data.area,
+      subType: data.meta_json?.sub_type || '',
+      remark: data.meta_json?.remark || ''
+    };
+
+    const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    
+    // 创建 Leaflet 图层
+    const layer = L.geoJSON(data.geom_json, {
+      style: this.getPlotStyle(properties.type, false),
+      interactive: !(data.style_json?.locked),
+      renderer: this.canvasRenderer
+    });
+
+    const plot = {
+      id: id,
+      db_id: data.id,
+      geojson: data.geom_json,
+      gridData: data.grid_json,
+      properties: properties,
+      visible: data.style_json?.visible !== false,
+      locked: !!data.style_json?.locked,
+      layer: layer
+    };
+
+    // 添加到地图和管理器
+    if (plot.visible) {
+      this.layerManager.layerGroups.working.addLayer(layer);
+    }
+
+    this.userPlots.push(plot);
+    
+    // 为每个内部图层绑定点击事件以支持再次选择
+    layer.eachLayer(l => {
+      l.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        this.selectPlot(plot.id);
+      });
+    });
+  }
+
+  // 获取 CSRF Token
+  getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+   }
 
   exportGeoJSON() {
     const features = this.userPlots.map((plot) => ({
@@ -1464,7 +1780,7 @@ class TerrainEditor {
     return true;
   }
 
-  createPlotFromGeoJSON(geojson, properties) {
+  createPlotFromGeoJSON(geojson, properties, gridData = null) {
     const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const layer = L.geoJSON(geojson, {
       style: this.getPlotStyle(properties.type, true),
@@ -1476,6 +1792,7 @@ class TerrainEditor {
     return {
       id,
       geojson,
+      gridData: gridData || { grid_size: 10, cells: [] },
       properties,
       visible: true,
       locked: false,
@@ -1999,16 +2316,26 @@ class TerrainEditor {
   
   // 切换底图
   switchBasemap(basemap) {
-    if (basemap === this.currentBasemap) return;
+    if (basemap === this.currentBasemap && this.activeBaseLayer) return;
     
-    // 移除当前底图
-    if (this.baseLayers[this.currentBasemap]) {
-      this.map.removeLayer(this.baseLayers[this.currentBasemap]);
+    // 移除当前底图实例
+    if (this.activeBaseLayer) {
+      this.map.removeLayer(this.activeBaseLayer);
+    } else {
+      // 兜底：如果 activeBaseLayer 为空，尝试移除所有可能的底图
+      // 这在初次初始化时很有用，因为 initMap 已经添加了一个卫星底图实例
+      this.map.eachLayer(layer => {
+        if (layer instanceof L.TileLayer && !layer.options.opacity) { // 简单判断是否为底图
+           this.map.removeLayer(layer);
+        }
+      });
     }
     
-    // 添加新底图
-    if (this.baseLayers[basemap]) {
-      this.baseLayers[basemap].addTo(this.map);
+    // 获取新底图实例
+    const newLayer = this.baseLayers[basemap];
+    if (newLayer) {
+      newLayer.addTo(this.map);
+      this.activeBaseLayer = newLayer;
       this.currentBasemap = basemap;
       
       // 更新按钮显示名称

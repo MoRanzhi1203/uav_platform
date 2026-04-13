@@ -211,7 +211,7 @@ class ForestMap {
   
   // 重置视图
   resetView() {
-    this.map.setView([29.55, 106.6], 12);
+    this.map.setView([30.05, 107.60], 7);
   }
   
   // 全屏切换

@@ -25,6 +25,30 @@ function initEditor() {
   if (brushBtn) {
     selectTool('brush', brushBtn);
   }
+
+  // 加载已有地块
+  if (terrainEditor) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const plotId = urlParams.get('id');
+    
+    terrainEditor.loadPlots().then(() => {
+      // 如果 URL 中有 id，则在加载完成后自动选中该地块
+      if (plotId) {
+        // 由于 loadPlots 是异步的，这里需要一点延时或者在 loadPlots 内部处理
+        // 简单起见，我们假设 loadPlots 已经处理了 ID 回显（如果需要的话）
+        // 或者在 terrainEditor 中增加一个 selectPlotByDbId 的方法
+        const plot = terrainEditor.userPlots.find(p => p.db_id == plotId);
+        if (plot) {
+          terrainEditor.selectPlot(plot.id);
+          // 居中显示
+          if (plot.layer && plot.layer.getBounds) {
+            terrainEditor.map.fitBounds(plot.layer.getBounds());
+          }
+        }
+      }
+    });
+  }
+
   // 画笔大小下拉菜单
   document.querySelectorAll('[data-brush-size]').forEach(item => {
     item.addEventListener('click', function(e) {

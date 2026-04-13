@@ -3,15 +3,10 @@ class TerrainEditor {
   constructor(mapId) {
     // 初始化地图
     this.map = window.initMap(mapId, {
-      center: [29.5630, 106.5516],
-      zoom: 12,
-      minZoom: 9,
+      center: [30.05, 107.60],
+      zoom: 7,
+      minZoom: 5,
       maxZoom: 18, // 限制最大缩放级别，避免瓦片丢失
-      maxBounds: [
-        [28.16, 105.11], // 重庆西南角
-        [32.20, 110.19]  // 重庆东北角
-      ],
-      maxBoundsViscosity: 1.0
     });
     this.layerManager = new window.LayerManager(this.map);
     
