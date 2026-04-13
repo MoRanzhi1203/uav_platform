@@ -2,11 +2,18 @@
 class TerrainEditor {
   constructor(mapId) {
     // 初始化地图
-    this.map = window.initMap(mapId);
+    this.map = window.initMap(mapId, {
+      center: [29.5630, 106.5516],
+      zoom: 12,
+      minZoom: 9,
+      maxZoom: 18, // 限制最大缩放级别，避免瓦片丢失
+      maxBounds: [
+        [28.16, 105.11], // 重庆西南角
+        [32.20, 110.19]  // 重庆东北角
+      ],
+      maxBoundsViscosity: 1.0
+    });
     this.layerManager = new window.LayerManager(this.map);
-    
-    // 智能选区
-    this.smartSelection = new window.SmartSelection(this.map);
     
     // 底图管理
     this.currentBasemap = 'grayscale';
@@ -17,48 +24,77 @@ class TerrainEditor {
     this.contourLayer = null;
     
     // 状态管理
-    this.currentTool = 'select';
+    this.currentTool = 'brush';
+    this.eraserMode = 'block'; // 'block' 或 'brush'
     this.selectedFeatures = [];
+    this.userPlots = [];
+    this.activePlotId = null;
     this.history = [];
     this.historyIndex = -1;
     
+    // 网格配置 (10m x 10m)
+    this.gridLatStep = 0.0000898;
+    this.gridLngStep = 0.0001037;
+    
+    // 中尺度网格步长 (1000m)
+    this.gridLatStep1km = 0.00898;
+    this.gridLngStep1km = 0.01037;
+
+    this.brushSize = 1;
+    
+    // 渲染器
+    this.canvasRenderer = L.canvas({ padding: 0.5 });
+    
     // 图层管理
     this.layers = {
-      base: {
-        terrain: null,
-        risk: null,
-        noFly: null
-      },
-      business: {
-        forest: null,
-        farm: null
-      },
-      working: {
-        selected: null,
-        editing: null
-      }
+      base: {},
+      working: {},
+      temp: {}
+    };
+    
+    // 颜色方案配置
+    this.colorScheme = {
+      forest: '#2ecc71',      // 林区 - 绿色
+      farmland: '#f39c12',    // 农田 - 橙色
+      buildings: '#7f8c8d',   // 建筑 - 深灰色
+      water: '#3498db',       // 水域 - 蓝色
+      roads: '#95a5a6',       // 道路 - 灰色
+      mixed: '#9b59b6',       // 混合 - 紫色
+      selected: '#0d6efd',    // 选中 - 蓝色
+      editing: '#ffc107',     // 编辑中 - 黄色
+      highlight: '#198754'    // 高亮 - 绿色
     };
     
     // 样式
     this.styles = {
       selected: {
-        color: '#0d6efd',
+        color: this.colorScheme.selected,
         weight: 3,
-        fillColor: '#0d6efd',
+        fillColor: this.colorScheme.selected,
         fillOpacity: 0.2
       },
       editing: {
-        color: '#ffc107',
+        color: this.colorScheme.editing,
         weight: 2,
-        fillColor: '#ffc107',
+        fillColor: this.colorScheme.editing,
         fillOpacity: 0.1
       },
       highlight: {
-        color: '#198754',
+        color: this.colorScheme.highlight,
         weight: 4,
-        fillColor: '#198754',
+        fillColor: this.colorScheme.highlight,
         fillOpacity: 0.3
       }
+    };
+
+    this._handlers = {
+      brushStart: this.startBrush.bind(this),
+      brushMove: this.handleBrush.bind(this),
+      brushEnd: this.endBrush.bind(this),
+      eraserStart: this.startEraserBrush.bind(this),
+      eraserMove: this.handleEraserBrush.bind(this),
+      eraserEnd: this.endEraserBrush.bind(this),
+      eraserClick: this.handleEraserClick.bind(this)
     };
     
     // 初始化
@@ -68,37 +104,179 @@ class TerrainEditor {
   // 初始化
   init() {
     this.addLayerGroups();
+    this.initReferenceGrid();
     this.bindEvents();
-    this.initDrawControls();
-    this.initDataManager();
+    this.captureHistorySnapshot();
+  }
+  
+  // 初始化参考网格 (10m, 1km)
+  initReferenceGrid() {
+    this.refGridLayer10m = L.layerGroup();
+    this.refGridLayer1km = L.layerGroup();
+    this.adminBoundaryLayer = L.layerGroup();
+    
+    // 监听缩放和移动事件来重绘网格
+    const redrawGrids = () => {
+      if (this.map.hasLayer(this.refGridLayer10m)) this.drawReferenceGrid10m();
+      if (this.map.hasLayer(this.refGridLayer1km)) this.drawReferenceGrid1km();
+    };
+
+    this.map.on('moveend', redrawGrids);
+    this.map.on('zoomend', redrawGrids);
+    
+    // 初始化行政区划边界层 (独立于参考网格管理)
+    this.adminBoundaryLayer = L.layerGroup();
+    this.loadAdminBoundaries();
+  }
+  
+  // 加载行政区划边界 (调用 shp 文件)
+  async loadAdminBoundaries() {
+    try {
+      // 指向 static 下的 shp 文件目录 (shpjs 支持直接读取同名 shp/dbf 等)
+      const shpUrl = '/static/shp/chongqing-260411-free.shp/gis_osm_adminareas_a_free_1';
+      
+      // 使用 shpjs 的通用方法加载并转换 GeoJSON
+      // 注意：此方法会尝试 fetch .shp, .dbf 等后缀文件
+      const geojson = await shp(shpUrl);
+      
+      if (geojson) {
+        L.geoJSON(geojson, {
+          style: {
+            color: '#34495e', // 深灰色边框
+            weight: 1.5,
+            opacity: 0.8,
+            fillOpacity: 0,
+            dashArray: '2, 4',
+            interactive: false
+          }
+        }).addTo(this.adminBoundaryLayer);
+        console.log('行政区划边界加载成功');
+      }
+    } catch (error) {
+      console.warn('行政区划边界加载失败，请检查 static/shp 路径或 shpjs 库是否引入:', error);
+    }
+  }
+
+  // 切换行政区划边界
+  toggleAdminBoundaries(visible) {
+    if (visible) {
+      this.adminBoundaryLayer.addTo(this.map);
+    } else {
+      this.map.removeLayer(this.adminBoundaryLayer);
+    }
+  }
+
+  // 切换参考网格
+  toggleReferenceGrid(type, visible) {
+    let layer;
+    let redrawFn;
+    
+    switch(type) {
+      case '10m': layer = this.refGridLayer10m; redrawFn = this.drawReferenceGrid10m; break;
+      case '1km': layer = this.refGridLayer1km; redrawFn = this.drawReferenceGrid1km; break;
+    }
+
+    if (visible) {
+      layer.addTo(this.map);
+      redrawFn.call(this);
+    } else {
+      this.map.removeLayer(layer);
+      layer.clearLayers();
+    }
+  }
+
+  // 绘制 10m x 10m 参考网格
+  drawReferenceGrid10m() {
+    this.refGridLayer10m.clearLayers();
+    if (this.map.getZoom() < 17) return;
+    
+    this._drawGridGeneric(this.refGridLayer10m, this.gridLatStep, this.gridLngStep, {
+      color: '#aaaaaa', weight: 0.5, opacity: 0.4
+    });
+  }
+
+  // 绘制 1km x 1km 参考网格
+  drawReferenceGrid1km() {
+    this.refGridLayer1km.clearLayers();
+    if (this.map.getZoom() < 11) return;
+
+    this._drawGridGeneric(this.refGridLayer1km, this.gridLatStep1km, this.gridLngStep1km, {
+      color: '#aaaaaa', weight: 0.6, opacity: 0.25, dashArray: '5, 10'
+    });
+  }
+
+  // 通用网格绘制逻辑
+  _drawGridGeneric(layerGroup, latStep, lngStep, style) {
+    const bounds = this.map.getBounds();
+    const north = bounds.getNorth();
+    const south = bounds.getSouth();
+    const east = bounds.getEast();
+    const west = bounds.getWest();
+    
+    const startLat = Math.floor(south / latStep) * latStep;
+    const endLat = Math.ceil(north / latStep) * latStep;
+    const startLng = Math.floor(west / lngStep) * lngStep;
+    const endLng = Math.ceil(east / lngStep) * lngStep;
+    
+    const gridStyle = { ...style, interactive: false };
+    
+    let count = 0;
+    const maxLines = 300;
+
+    for (let lat = startLat; lat <= endLat && count < maxLines; lat += latStep) {
+      L.polyline([[lat, startLng], [lat, endLng]], gridStyle).addTo(layerGroup);
+      count++;
+    }
+    
+    count = 0;
+    for (let lng = startLng; lng <= endLng && count < maxLines; lng += lngStep) {
+      L.polyline([[startLat, lng], [endLat, lng]], gridStyle).addTo(layerGroup);
+      count++;
+    }
+  }
+
+  // 切换历史地块提示
+  toggleHistoryHints(visible) {
+    if (visible) {
+      if (!this.layers.base.historyHints) {
+        this.layers.base.historyHints = L.layerGroup();
+        // 此处留空，待接入后端真实历史数据接口
+      }
+      this.layers.base.historyHints.addTo(this.map);
+    } else {
+      if (this.layers.base.historyHints) {
+        this.map.removeLayer(this.layers.base.historyHints);
+      }
+    }
+  }
+
+  // 调整地图视野到所有 GeoJSON 图层
+  fitMapToGeoJSONLayers() {
+    console.log('=== 调整地图视野到 GeoJSON 图层 ===');
+    
+    // 设置默认中心为重庆的大致位置
+    this.map.setView([29.5630, 106.5516], 10);
+  }
+  
+  // 显示要素信息
+  showFeatureInfo(feature) {
+    console.log('要素信息:', feature.properties);
+    // 这里可以实现显示要素属性的逻辑
+    // 例如更新右侧属性面板
   }
   
   // 添加图层组
   addLayerGroups() {
     this.layerManager.addLayerGroup('base');
-    this.layerManager.addLayerGroup('business');
     this.layerManager.addLayerGroup('working');
   }
   
   // 绑定事件
   bindEvents() {
-    // 地图点击事件
-    this.map.on('click', (e) => {
-      this.handleMapClick(e);
-    });
-    
     // 鼠标移动事件
     this.map.on('mousemove', (e) => {
       this.updateCursorPosition(e.latlng);
     });
-    
-    // 等高线叠加开关事件
-    const contourCheckbox = document.getElementById('contourOverlay');
-    if (contourCheckbox) {
-      contourCheckbox.addEventListener('change', (e) => {
-        this.toggleContourOverlay(e.target.checked);
-      });
-    }
   }
   
   // 初始化绘制控件
@@ -181,6 +359,28 @@ class TerrainEditor {
   smartSelect(latlng) {
     console.log('=== 智能选区开始 ===');
     console.log('点击坐标:', latlng);
+    
+    // 1. 首先检查 GeoJSON 业务图层
+    const geoJSONFeature = this.findFeatureInGeoJSONLayers(latlng);
+    if (geoJSONFeature) {
+      console.log('=== 命中 GeoJSON 业务图层 ===');
+      console.log('地块类型:', geoJSONFeature.layerName);
+      
+      // 创建多边形
+      const polygon = L.polygon(geoJSONFeature.coordinates, this.styles.selected);
+      polygon.layerName = geoJSONFeature.layerName;
+      polygon.properties = geoJSONFeature.properties;
+      
+      // 添加到工作图层和选区
+      this.addToWorkingLayer(polygon);
+      this.selectedFeatures.push(polygon);
+      
+      this.updateSelectedArea();
+      this.updateSelectedPlotsList();
+      return;
+    }
+    
+    // 2. 然后检查模拟数据中的业务边界
     console.log('当前业务图层数量:', this.smartSelection.businessBoundaries.length);
     console.log('当前地形图层数量:', this.smartSelection.terrainFeatures.length);
     
@@ -198,14 +398,11 @@ class TerrainEditor {
       // 创建多边形
       const polygon = L.polygon(feature.coordinates, this.styles.selected);
       
-      console.log('=== 写入 selectedFeatures ===');
-      console.log('写入前长度:', this.selectedFeatures.length);
+      // 添加到工作图层和选区
       this.addToWorkingLayer(polygon);
       this.selectedFeatures.push(polygon);
-      console.log('写入后长度:', this.selectedFeatures.length);
       
       this.updateSelectedArea();
-      console.log('=== 更新已选地块列表 ===');
       this.updateSelectedPlotsList();
     } else {
       console.log('=== 未命中任何地块 ===');
@@ -214,85 +411,208 @@ class TerrainEditor {
     }
   }
   
+  // 在 GeoJSON 图层中查找特征
+  findFeatureInGeoJSONLayers(latlng) {
+    console.log('=== 在 GeoJSON 图层中查找特征 ===');
+    
+    // 遍历所有业务图层
+    for (const layerName in this.layers.business) {
+      const layer = this.layers.business[layerName];
+      if (layer) {
+        console.log(`检查图层: ${layerName}`);
+        
+        // 检查图层中的每个特征
+        let foundFeature = null;
+        layer.eachLayer((featureLayer) => {
+          if (featureLayer.contains && featureLayer.contains(latlng)) {
+            console.log(`在 ${layerName} 图层中找到特征`);
+            foundFeature = {
+              layerName: layerName,
+              coordinates: featureLayer.getLatLngs()[0].map(latlng => [latlng.lat, latlng.lng]),
+              properties: featureLayer.feature ? featureLayer.feature.properties : {}
+            };
+          }
+        });
+        
+        if (foundFeature) {
+          return foundFeature;
+        }
+      }
+    }
+    
+    return null;
+  }
+  
   // 更新已选地块列表
   updateSelectedPlotsList() {
     const selectedAreasContainer = document.getElementById('selectedAreas');
+    if (!selectedAreasContainer) return;
     selectedAreasContainer.innerHTML = '';
     
-    this.selectedFeatures.forEach((feature, index) => {
+    this.userPlots.forEach((plot, index) => {
       const item = document.createElement('div');
       item.className = 'layer-item';
-      if (index === 0) {
+      if (plot.id === this.activePlotId) {
         item.classList.add('active');
       }
       
-      const name = feature.name || `地块 ${index + 1}`;
+      const name = plot.properties?.name || `地块 ${index + 1}`;
+      const isLocked = !!plot.locked;
+      const isVisible = plot.visible !== false;
       item.innerHTML = `
-        <span>${name}</span>
-        <button class="btn btn-sm btn-danger ml-auto" data-index="${index}">
-          <i class="bi bi-x"></i>
-        </button>
+        <input type="checkbox" class="layer-checkbox" ${isVisible ? 'checked' : ''}>
+        <span class="layer-color" style="background-color: ${this.getPlotColor(plot.properties?.type)}; width: 12px; height: 12px; display: inline-block; margin: 0 8px; border-radius: 2px;"></span>
+        <span style="flex: 1;">${name}</span>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+          <i class="bi ${isLocked ? 'bi-lock' : 'bi-unlock'} layer-lock" style="cursor: pointer; font-size: 12px; ${isLocked ? 'color: #dc3545;' : ''}"></i>
+          <i class="bi bi-chevron-up layer-up" style="cursor: pointer; font-size: 12px;"></i>
+          <i class="bi bi-chevron-down layer-down" style="cursor: pointer; font-size: 12px;"></i>
+          <i class="bi bi-trash layer-delete" style="cursor: pointer; font-size: 12px; color: #dc3545;"></i>
+        </div>
       `;
       
-      // 绑定点击事件
-      item.addEventListener('click', () => {
-        this.selectPlot(index);
-      });
-      
-      // 绑定删除事件
-      const deleteBtn = item.querySelector('.btn-danger');
-      deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.removePlot(index);
-      });
+      item.addEventListener('click', () => this.selectPlot(plot.id));
+
+      const checkbox = item.querySelector('.layer-checkbox');
+      if (checkbox) {
+        checkbox.addEventListener('click', (e) => e.stopPropagation());
+        checkbox.addEventListener('change', () => this.togglePlotVisibility(plot.id, checkbox.checked));
+      }
+
+      const lockIcon = item.querySelector('.layer-lock');
+      if (lockIcon) {
+        lockIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.togglePlotLock(plot.id);
+        });
+      }
+
+      const upIcon = item.querySelector('.layer-up');
+      if (upIcon) {
+        upIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.movePlot(plot.id, -1);
+        });
+      }
+
+      const downIcon = item.querySelector('.layer-down');
+      if (downIcon) {
+        downIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.movePlot(plot.id, +1);
+        });
+      }
+
+      const deleteIcon = item.querySelector('.layer-delete');
+      if (deleteIcon) {
+        deleteIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.removePlot(plot.id);
+        });
+      }
       
       selectedAreasContainer.appendChild(item);
     });
   }
   
   // 选择地块
-  selectPlot(index) {
+  selectPlot(plotId) {
+    this.activePlotId = plotId;
+
+    const plot = this.userPlots.find(p => p.id === plotId);
+    if (!plot) return;
+
+    this.userPlots.forEach(p => {
+      if (p.layer && p.layer.setStyle) {
+        p.layer.setStyle(this.getPlotStyle(p.properties?.type, false));
+      }
+    });
+    if (plot.layer && plot.layer.setStyle) {
+      plot.layer.setStyle(this.getPlotStyle(plot.properties?.type, true));
+      if (plot.layer.bringToFront) plot.layer.bringToFront();
+      if (plot.layer.eachLayer) {
+        plot.layer.eachLayer(l => l.bringToFront && l.bringToFront());
+      }
+    }
+
     // 移除所有项的激活状态
     document.querySelectorAll('#selectedAreas .layer-item').forEach(item => {
       item.classList.remove('active');
     });
     
     // 激活当前项
-    document.querySelectorAll('#selectedAreas .layer-item')[index].classList.add('active');
+    const idx = this.userPlots.findIndex(p => p.id === plotId);
+    if (idx >= 0) {
+      const item = document.querySelectorAll('#selectedAreas .layer-item')[idx];
+      if (item) item.classList.add('active');
+    }
     
     // 更新右侧属性面板
-    this.updateAttributePanel(this.selectedFeatures[index]);
+    this.updateAttributePanel(plot);
   }
   
   // 移除地块
-  removePlot(index) {
-    // 从地图中移除
-    const feature = this.selectedFeatures[index];
-    if (feature && feature.remove) {
-      feature.remove();
+  removePlot(plotId) {
+    const plot = this.userPlots.find(p => p.id === plotId);
+    if (!plot) return;
+
+    if (plot.layer) {
+      this.layerManager.layerGroups.working.removeLayer(plot.layer);
     }
-    
-    // 从选中列表中移除
-    this.selectedFeatures.splice(index, 1);
-    
-    // 更新界面
+
+    this.userPlots = this.userPlots.filter(p => p.id !== plotId);
+    if (this.activePlotId === plotId) {
+      this.activePlotId = this.userPlots.length ? this.userPlots[0].id : null;
+    }
+
+    this.captureHistorySnapshot();
     this.updateSelectedArea();
     this.updateSelectedPlotsList();
   }
   
   // 更新属性面板
-  updateAttributePanel(feature) {
-    if (!feature) return;
-    
-    // 更新面积
-    const area = this.calculateArea(feature.getLatLngs()[0].map(latlng => [latlng.lat, latlng.lng]));
-    document.getElementById('plotArea').value = area;
-    
-    // 更新地理信息
-    const bounds = feature.getBounds();
-    const center = bounds.getCenter();
-    document.getElementById('centerPoint').textContent = `${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}`;
-    document.getElementById('boundaryCount').textContent = feature.getLatLngs()[0].length;
+  updateAttributePanel(plot) {
+    if (!plot) return;
+
+    // 基本属性同步到表单
+    const nameInput = document.getElementById('plotName');
+    if (nameInput) nameInput.value = plot.properties?.name || '';
+
+    const typeSelect = document.getElementById('plotType');
+    if (typeSelect) {
+      typeSelect.value = plot.properties?.type || 'farmland';
+      // 触发 change 事件以更新子类型显示
+      typeSelect.dispatchEvent(new Event('change'));
+    }
+
+    const subTypeSelect = document.getElementById('plotSubType');
+    if (subTypeSelect) subTypeSelect.value = plot.properties?.subType || '';
+
+    const remarkInput = document.getElementById('plotRemark');
+    if (remarkInput) remarkInput.value = plot.properties?.remark || '';
+
+    const riskSelect = document.getElementById('riskLevel');
+    if (riskSelect) riskSelect.value = plot.properties?.riskLevel || 'low';
+
+    const descText = document.getElementById('description');
+    if (descText) descText.value = plot.properties?.description || '';
+
+    const plotAreaInput = document.getElementById('plotArea');
+    if (plotAreaInput) plotAreaInput.value = Number(plot.properties?.areaHa || 0).toFixed(2);
+
+    const centerPointEl = document.getElementById('centerPoint');
+    const boundaryCountEl = document.getElementById('boundaryCount');
+
+    if (plot.layer && plot.layer.getBounds) {
+      const bounds = plot.layer.getBounds();
+      const center = bounds.getCenter();
+      if (centerPointEl) centerPointEl.textContent = `${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}`;
+    }
+
+    if (boundaryCountEl) {
+      const rings = this.getLatLngRingsFromLayer(plot.layer);
+      boundaryCountEl.textContent = rings.length ? (rings[0].length || '-') : '-';
+    }
   }
   
   // 多选工具
@@ -349,97 +669,826 @@ class TerrainEditor {
     this.updateSelectedPlotsList();
   }
   
-  // 顶点编辑工具
-  enableVertexEdit() {
-    // 启用顶点编辑模式
-    this.currentTool = 'vertex-edit';
-    this.updateEditMode('顶点编辑');
-    
-    if (this.selectedFeatures.length > 0) {
-      if (!this.boundaryEditor) {
-        this.boundaryEditor = new window.BoundaryEditor(this.map);
-      }
-      this.boundaryEditor.startEditing(this.selectedFeatures[0]);
+  // 拆分工具
+  splitFeature() {
+    if (this.selectedFeatures.length !== 1) {
+      alert('请选择一个地块进行拆分');
+      return;
     }
-  }
-  
-  // 边编辑工具
-  enableEdgeEdit() {
-    // 启用边编辑模式
-    this.currentTool = 'edge-edit';
-    this.updateEditMode('边编辑');
     
-    if (this.selectedFeatures.length > 0) {
-      if (!this.boundaryEditor) {
-        this.boundaryEditor = new window.BoundaryEditor(this.map);
-      }
-      this.boundaryEditor.startEditing(this.selectedFeatures[0]);
+    const feature = this.selectedFeatures[0];
+    const latLngs = feature.getLatLngs()[0];
+    
+    if (latLngs.length < 4) {
+      alert('地块顶点数量不足，无法拆分');
+      return;
     }
+    
+    // 简单拆分：从中心点分成两部分
+    const center = feature.getBounds().getCenter();
+    const splitPoint = latLngs[Math.floor(latLngs.length / 2)];
+    
+    // 创建两个新多边形
+    const part1 = latLngs.slice(0, Math.floor(latLngs.length / 2)).concat([center, latLngs[0]]);
+    const part2 = latLngs.slice(Math.floor(latLngs.length / 2)).concat([center, latLngs[Math.floor(latLngs.length / 2)]]);
+    
+    const polygon1 = L.polygon(part1, this.styles.selected);
+    const polygon2 = L.polygon(part2, this.styles.selected);
+    
+    // 清除原有选区
+    this.clearSelectedFeatures();
+    
+    // 添加新多边形
+    this.addToWorkingLayer(polygon1);
+    this.addToWorkingLayer(polygon2);
+    this.selectedFeatures.push(polygon1, polygon2);
+    this.updateSelectedArea();
+    this.updateSelectedPlotsList();
   }
   
-  // 裁剪工具
-  enableCut() {
-    // 启用裁剪模式
-    this.currentTool = 'cut';
-    this.updateEditMode('裁剪');
+  // 橡皮擦模式设置
+  setEraserMode(mode) {
+    this.eraserMode = mode;
   }
-  
+
+  // 平移地图工具
+  enablePan() {
+    this.clearToolEvents();
+    this.currentTool = 'pan';
+    this.updateEditMode('平移/拖动');
+    
+    // 平移模式下启用地图拖拽
+    this.map.dragging.enable();
+    this.map.scrollWheelZoom.enable();
+    this.map.doubleClickZoom.enable();
+    
+    // 改变鼠标样式
+    this.map.getContainer().style.cursor = 'grab';
+  }
+
   // 橡皮擦工具
   enableEraser() {
-    // 启用橡皮擦模式
+    this.clearToolEvents();
     this.currentTool = 'eraser';
-    this.updateEditMode('橡皮擦');
-  }
-  
-  // 画笔工具
-  enableBrush() {
-    // 启用画笔模式
-    this.currentTool = 'brush';
-    this.updateEditMode('画笔');
-  }
-  
-  // 撤销操作
-  undo() {
-    if (this.historyIndex >= 0) {
-      const action = this.history[this.historyIndex];
-      action.undo();
-      this.historyIndex--;
+    this.updateEditMode(`橡皮擦 (${this.eraserMode === 'block' ? '整块' : '画笔'})`);
+    
+    // 设置鼠标样式
+    this.map.getContainer().style.cursor = 'url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/icons/eraser.svg"), auto';
+    
+    if (this.eraserMode === 'block') {
+      this.map.on('click', this._handlers.eraserClick);
+    } else {
+      // 画笔橡皮擦逻辑
+      this.paintedGrids = new Set();
+      if (this.paintedLayer) this.map.removeLayer(this.paintedLayer);
+      this.paintedLayer = L.layerGroup().addTo(this.map);
+      this.isPainting = false;
+      this.map.dragging.disable();
+      
+      this.map.on('mousedown', this._handlers.eraserStart);
+      this.map.on('mousemove', this._handlers.eraserMove);
+      this.map.on('mouseup', this._handlers.eraserEnd);
+      this.map.on('mouseout', this._handlers.eraserEnd);
     }
   }
   
-  // 重做操作
-  redo() {
-    if (this.historyIndex < this.history.length - 1) {
-      this.historyIndex++;
-      const action = this.history[this.historyIndex];
-      action.redo();
-    }
-  }
-  
-  // 保存操作
-  save() {
-    // 收集所有编辑后的地块数据
-    const features = this.selectedFeatures.map(feature => {
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [feature.getLatLngs()[0].map(latlng => [latlng.lng, latlng.lat])]
-        },
-        properties: {
-          name: document.getElementById('plotName').value,
-          type: document.getElementById('plotType').value,
-          riskLevel: document.getElementById('riskLevel').value,
-          description: document.getElementById('description').value
+  // 整块擦除点击处理
+  handleEraserClick(e) {
+    if (this.currentTool === 'eraser' && this.eraserMode === 'block') {
+      if (typeof turf === 'undefined') return;
+      const point = turf.point([e.latlng.lng, e.latlng.lat]);
+
+      for (let i = this.userPlots.length - 1; i >= 0; i--) {
+        const plot = this.userPlots[i];
+        if (!plot || plot.visible === false) continue;
+        if (plot.locked) continue;
+        if (!plot.geojson) continue;
+
+        try {
+          if (turf.booleanPointInPolygon(point, plot.geojson)) {
+            this.removePlot(plot.id);
+            return;
+          }
+        } catch (_) {
+          continue;
         }
-      };
+      }
+    }
+  }
+
+  // 画笔橡皮擦：开始
+  startEraserBrush(e) {
+    if (this.currentTool === 'eraser' && this.eraserMode === 'brush') {
+      this.isPainting = true;
+      this.paintedGrids.clear();
+      this.paintedLayer.clearLayers();
+      this.paintAtEraser(e.latlng);
+    }
+  }
+
+  // 画笔橡皮擦：移动
+  handleEraserBrush(e) {
+    if (this.currentTool === 'eraser' && this.eraserMode === 'brush') {
+      this.updateBrushPreview(e.latlng);
+      if (this.isPainting) {
+        this.paintAtEraser(e.latlng);
+      }
+    }
+  }
+
+  // 画笔橡皮擦：绘制预览（红色表示擦除）
+  paintAtEraser(latlng) {
+    const grids = this.getGridsForBrush(latlng);
+    const newRectangles = [];
+    const color = '#dc3545'; // 红色表示擦除
+    
+    grids.forEach(g => {
+      const key = `${g.latIndex},${g.lngIndex}`;
+      if (!this.paintedGrids.has(key)) {
+        this.paintedGrids.add(key);
+        const bounds = this.getGridBounds(g.latIndex, g.lngIndex);
+        const rect = L.rectangle(bounds, {
+          color: color,
+          weight: 0,
+          fillColor: color,
+          fillOpacity: 0.6,
+          interactive: false,
+          renderer: this.canvasRenderer
+        });
+        newRectangles.push(rect);
+      }
+    });
+
+    if (newRectangles.length > 0) {
+      newRectangles.forEach(rect => rect.addTo(this.paintedLayer));
+    }
+  }
+
+  // 画笔橡皮擦：结束并执行擦除
+  endEraserBrush(e) {
+    if (this.currentTool === 'eraser' && this.eraserMode === 'brush' && this.isPainting) {
+      this.isPainting = false;
+      if (this.brushPreviewLayer) {
+        this.map.removeLayer(this.brushPreviewLayer);
+        this.brushPreviewLayer = null;
+      }
+      
+      if (this.paintedGrids.size > 0) {
+        this.executeBrushEraser();
+      }
+    }
+  }
+
+  // 执行画笔擦除逻辑
+  executeBrushEraser() {
+    if (typeof turf === 'undefined') return;
+    
+    // 1. 构建擦除区域多边形
+    let eraserPoly = null;
+    this.paintedGrids.forEach(key => {
+      const parts = key.split(',');
+      const latIndex = parseInt(parts[0]);
+      const lngIndex = parseInt(parts[1]);
+      const bounds = this.getGridBounds(latIndex, lngIndex);
+      const sLat = bounds[0][0], wLng = bounds[0][1];
+      const nLat = bounds[1][0], eLng = bounds[1][1];
+      
+      const poly = turf.polygon([[
+        [wLng, sLat], [eLng, sLat], [eLng, nLat], [wLng, nLat], [wLng, sLat]
+      ]]);
+      
+      eraserPoly = eraserPoly ? turf.union(eraserPoly, poly) : poly;
+    });
+
+    if (!eraserPoly) return;
+
+    // 2. 对每个地块执行差异计算
+    let changed = false;
+    this.userPlots.forEach(plot => {
+      if (!plot.visible || plot.locked || !plot.geojson) return;
+
+      try {
+        const diff = turf.difference(plot.geojson, eraserPoly);
+        if (diff) {
+          // 如果还有剩余部分，更新 GeoJSON
+          plot.geojson = diff;
+          // 更新地图图层
+          if (plot.layer) {
+            plot.layer.clearLayers();
+            L.geoJSON(diff, {
+              style: this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId),
+              renderer: this.canvasRenderer
+            }).eachLayer(l => plot.layer.addLayer(l));
+          }
+          changed = true;
+        } else {
+          // 如果完全被擦除，后续可能需要处理删除逻辑
+          // 这里简单做法是保留空地块，或者直接调用 removePlot
+          this.removePlot(plot.id);
+          changed = true;
+        }
+      } catch (err) {
+        console.error('擦除计算失败:', err);
+      }
+    });
+
+    if (changed) {
+      this.captureHistorySnapshot();
+      this.updateSelectedArea();
+    }
+
+    // 清理临时图层
+    if (this.paintedLayer) this.paintedLayer.clearLayers();
+    this.paintedGrids.clear();
+  }
+  
+  // 设置画笔大小
+  setBrushSize(size) {
+    this.brushSize = size;
+  }
+
+  // 像素画笔工具
+  enableBrush() {
+    this.clearToolEvents();
+    this.currentTool = 'brush';
+    this.updateEditMode('像素画笔');
+    
+    // 画笔模式下设置鼠标样式
+    this.map.getContainer().style.cursor = 'crosshair';
+    
+    this.paintedGrids = new Set();
+    if (this.paintedLayer) this.map.removeLayer(this.paintedLayer);
+    this.paintedLayer = L.layerGroup().addTo(this.map);
+    
+    this.isPainting = false;
+    this.brushPreviewLayer = null;
+    this.map.dragging.disable();
+    
+    this.map.on('mousedown', this._handlers.brushStart);
+    this.map.on('mousemove', this._handlers.brushMove);
+    this.map.on('mouseup', this._handlers.brushEnd);
+    this.map.on('mouseout', this._handlers.brushEnd);
+  }
+  
+  // 清除所有工具事件
+  clearToolEvents() {
+    this.map.off('mousedown', this._handlers.brushStart);
+    this.map.off('mousemove', this._handlers.brushMove);
+    this.map.off('mouseup', this._handlers.brushEnd);
+    this.map.off('mouseout', this._handlers.brushEnd);
+    
+    this.map.off('mousedown', this._handlers.eraserStart);
+    this.map.off('mousemove', this._handlers.eraserMove);
+    this.map.off('mouseup', this._handlers.eraserEnd);
+    this.map.off('mouseout', this._handlers.eraserEnd);
+    
+    this.map.off('click', this._handlers.eraserClick);
+    
+    if (this.brushPreviewLayer) {
+      this.map.removeLayer(this.brushPreviewLayer);
+      this.brushPreviewLayer = null;
+    }
+    this.map.dragging.enable();
+  }
+
+  // 开始画笔
+  startBrush(e) {
+    if (this.currentTool === 'brush') {
+      this.isPainting = true;
+      this.paintedGrids.clear(); // 清空上次绘制的集合
+      this.paintedLayer.clearLayers(); // 清空画布上的旧矩形
+      this.paintAt(e.latlng);
+    }
+  }
+  
+  // 处理画笔移动
+  handleBrush(e) {
+    if (this.currentTool === 'brush') {
+      // 画笔预览框
+      this.updateBrushPreview(e.latlng);
+      
+      if (this.isPainting) {
+        this.paintAt(e.latlng);
+      }
+    }
+  }
+  
+  // 预览画笔位置
+  updateBrushPreview(latlng) {
+    if (this.brushPreviewLayer) {
+      this.map.removeLayer(this.brushPreviewLayer);
+    }
+    
+    const grids = this.getGridsForBrush(latlng);
+    const rects = grids.map(g => this.getGridBounds(g.latIndex, g.lngIndex));
+    
+    this.brushPreviewLayer = L.layerGroup(rects.map(b => L.rectangle(b, {
+      color: '#ffc107',
+      weight: 2,
+      fillColor: '#ffc107',
+      fillOpacity: 0.3,
+      interactive: false
+    }))).addTo(this.map);
+  }
+
+  // 更新当前激活地块的属性
+  updateActivePlotProperties(newProps) {
+    if (!this.activePlotId) return;
+    const plot = this.userPlots.find(p => p.id === this.activePlotId);
+    if (plot) {
+      plot.properties = { ...plot.properties, ...newProps };
+      // 如果类型改变，更新样式
+      if (newProps.type && plot.layer) {
+        plot.layer.setStyle(this.getPlotStyle(newProps.type, true));
+      }
+      this.updateSelectedPlotsList();
+    }
+  }
+
+  // 计算刷子覆盖的网格 (支持自定义 N 网格)
+  getGridsForBrush(latlng) {
+    const latIndex = Math.floor(latlng.lat / this.gridLatStep);
+    const lngIndex = Math.floor(latlng.lng / this.gridLngStep);
+    const grids = [];
+    
+    // 如果是 1x1 就是 [0], 如果是 3x3 就是 [-1, 0, 1] 等等
+    const offset = Math.floor(this.brushSize / 2);
+    
+    // 限制最大笔刷大小，防止性能崩溃
+    const safeBrushSize = Math.min(this.brushSize, 50);
+
+    for (let i = 0; i < safeBrushSize; i++) {
+      for (let j = 0; j < safeBrushSize; j++) {
+        const dLat = i - offset;
+        const dLng = j - offset;
+        grids.push({ latIndex: latIndex + dLat, lngIndex: lngIndex + dLng });
+      }
+    }
+    return grids;
+  }
+  
+  // 获取单个网格的边界
+  getGridBounds(latIndex, lngIndex) {
+    const sLat = latIndex * this.gridLatStep;
+    const nLat = (latIndex + 1) * this.gridLatStep;
+    const wLng = lngIndex * this.gridLngStep;
+    const eLng = (lngIndex + 1) * this.gridLngStep;
+    return [[sLat, wLng], [nLat, eLng]];
+  }
+
+  // 绘制网格
+  paintAt(latlng) {
+    const grids = this.getGridsForBrush(latlng);
+    const newRectangles = [];
+    const type = document.getElementById('plotType')?.value || 'farmland';
+    const color = this.getPlotColor(type);
+    
+    grids.forEach(g => {
+      const key = `${g.latIndex},${g.lngIndex}`;
+      if (!this.paintedGrids.has(key)) {
+        this.paintedGrids.add(key);
+        // 性能优化：将渲染器指定为 canvas
+        const bounds = this.getGridBounds(g.latIndex, g.lngIndex);
+        const rect = L.rectangle(bounds, {
+          color: color,
+          weight: 0, // 移除边框，减少渲染负担
+          fillColor: color,
+          fillOpacity: 0.6,
+          interactive: false,
+          renderer: this.canvasRenderer // 使用 canvas 渲染
+        });
+        newRectangles.push(rect);
+      }
+    });
+
+    // 批量添加到图层
+    if (newRectangles.length > 0) {
+      newRectangles.forEach(rect => rect.addTo(this.paintedLayer));
+    }
+  }
+  
+  // 结束画笔
+  endBrush(e) {
+    if (this.currentTool === 'brush' && this.isPainting) {
+      this.isPainting = false;
+      
+      // 清除画笔预览框
+      if (this.brushPreviewLayer) {
+        this.map.removeLayer(this.brushPreviewLayer);
+        this.brushPreviewLayer = null;
+      }
+      
+      if (this.paintedGrids.size > 0) {
+        // 将所有绘制的网格合并为一个多边形
+        this.mergePaintedGrids();
+      }
+    }
+  }
+  
+  // 使用 Turf.js 合并网格并生成多边形
+  mergePaintedGrids() {
+    if (typeof turf === 'undefined') {
+      console.error('Turf.js 未加载，无法合并网格');
+      return;
+    }
+    
+    let combinedFeature = null;
+    
+    this.paintedGrids.forEach(key => {
+      const parts = key.split(',');
+      const latIndex = parseInt(parts[0]);
+      const lngIndex = parseInt(parts[1]);
+      
+      const bounds = this.getGridBounds(latIndex, lngIndex);
+      const sLat = bounds[0][0], wLng = bounds[0][1];
+      const nLat = bounds[1][0], eLng = bounds[1][1];
+      
+      // Turf Polygon 需要坐标为 [lng, lat]
+      const poly = turf.polygon([[
+        [wLng, sLat],
+        [eLng, sLat],
+        [eLng, nLat],
+        [wLng, nLat],
+        [wLng, sLat]
+      ]]);
+      
+      if (!combinedFeature) {
+        combinedFeature = poly;
+      } else {
+        combinedFeature = turf.union(combinedFeature, poly);
+      }
     });
     
-    // 发送数据到服务器
-    console.log('保存地块数据:', features);
+    if (combinedFeature) {
+      if (this.paintedLayer) this.paintedLayer.clearLayers();
+
+      const properties = this.getCurrentPlotPropertiesFromForm();
+
+      let mergedFeature = combinedFeature;
+      const toMerge = [];
+      this.userPlots.forEach(plot => {
+        if (!this.canAutoMergePlot(plot, properties)) return;
+        if (!plot.geojson) return;
+        try {
+          if (turf.booleanIntersects(mergedFeature, plot.geojson)) {
+            toMerge.push(plot);
+          }
+        } catch (_) {
+          return;
+        }
+      });
+
+      toMerge.forEach(plot => {
+        try {
+          mergedFeature = turf.union(mergedFeature, plot.geojson);
+        } catch (_) {}
+        this._removePlotInternal(plot.id);
+      });
+
+      const areaHa = turf.area(mergedFeature) / 10000;
+      properties.areaHa = Number(areaHa.toFixed(2));
+
+      const plot = this.createPlotFromGeoJSON(mergedFeature, properties);
+      this.userPlots.push(plot);
+      this.activePlotId = plot.id;
+
+      this.applyPlotOrder();
+      this.captureHistorySnapshot();
+      this.updateSelectedArea();
+      this.updateSelectedPlotsList();
+      this.selectPlot(plot.id);
+    }
     
-    // 返回成功消息
-    alert('地块保存成功！');
+    this.paintedGrids.clear();
+  }
+  
+  captureHistorySnapshot() {
+    const snapshot = {
+      activePlotId: this.activePlotId,
+      currentBasemap: this.currentBasemap,
+      plots: this.userPlots.map(plot => ({
+        id: plot.id,
+        geojson: plot.geojson,
+        properties: plot.properties,
+        visible: plot.visible !== false,
+        locked: !!plot.locked
+      }))
+    };
+
+    if (this.historyIndex < this.history.length - 1) {
+      this.history.splice(this.historyIndex + 1);
+    }
+
+    this.history.push(snapshot);
+    this.historyIndex = this.history.length - 1;
+  }
+
+  restoreHistorySnapshot(index) {
+    const snapshot = this.history[index];
+    if (!snapshot) return;
+
+    this.activePlotId = snapshot.activePlotId || null;
+
+    if (snapshot.currentBasemap && snapshot.currentBasemap !== this.currentBasemap) {
+      this.switchBasemap(snapshot.currentBasemap);
+    }
+
+    this.userPlots.forEach(p => {
+      if (p.layer) this.layerManager.layerGroups.working.removeLayer(p.layer);
+    });
+    this.userPlots = [];
+
+    snapshot.plots.forEach(p => {
+      const layer = L.geoJSON(p.geojson, {
+        style: this.getPlotStyle(p.properties?.type, p.id === this.activePlotId),
+        interactive: !p.locked,
+        renderer: this.canvasRenderer // 使用 Canvas 渲染以提升性能
+      });
+      if (p.visible) {
+        this.layerManager.layerGroups.working.addLayer(layer);
+      }
+      this.userPlots.push({
+        id: p.id,
+        geojson: p.geojson,
+        properties: p.properties,
+        visible: p.visible,
+        locked: p.locked,
+        layer
+      });
+    });
+
+    this.applyPlotOrder();
+    this.updateSelectedArea();
+    this.updateSelectedPlotsList();
+    if (this.activePlotId) this.selectPlot(this.activePlotId);
+  }
+
+  undo() {
+    if (this.historyIndex <= 0) return;
+    this.historyIndex -= 1;
+    this.restoreHistorySnapshot(this.historyIndex);
+  }
+
+  redo() {
+    if (this.historyIndex >= this.history.length - 1) return;
+    this.historyIndex += 1;
+    this.restoreHistorySnapshot(this.historyIndex);
+  }
+
+  save() {
+    this.exportGeoJSON();
+  }
+
+  exportGeoJSON() {
+    const features = this.userPlots.map((plot) => ({
+      type: 'Feature',
+      geometry: plot.geojson?.geometry,
+      properties: {
+        ...plot.properties,
+        id: plot.id
+      }
+    })).filter(f => !!f.geometry);
+
+    const geojson = {
+      type: 'FeatureCollection',
+      features
+    };
+
+    const geojsonString = JSON.stringify(geojson, null, 2);
+    const blob = new Blob([geojsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `uav_plots_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.geojson`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert('GeoJSON 导出成功（仅包含用户绘制地块）');
+  }
+
+  getPlotColor(type) {
+    if (type && this.colorScheme[type]) return this.colorScheme[type];
+    return this.colorScheme.selected;
+  }
+
+  getPlotStyle(type, isActive) {
+    const fill = this.getPlotColor(type);
+    if (isActive) {
+      return {
+        color: this.colorScheme.selected,
+        weight: 3,
+        fillColor: fill,
+        fillOpacity: 0.45
+      };
+    }
+    return {
+      color: fill,
+      weight: 1,
+      fillColor: fill,
+      fillOpacity: 0.35
+    };
+  }
+
+  getCurrentPlotPropertiesFromForm() {
+    const name = document.getElementById('plotName')?.value || '未命名地块';
+    const type = document.getElementById('plotType')?.value || 'farmland';
+    const subType = document.getElementById('plotSubType')?.value || '';
+    const riskLevel = document.getElementById('riskLevel')?.value || 'low';
+    const description = document.getElementById('description')?.value || '';
+
+    return {
+      name,
+      type,
+      subType,
+      riskLevel,
+      description,
+      areaHa: 0
+    };
+  }
+
+  canAutoMergePlot(plot, properties) {
+    if (!plot || !plot.properties) return false;
+    if (plot.locked) return false;
+    if (plot.properties.type !== properties.type) return false;
+    if ((plot.properties.riskLevel || 'low') !== (properties.riskLevel || 'low')) return false;
+    if ((plot.properties.subType || '') !== (properties.subType || '')) return false;
+    return true;
+  }
+
+  createPlotFromGeoJSON(geojson, properties) {
+    const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const layer = L.geoJSON(geojson, {
+      style: this.getPlotStyle(properties.type, true),
+      interactive: true,
+      renderer: this.canvasRenderer
+    });
+    this.layerManager.layerGroups.working.addLayer(layer);
+
+    return {
+      id,
+      geojson,
+      properties,
+      visible: true,
+      locked: false,
+      layer
+    };
+  }
+
+  _removePlotInternal(plotId) {
+    const idx = this.userPlots.findIndex(p => p.id === plotId);
+    if (idx === -1) return;
+    const plot = this.userPlots[idx];
+    if (plot.layer) this.layerManager.layerGroups.working.removeLayer(plot.layer);
+    this.userPlots.splice(idx, 1);
+    if (this.activePlotId === plotId) {
+      this.activePlotId = this.userPlots.length ? this.userPlots[this.userPlots.length - 1].id : null;
+    }
+  }
+
+  togglePlotVisibility(plotId, visible) {
+    const plot = this.userPlots.find(p => p.id === plotId);
+    if (!plot) return;
+    plot.visible = !!visible;
+    if (plot.layer) {
+      if (plot.visible) this.layerManager.layerGroups.working.addLayer(plot.layer);
+      else this.layerManager.layerGroups.working.removeLayer(plot.layer);
+    }
+    this.captureHistorySnapshot();
+    this.updateSelectedPlotsList();
+  }
+
+  togglePlotLock(plotId) {
+    const plot = this.userPlots.find(p => p.id === plotId);
+    if (!plot) return;
+    plot.locked = !plot.locked;
+    if (plot.layer && plot.layer.eachLayer) {
+      plot.layer.eachLayer(l => {
+        l.options.interactive = !plot.locked;
+      });
+    }
+    this.captureHistorySnapshot();
+    this.updateSelectedPlotsList();
+  }
+
+  movePlot(plotId, direction) {
+    const idx = this.userPlots.findIndex(p => p.id === plotId);
+    if (idx === -1) return;
+    const nextIdx = idx + direction;
+    if (nextIdx < 0 || nextIdx >= this.userPlots.length) return;
+    const [plot] = this.userPlots.splice(idx, 1);
+    this.userPlots.splice(nextIdx, 0, plot);
+    this.applyPlotOrder();
+    this.captureHistorySnapshot();
+    this.updateSelectedPlotsList();
+  }
+
+  applyPlotOrder() {
+    this.userPlots.forEach(p => {
+      if (!p.layer) return;
+      if (p.layer.bringToFront) p.layer.bringToFront();
+      if (p.layer.eachLayer) {
+        p.layer.eachLayer(l => l.bringToFront && l.bringToFront());
+      }
+    });
+  }
+
+  getLatLngRingsFromLayer(layer) {
+    if (!layer) return [];
+    if (layer.getLatLngs) {
+      const ll = layer.getLatLngs();
+      if (Array.isArray(ll) && ll.length) {
+        const ring = Array.isArray(ll[0]) ? ll[0] : ll;
+        return Array.isArray(ring) ? [ring] : [];
+      }
+    }
+    if (layer.eachLayer) {
+      let rings = [];
+      layer.eachLayer(l => {
+        if (rings.length) return;
+        rings = this.getLatLngRingsFromLayer(l);
+      });
+      return rings;
+    }
+    return [];
+  }
+  
+  // 多边形简化算法（Douglas-Peucker 算法）
+  simplifyPolygon(polygon, tolerance = 0.0001) {
+    const latLngs = polygon.getLatLngs()[0];
+    const simplified = this.douglasPeucker(latLngs, tolerance);
+    polygon.setLatLngs([simplified]);
+    return polygon;
+  }
+  
+  // Douglas-Peucker 算法实现
+  douglasPeucker(points, tolerance) {
+    if (points.length <= 2) {
+      return points;
+    }
+    
+    let maxDistance = 0;
+    let maxIndex = 0;
+    
+    // 找到距离最远的点
+    for (let i = 1; i < points.length - 1; i++) {
+      const distance = this.distanceToLine(points[i], points[0], points[points.length - 1]);
+      if (distance > maxDistance) {
+        maxDistance = distance;
+        maxIndex = i;
+      }
+    }
+    
+    // 如果最远点距离大于容差，递归简化
+    if (maxDistance > tolerance) {
+      const left = this.douglasPeucker(points.slice(0, maxIndex + 1), tolerance);
+      const right = this.douglasPeucker(points.slice(maxIndex), tolerance);
+      return left.slice(0, left.length - 1).concat(right);
+    } else {
+      // 否则，只保留首尾点
+      return [points[0], points[points.length - 1]];
+    }
+  }
+  
+  // 更新颜色方案
+  updateColorScheme(newColors) {
+    // 合并新颜色到现有方案
+    this.colorScheme = { ...this.colorScheme, ...newColors };
+    
+    // 更新样式对象
+    this.styles = {
+      selected: {
+        color: this.colorScheme.selected,
+        weight: 3,
+        fillColor: this.colorScheme.selected,
+        fillOpacity: 0.2
+      },
+      editing: {
+        color: this.colorScheme.editing,
+        weight: 2,
+        fillColor: this.colorScheme.editing,
+        fillOpacity: 0.1
+      },
+      highlight: {
+        color: this.colorScheme.highlight,
+        weight: 4,
+        fillColor: this.colorScheme.highlight,
+        fillOpacity: 0.3
+      }
+    };
+    
+    // 更新所有图层的颜色
+    this.updateLayerColors();
+  }
+  
+  // 更新图层颜色
+  updateLayerColors() {
+    this.userPlots.forEach(plot => {
+      if (plot.layer && plot.layer.setStyle) {
+        plot.layer.setStyle(this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId));
+      }
+    });
   }
   
   // 选择图层
@@ -574,31 +1623,22 @@ class TerrainEditor {
   
   // 更新选中区域信息
   updateSelectedArea() {
-    if (this.selectedFeatures.length === 0) {
-      document.getElementById('selectedArea').textContent = '面积: -';
-      document.getElementById('vertexCount').textContent = '顶点: -';
+    const selectedAreaEl = document.getElementById('selectedArea');
+    const vertexCountEl = document.getElementById('vertexCount');
+
+    if (!this.userPlots.length) {
+      if (selectedAreaEl) selectedAreaEl.textContent = '面积: -';
+      if (vertexCountEl) vertexCountEl.textContent = '顶点: -';
       return;
     }
-    
-    let totalArea = 0;
-    let totalVertices = 0;
-    
-    this.selectedFeatures.forEach(feature => {
-      if (feature.getBounds) {
-        // 简单计算面积（实际项目中可能需要更精确的算法）
-        const bounds = feature.getBounds();
-        const width = bounds.getEast() - bounds.getWest();
-        const height = bounds.getNorth() - bounds.getSouth();
-        totalArea += width * height * 111 * 111; // 粗略计算面积（平方公里）
-      }
-      
-      if (feature.getLatLngs) {
-        totalVertices += feature.getLatLngs()[0].length;
-      }
-    });
-    
-    document.getElementById('selectedArea').textContent = `面积: ${(totalArea * 100).toFixed(2)} 公顷`;
-    document.getElementById('vertexCount').textContent = `顶点: ${totalVertices}`;
+
+    const totalAreaHa = this.userPlots.reduce((sum, p) => sum + (Number(p.properties?.areaHa) || 0), 0);
+    if (selectedAreaEl) selectedAreaEl.textContent = `面积: ${totalAreaHa.toFixed(2)} 公顷`;
+
+    const active = this.userPlots.find(p => p.id === this.activePlotId) || this.userPlots[0];
+    const rings = this.getLatLngRingsFromLayer(active?.layer);
+    const vertices = rings.length ? rings[0].length : 0;
+    if (vertexCountEl) vertexCountEl.textContent = `顶点: ${vertices || '-'}`;
   }
   
   // 更新光标位置
@@ -608,6 +1648,11 @@ class TerrainEditor {
   
   // 更新编辑模式
   updateEditMode(mode) {
+    if (this.currentTool === 'brush' && mode !== '像素画笔') {
+      if (typeof this.clearToolEvents === 'function') {
+        this.clearToolEvents();
+      }
+    }
     document.getElementById('editMode').textContent = `编辑模式: ${mode}`;
   }
   
@@ -805,43 +1850,6 @@ class TerrainEditor {
     }
   }
   
-  // 保存地块
-  save() {
-    if (this.selectedFeatures.length === 0) {
-      alert('请先选择或创建地块');
-      return;
-    }
-    
-    // 收集所有编辑后的地块数据
-    const features = this.selectedFeatures.map(feature => {
-      const latLngs = feature.getLatLngs()[0];
-      const coordinates = latLngs.map(latlng => [latlng.lat, latlng.lng]);
-      
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [coordinates.map(point => [point[1], point[0]])] // 转换为lng, lat格式
-        },
-        properties: {
-          name: document.getElementById('plotName').value || '新地块',
-          type: document.getElementById('plotType').value,
-          riskLevel: document.getElementById('riskLevel').value,
-          description: document.getElementById('description').value,
-          area: this.calculateArea(coordinates)
-        }
-      };
-    });
-    
-    // 保存到数据管理器
-    this.dataManager.savePlot(features[0].properties).then(() => {
-      alert('地块保存成功！');
-      window.location.href = '/terrain/';
-    }).catch((error) => {
-      alert('保存失败: ' + error);
-    });
-  }
-  
   // 切换底图
   switchBasemap(basemap) {
     if (basemap === this.currentBasemap) return;
@@ -874,6 +1882,10 @@ class TerrainEditor {
     if (currentBasemapElement) {
       currentBasemapElement.textContent = basemapName;
     }
+    const currentBasemapSidebarElement = document.getElementById('currentBasemapNameSidebar');
+    if (currentBasemapSidebarElement) {
+      currentBasemapSidebarElement.textContent = basemapName;
+    }
     
     // 更新下拉菜单active状态
     document.querySelectorAll('.dropdown-item[data-basemap]').forEach(item => {
@@ -883,47 +1895,6 @@ class TerrainEditor {
         item.classList.remove('active');
       }
     });
-  }
-  
-  // 切换等高线叠加
-  toggleContourOverlay(enabled) {
-    console.log('=== 切换等高线叠加 ===');
-    console.log('状态:', enabled);
-    
-    // 确保等高线图层只创建一次
-    if (!this.contourLayer) {
-      // 创建等高线图层
-      this.contourLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
-        opacity: 0.6
-      });
-    }
-    
-    if (enabled) {
-      // 添加到地图
-      if (!this.map.hasLayer(this.contourLayer)) {
-        this.contourLayer.addTo(this.map);
-        
-        // 调整图层顺序，确保等高线在底图之上，业务图层之下
-        this.map.eachLayer((layer) => {
-          if (layer instanceof L.TileLayer && layer !== this.contourLayer && 
-              (layer === this.baseLayers.grayscale || layer === this.baseLayers.satellite)) {
-            this.map.removeLayer(layer);
-            this.map.addLayer(layer);
-          }
-        });
-        
-        console.log('等高线叠加已开启');
-      }
-    } else {
-      // 从地图中移除
-      if (this.map.hasLayer(this.contourLayer)) {
-        this.map.removeLayer(this.contourLayer);
-        console.log('等高线叠加已关闭');
-      }
-    }
-    
-    this.isContourOverlayEnabled = enabled;
   }
   
   // 计算面积（公顷）

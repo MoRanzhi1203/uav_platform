@@ -6,7 +6,6 @@
 {% block extra_css %}
   <link href="{% static 'css/terrain.css' %}" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <style>
     .editor-container {
       height: calc(100vh - 56px);
@@ -162,39 +161,38 @@
       </div>
     </div>
     
-    <!-- 选择工具组 -->
-    <div class="tool-group">
-      <button class="tool-btn active" data-tool="select">
-        <i class="bi bi-mouse"></i> 选择
-      </button>
-      <button class="tool-btn" data-tool="smart-select">
-        <i class="bi bi-area"></i> 智能选区
-      </button>
-      <button class="tool-btn" data-tool="multiselect">
-        <i class="bi bi-layers"></i> 多选
-      </button>
-      <button class="tool-btn" data-tool="merge">
-        <i class="bi bi-arrow-down-up"></i> 合并
-      </button>
-    </div>
-    
     <!-- 编辑工具组 -->
     <div class="tool-group">
-      <button class="tool-btn" data-tool="vertex-edit">
-        <i class="bi bi-pencil"></i> 顶点编辑
+      <button class="tool-btn m-0" data-tool="pan" title="平移地图">
+        <i class="bi bi-arrows-move"></i> 平移
       </button>
-      <button class="tool-btn" data-tool="edge-edit">
-        <i class="bi bi-border-all"></i> 边编辑
-      </button>
-      <button class="tool-btn" data-tool="cut">
-        <i class="bi bi-scissors"></i> 裁剪
-      </button>
-      <button class="tool-btn" data-tool="eraser">
-        <i class="bi bi-eraser"></i> 橡皮擦
-      </button>
-      <button class="tool-btn" data-tool="brush">
-        <i class="bi bi-brush"></i> 画笔
-      </button>
+      <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
+        <button class="tool-btn m-0" data-tool="eraser">
+          <i class="bi bi-eraser"></i> 橡皮擦
+        </button>
+        <button class="tool-btn dropdown-toggle m-0 border-left-0" type="button" id="eraserModeDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="padding-left: 5px; padding-right: 5px;">
+          <span id="currentEraserMode">整块</span>
+        </button>
+        <ul class="dropdown-menu" aria-labelledby="eraserModeDropdown" style="min-width: 80px;">
+          <li><a class="dropdown-item active" href="#" data-eraser-mode="block">整块擦除</a></li>
+          <li><a class="dropdown-item" href="#" data-eraser-mode="brush">画笔擦除</a></li>
+        </ul>
+      </div>
+      <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
+        <button class="tool-btn m-0 active" data-tool="brush">
+          <i class="bi bi-brush"></i> 像素画笔
+        </button>
+        <button class="tool-btn dropdown-toggle m-0 border-left-0" type="button" id="brushSizeDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="padding-left: 5px; padding-right: 5px;">
+          <span id="currentBrushSize">1x1</span>
+        </button>
+        <ul class="dropdown-menu" aria-labelledby="brushSizeDropdown" style="min-width: 80px;">
+          <li><a class="dropdown-item active" href="#" data-brush-size="1">1x1 网格</a></li>
+          <li><a class="dropdown-item" href="#" data-brush-size="2">2x2 网格</a></li>
+          <li><a class="dropdown-item" href="#" data-brush-size="3">3x3 网格</a></li>
+          <li><a class="dropdown-item" href="#" data-brush-size="5">5x5 网格</a></li>
+          <li><a class="dropdown-item" href="#" data-brush-size="custom">自定义…</a></li>
+        </ul>
+      </div>
     </div>
     
     <!-- 操作工具组 -->
@@ -225,53 +223,37 @@
         <div class="mb-4">
           <h6>底图模式</h6>
           <div class="layer-item">
-            <span>当前底图：<span id="currentBasemapName">标准底图</span></span>
+            <span>当前底图：<span id="currentBasemapNameSidebar">标准底图</span></span>
           </div>
         </div>
         
-        <!-- 业务图层 -->
+        <!-- 用户绘制图层 -->
         <div class="mb-4">
-          <h6>业务图层</h6>
-          <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" checked>
-            <span>地形边界</span>
-          </div>
-          <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" checked>
-            <span>风险区域</span>
-          </div>
-          <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox">
-            <span>禁飞区</span>
-          </div>
-          <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" checked>
-            <span>林区边界</span>
-          </div>
-          <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" checked>
-            <span>农田边界</span>
+          <h6>用户绘制地块</h6>
+          <div id="selectedAreas" class="mt-2">
+            <!-- 动态生成的已选地块项 -->
           </div>
         </div>
-        
+
         <!-- 辅助图层 -->
         <div class="mb-4">
           <h6>辅助图层</h6>
           <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" id="contourOverlay">
-            <span>等高线叠加</span>
+            <input type="checkbox" class="layer-checkbox" id="gridToggle10m">
+            <span>10m 绘制网格</span>
           </div>
-        </div>
-        
-        <!-- 已选地块 -->
-        <div>
-          <h6>已选地块</h6>
-          <div id="selectedAreas" class="mt-2">
-            <!-- 动态生成的已选地块项 -->
+          <div class="layer-item">
+            <input type="checkbox" class="layer-checkbox" id="gridToggle1km">
+            <span>1000m 参考网格</span>
           </div>
-          <button class="btn btn-sm btn-outline-primary w-100 mt-2" id="mergeSelectedBtn">
-            合并选中地块
-          </button>
+          <div class="layer-item">
+            <input type="checkbox" class="layer-checkbox" id="adminBoundaryToggle">
+            <span>行政区划边界</span>
+          </div>
+          <div class="layer-item">
+            <input type="checkbox" class="layer-checkbox" id="historyToggle">
+            <span>历史地块提示</span>
+          </div>
         </div>
       </div>
     </div>
@@ -295,9 +277,26 @@
           <label for="plotType">地块类型</label>
           <select id="plotType">
             <option value="forest">林区</option>
-            <option value="farm">农田</option>
+            <option value="farmland">农田</option>
+            <option value="buildings">建筑</option>
+            <option value="water">水域</option>
+            <option value="roads">道路</option>
             <option value="mixed">混合</option>
           </select>
+        </div>
+        
+        <div class="attribute-group" id="subTypeGroup" style="display: none;">
+          <label for="plotSubType">子类型 / 备注</label>
+          <select id="plotSubType">
+            <option value="">无</option>
+            <option value="rice">水稻种植池</option>
+            <option value="other">自定义子类</option>
+          </select>
+        </div>
+        
+        <div class="attribute-group" id="remarkGroup" style="display: none;">
+          <label for="plotRemark">备注</label>
+          <input type="text" id="plotRemark" placeholder="请输入备注信息">
         </div>
         
         <div class="attribute-group">
@@ -356,133 +355,10 @@
 
 {% block extra_js %}
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  
-  <!-- 模拟数据 -->
-  <script>
-    window.terrainMockData = {
-      mapData: {
-        terrainBoundaries: [
-          {
-            id: 1,
-            name: '北部山地',
-            type: 'mountain',
-            coordinates: [
-              [30.598, 106.568],
-              [30.602, 106.572],
-              [30.605, 106.569],
-              [30.601, 106.565]
-            ]
-          },
-          {
-            id: 2,
-            name: '南部丘陵',
-            type: 'hill',
-            coordinates: [
-              [30.588, 106.568],
-              [30.592, 106.572],
-              [30.595, 106.569],
-              [30.591, 106.565]
-            ]
-          }
-        ]
-      },
-      dangerZones: [
-        {
-          id: 1,
-          name: '高风险区1',
-          level: '高',
-          coordinates: [
-            [30.600, 106.570],
-            [30.601, 106.571],
-            [30.602, 106.570],
-            [30.601, 106.569]
-          ]
-        }
-      ],
-      forestAreas: [
-        {
-          id: 1,
-          name: '松林',
-          type: 'coniferous',
-          coordinates: [
-            [30.599, 106.569],
-            [30.601, 106.571],
-            [30.603, 106.570],
-            [30.601, 106.568]
-          ]
-        },
-        {
-          id: 2,
-          name: '阔叶林',
-          type: 'broadleaf',
-          coordinates: [
-            [30.589, 106.569],
-            [30.591, 106.571],
-            [30.593, 106.570],
-            [30.591, 106.568]
-          ]
-        }
-      ],
-      farmAreas: [
-        {
-          id: 1,
-          name: '稻田',
-          crop: 'rice',
-          coordinates: [
-            [30.599, 106.561],
-            [30.601, 106.563],
-            [30.603, 106.562],
-            [30.601, 106.560]
-          ]
-        },
-        {
-          id: 2,
-          name: '菜地',
-          crop: 'vegetable',
-          coordinates: [
-            [30.589, 106.561],
-            [30.591, 106.563],
-            [30.593, 106.562],
-            [30.591, 106.560]
-          ]
-        }
-      ],
-      existingPlots: [
-        {
-          id: 1,
-          name: '试验地块1',
-          type: 'forest',
-          area: 1500,
-          riskLevel: '低',
-          coordinates: [
-            [30.600, 106.572],
-            [30.602, 106.574],
-            [30.604, 106.573],
-            [30.602, 106.571]
-          ]
-        },
-        {
-          id: 2,
-          name: '试验地块2',
-          type: 'farm',
-          area: 1200,
-          riskLevel: '中',
-          coordinates: [
-            [30.590, 106.572],
-            [30.592, 106.574],
-            [30.594, 106.573],
-            [30.592, 106.571]
-          ]
-        }
-      ]
-    };
-  </script>
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="https://unpkg.com/shpjs@latest/dist/shp.js"></script>
   
   <script src="{% static 'js/map/map_init.js' %}"></script>
-  <script src="{% static 'js/map/data_manager.js' %}"></script>
-  <script src="{% static 'js/map/smart_selection.js' %}"></script>
-  <script src="{% static 'js/map/boundary_editor.js' %}"></script>
   <script src="{% static 'js/map/terrain_editor.js' %}"></script>
   <script src="{% static 'pages/terrain/editor.js' %}"></script>
 {% endblock %}

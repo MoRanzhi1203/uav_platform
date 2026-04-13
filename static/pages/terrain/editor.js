@@ -8,39 +8,95 @@ function initEditor() {
   // 初始化编辑器
   terrainEditor = new TerrainEditor('editorMap');
   
-  // 加载地形数据
-  loadTerrainData();
-  
   // 绑定工具按钮事件
   bindToolEvents();
   
   // 绑定操作按钮事件
   bindActionEvents();
-  
-  // 绑定图层控制事件
-  bindLayerEvents();
-}
 
-// 加载地形数据
-function loadTerrainData() {
-  // 模拟加载地形数据
-  console.log('=== editor.js: 加载地形数据 ===');
-  console.log('window.terrainMockData:', window.terrainMockData);
-  
-  if (window.terrainMockData) {
-    console.log('=== 使用 window.terrainMockData ===');
-    console.log('地形边界:', window.terrainMockData.mapData.terrainBoundaries);
-    console.log('风险区域:', window.terrainMockData.dangerZones);
-    console.log('林区:', window.terrainMockData.forestAreas);
-    console.log('农田:', window.terrainMockData.farmAreas);
-    console.log('现有地块:', window.terrainMockData.existingPlots);
-    
-    terrainEditor.loadTerrainData({
-      terrainBoundaries: window.terrainMockData.mapData.terrainBoundaries,
-      riskAreas: window.terrainMockData.dangerZones,
-      forestAreas: window.terrainMockData.forestAreas,
-      farmAreas: window.terrainMockData.farmAreas,
-      existingPlots: window.terrainMockData.existingPlots
+  // 绑定辅助图层事件
+  bindAssistLayerEvents();
+
+  // 绑定属性面板事件
+  bindAttributeEvents();
+
+  // 默认进入像素画笔模式
+  const brushBtn = document.querySelector('[data-tool="brush"]');
+  if (brushBtn) {
+    selectTool('brush', brushBtn);
+  }
+  // 画笔大小下拉菜单
+  document.querySelectorAll('[data-brush-size]').forEach(item => {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      const raw = this.getAttribute('data-brush-size');
+      let size = parseInt(raw);
+      if (Number.isNaN(size)) {
+        const input = prompt('请输入笔刷大小（1~99，表示 NxN 网格）', '1');
+        size = parseInt(input, 10);
+      }
+      if (!Number.isFinite(size) || size < 1) return;
+      size = Math.min(size, 99);
+      
+      // 更新按钮文本
+      document.getElementById('currentBrushSize').textContent = `${size}x${size}`;
+      
+      // 更新激活状态
+      document.querySelectorAll('[data-brush-size]').forEach(i => i.classList.remove('active'));
+      this.classList.add('active');
+      
+      // 传递给编辑器
+      if (terrainEditor) {
+        terrainEditor.setBrushSize(size);
+        
+        // 如果当前不是画笔或橡皮擦模式，切换到画笔模式
+        if (terrainEditor.currentTool !== 'brush' && terrainEditor.currentTool !== 'eraser') {
+          selectTool('brush', document.querySelector('[data-tool="brush"]'));
+        }
+      }
+    });
+  });
+
+  // 橡皮擦模式下拉菜单
+  document.querySelectorAll('[data-eraser-mode]').forEach(item => {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      const mode = this.getAttribute('data-eraser-mode');
+      const label = mode === 'block' ? '整块' : '画笔';
+      
+      // 更新按钮文本
+      document.getElementById('currentEraserMode').textContent = label;
+      
+      // 更新激活状态
+      document.querySelectorAll('[data-eraser-mode]').forEach(i => i.classList.remove('active'));
+      this.classList.add('active');
+      
+      // 传递给编辑器
+      if (terrainEditor) {
+        terrainEditor.setEraserMode(mode);
+        
+        // 如果当前不是橡皮擦模式，切换到橡皮擦模式
+        if (terrainEditor.currentTool !== 'eraser') {
+          selectTool('eraser', document.querySelector('[data-tool="eraser"]'));
+        } else {
+          // 重新启用以切换子模式监听器
+          terrainEditor.enableEraser();
+        }
+      }
+    });
+  });
+
+  // 地块类型选择联动
+  const plotTypeSelect = document.getElementById('plotType');
+  const subTypeGroup = document.getElementById('subTypeGroup');
+  if (plotTypeSelect && subTypeGroup) {
+    plotTypeSelect.addEventListener('change', function() {
+      if (this.value === 'farmland' || this.value === 'mixed') {
+        subTypeGroup.style.display = 'block';
+      } else {
+        subTypeGroup.style.display = 'none';
+        document.getElementById('plotSubType').value = '';
+      }
     });
   }
 }
@@ -53,6 +109,55 @@ function bindToolEvents() {
       const tool = this.getAttribute('data-tool');
       selectTool(tool, this);
     });
+  });
+}
+
+// 绑定属性面板事件
+function bindAttributeEvents() {
+  const plotType = document.getElementById('plotType');
+  const subTypeGroup = document.getElementById('subTypeGroup');
+  const remarkGroup = document.getElementById('remarkGroup');
+  const plotSubType = document.getElementById('plotSubType');
+
+  if (plotType) {
+    plotType.addEventListener('change', function() {
+      const type = this.value;
+      // 农田支持水稻池子类型
+      if (type === 'farmland') {
+        subTypeGroup.style.display = 'block';
+        remarkGroup.style.display = 'none';
+        plotSubType.innerHTML = `
+          <option value="">普通农田</option>
+          <option value="rice">水稻种植池</option>
+        `;
+      } else if (type === 'mixed') {
+        subTypeGroup.style.display = 'none';
+        remarkGroup.style.display = 'block';
+      } else {
+        subTypeGroup.style.display = 'none';
+        remarkGroup.style.display = 'none';
+      }
+      
+      // 更新当前激活地块的属性 (如果有)
+      if (terrainEditor && terrainEditor.activePlotId) {
+        terrainEditor.updateActivePlotProperties({ type: type });
+      }
+    });
+  }
+
+  // 其他属性变化监听
+  ['plotName', 'plotSubType', 'riskLevel', 'description', 'plotRemark'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', function() {
+        if (terrainEditor && terrainEditor.activePlotId) {
+          const props = {};
+          let key = id.replace('plot', '').charAt(0).toLowerCase() + id.replace('plot', '').slice(1);
+          props[key] = this.value;
+          terrainEditor.updateActivePlotProperties(props);
+        }
+      });
+    }
   });
 }
 
@@ -71,32 +176,14 @@ function selectTool(tool, button) {
   
   // 执行工具切换逻辑
   switch (tool) {
-    case 'select':
-      terrainEditor.updateEditMode('选择');
-      break;
-    case 'smart-select':
-      terrainEditor.updateEditMode('智能选区');
-      break;
-    case 'multiselect':
-      terrainEditor.updateEditMode('多选');
-      break;
-    case 'merge':
-      terrainEditor.mergeFeatures();
-      break;
-    case 'vertex-edit':
-      terrainEditor.enableVertexEdit();
-      break;
-    case 'edge-edit':
-      terrainEditor.enableEdgeEdit();
-      break;
-    case 'cut':
-      terrainEditor.enableCut();
+    case 'brush':
+      terrainEditor.enableBrush();
       break;
     case 'eraser':
       terrainEditor.enableEraser();
       break;
-    case 'brush':
-      terrainEditor.enableBrush();
+    case 'pan':
+      terrainEditor.enablePan();
       break;
   }
 }
@@ -125,11 +212,6 @@ function bindActionEvents() {
     terrainEditor.save();
   });
   
-  // 合并选中地块按钮
-  document.getElementById('mergeSelectedBtn').addEventListener('click', function() {
-    terrainEditor.mergeFeatures();
-  });
-  
   // 底图切换
   document.querySelectorAll('[data-basemap]').forEach(item => {
     item.addEventListener('click', function(e) {
@@ -140,56 +222,39 @@ function bindActionEvents() {
   });
 }
 
-// 绑定图层控制事件
-function bindLayerEvents() {
-  // 图层复选框事件
-  document.querySelectorAll('.layer-checkbox').forEach(checkbox => {
-    checkbox.addEventListener('change', function() {
-      const layerName = this.nextElementSibling.textContent.trim();
-      const visible = this.checked;
-      
-      // 切换图层可见性
-      switch (layerName) {
-        case '地形边界':
-          terrainEditor.layerManager.toggleLayer('base', visible);
-          break;
-        case '风险区域':
-          // 切换风险区域图层
-          break;
-        case '禁飞区':
-          // 切换禁飞区图层
-          break;
-        case '林区边界':
-          // 切换林区边界图层
-          break;
-        case '农田边界':
-          // 切换农田边界图层
-          break;
-      }
+// 绑定辅助图层事件
+function bindAssistLayerEvents() {
+  // 10m 网格
+  const grid10m = document.getElementById('gridToggle10m');
+  if (grid10m) {
+    grid10m.addEventListener('change', function() {
+      if (terrainEditor) terrainEditor.toggleReferenceGrid('10m', this.checked);
     });
-  });
-  
-  // 已选地块项点击事件
-  document.querySelectorAll('#selectedAreas .layer-item').forEach(item => {
-    item.addEventListener('click', function() {
-      // 移除所有项的激活状态
-      document.querySelectorAll('#selectedAreas .layer-item').forEach(i => {
-        i.classList.remove('active');
-      });
-      
-      // 激活当前项
-      this.classList.add('active');
+  }
+
+  // 1000m 网格
+  const grid1km = document.getElementById('gridToggle1km');
+  if (grid1km) {
+    grid1km.addEventListener('change', function() {
+      if (terrainEditor) terrainEditor.toggleReferenceGrid('1km', this.checked);
     });
-  });
-  
-  // 已选地块删除按钮事件
-  document.querySelectorAll('#selectedAreas .btn-danger').forEach(button => {
-    button.addEventListener('click', function(e) {
-      e.stopPropagation();
-      const item = this.closest('.layer-item');
-      item.remove();
+  }
+
+  // 行政区划边界切换
+  const adminToggle = document.getElementById('adminBoundaryToggle');
+  if (adminToggle) {
+    adminToggle.addEventListener('change', function() {
+      if (terrainEditor) terrainEditor.toggleAdminBoundaries(this.checked);
     });
-  });
+  }
+
+  // 历史地块提示切换
+  const historyToggle = document.getElementById('historyToggle');
+  if (historyToggle) {
+    historyToggle.addEventListener('change', function() {
+      if (terrainEditor) terrainEditor.toggleHistoryHints(this.checked);
+    });
+  }
 }
 
 // 页面加载完成后初始化
