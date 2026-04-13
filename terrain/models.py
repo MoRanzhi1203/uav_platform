@@ -33,6 +33,20 @@ class TerrainArea(models.Model):
     def __str__(self):
         return self.name
 
+class TerrainSubCategory(models.Model):
+    """子类别管理 (SubCategory)"""
+    category = models.CharField(max_length=50, verbose_name="大类")
+    name = models.CharField(max_length=100, verbose_name="子类别名称")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '子类别'
+        verbose_name_plural = '子类别'
+        unique_together = ('category', 'name')
+
+    def __str__(self):
+        return f"{self.category} - {self.name}"
+
 class TerrainZone(models.Model):
     """地块模型 (Zone)"""
     area_obj = models.ForeignKey(TerrainArea, on_delete=models.CASCADE, related_name='zones', verbose_name="所属区域", null=True)

@@ -94,6 +94,69 @@
   border-color: #3b82f6;
 }
 
+/* 图层面板样式 */
+.layer-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.layer-item:hover {
+  background-color: #f8f9fa;
+}
+
+.layer-item.active {
+  background-color: #e7f1ff;
+  border-left: 4px solid #0d6efd;
+}
+
+.layer-item.multi-selected {
+  background-color: rgba(13, 110, 253, 0.05);
+}
+
+.layer-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.layer-actions i {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.layer-actions i:hover {
+  opacity: 1;
+}
+
+.btn-xs {
+  padding: 0.1rem 0.3rem;
+  font-size: 0.75rem;
+}
+
+/* 属性面板样式 */
+.attribute-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+  display: block;
+}
+
+/* 滚动条美化 */
+#selectedAreas::-webkit-scrollbar,
+#subCategoryList::-webkit-scrollbar {
+  width: 4px;
+}
+
+#selectedAreas::-webkit-scrollbar-thumb,
+#subCategoryList::-webkit-scrollbar-thumb {
+  background-color: #ccc;
+  border-radius: 4px;
+}
+
 /* Tab 样式 */
 .nav-tabs .nav-item .nav-link.active {
   color: #3b82f6;

@@ -245,10 +245,26 @@
         
         <!-- 用户绘制图层 -->
         <div class="mb-4">
-          <h6>用户绘制地块</h6>
-          <div id="selectedAreas" class="mt-2">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="m-0">图层面板</h6>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-secondary" id="mergeZonesBtn" title="合并 (Elements一致时可用)" disabled>
+                <i class="bi bi-intersect"></i>
+              </button>
+              <button class="btn btn-outline-secondary" id="booleanSubtractBtn" title="布尔减法 (A减B)" disabled>
+                <i class="bi bi-subtract"></i>
+              </button>
+              <button class="btn btn-outline-secondary" id="splitZoneBtn" title="拆分不相连区域" disabled>
+                <i class="bi bi-scissors"></i>
+              </button>
+            </div>
+          </div>
+          <div id="selectedAreas" class="mt-2" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 5px;">
             <!-- 动态生成的已选地块项 -->
           </div>
+          <button class="btn btn-sm btn-primary w-100 mt-2" id="createNewZoneBtn">
+            <i class="bi bi-plus-lg"></i> 新建地块图层
+          </button>
         </div>
 
         <!-- 辅助图层 -->
@@ -357,13 +373,20 @@
         
         <hr>
         <div class="attribute-group">
-          <label>要素列表 (Elements)</label>
-          <div id="elementList" class="small text-muted">
-            选中地块后查看要素
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="m-0">子类别管理 (n/m)</label>
+            <button class="btn btn-xs btn-outline-primary" id="manageSubCatsBtn" title="管理子类别">
+              <i class="bi bi-gear"></i>
+            </button>
           </div>
-          <button class="btn btn-sm btn-outline-primary mt-2 w-100" id="addElementBtn" disabled>
-            <i class="bi bi-plus"></i> 添加要素
-          </button>
+          <div id="subCategoryList" class="list-group list-group-flush border rounded" style="max-height: 200px; overflow-y: auto;">
+            <!-- 动态加载子类别 -->
+            <div class="list-group-item text-muted text-center py-3">请选择大类</div>
+          </div>
+          <div class="input-group input-group-sm mt-2">
+            <input type="text" class="form-control" id="newSubCatName" placeholder="新子类别">
+            <button class="btn btn-primary" id="addSubCatBtn">新增</button>
+          </div>
         </div>
       </div>
     </div>

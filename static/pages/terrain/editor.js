@@ -222,8 +222,22 @@ function bindActionEvents() {
   
   // 保存按钮
   document.querySelector('[data-action="save"]').addEventListener('click', function() {
+    // 保存前检查不相连区域
+    if (terrainEditor && terrainEditor.activePlotId) {
+      terrainEditor.checkAndSplitDisjointPartsLocally(terrainEditor.activePlotId);
+    }
     terrainEditor.save();
   });
+
+  // 图层面板操作按钮
+  document.getElementById('mergeZonesBtn')?.addEventListener('click', () => terrainEditor.handleMergeZones());
+  document.getElementById('booleanSubtractBtn')?.addEventListener('click', () => terrainEditor.handleBooleanSubtract());
+  document.getElementById('splitZoneBtn')?.addEventListener('click', () => terrainEditor.handleSplitZone());
+  document.getElementById('createNewZoneBtn')?.addEventListener('click', () => terrainEditor.handleCreateNewZone());
+
+  // 子类别管理按钮
+  document.getElementById('addSubCatBtn')?.addEventListener('click', () => terrainEditor.handleAddSubCategory());
+  document.getElementById('manageSubCatsBtn')?.addEventListener('click', () => terrainEditor.toggleSubCatManagement());
   
   // 底图切换
   document.querySelectorAll('[data-basemap]').forEach(item => {

@@ -1,9 +1,14 @@
 from rest_framework import serializers
-from .models import TerrainArea, TerrainZone, TerrainElement
+from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 
 class TerrainAreaSerializer(serializers.ModelSerializer):
     class Meta:
         model = TerrainArea
+        fields = '__all__'
+
+class TerrainSubCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TerrainSubCategory
         fields = '__all__'
 
 class TerrainElementSerializer(serializers.ModelSerializer):
