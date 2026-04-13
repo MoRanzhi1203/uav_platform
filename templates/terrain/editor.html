@@ -321,12 +321,20 @@
         </div>
         
         <div class="attribute-group" id="subTypeGroup" style="display: none;">
-          <label for="plotSubType">子类型 / 备注</label>
-          <select id="plotSubType">
-            <option value="">无</option>
-            <option value="rice">水稻种植池</option>
-            <option value="other">自定义子类</option>
-          </select>
+          <label>子类型 / 备注 <small class="text-muted">(n/m)</small></label>
+          <div class="dropdown" id="subTypeDropdownContainer">
+            <div class="input-group input-group-sm">
+              <input type="text" id="plotSubType" class="form-control" readonly placeholder="请选择或新增" data-bs-toggle="dropdown" aria-expanded="false">
+              <button class="btn btn-outline-primary" type="button" id="addNewSubCatBtn" title="新增子类别">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+            </div>
+            <ul class="dropdown-menu w-100 shadow-sm" id="subTypeDropdownMenu" style="max-height: 250px; overflow-y: auto;">
+              <!-- 动态加载子类别列表 -->
+              <li><hr class="dropdown-divider"></li>
+              <li class="px-3 py-1 text-center small text-muted">请先选择大类</li>
+            </ul>
+          </div>
         </div>
         
         <div class="attribute-group" id="remarkGroup" style="display: none;">
@@ -334,24 +342,6 @@
           <input type="text" id="plotRemark" placeholder="请输入备注信息">
         </div>
 
-        <hr>
-        <div class="attribute-group">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <label class="m-0">子类别管理 (n/m)</label>
-            <button class="btn btn-xs btn-outline-primary" id="manageSubCatsBtn" title="管理子类别">
-              <i class="bi bi-gear"></i>
-            </button>
-          </div>
-          <div id="subCategoryList" class="list-group list-group-flush border rounded" style="max-height: 200px; overflow-y: auto;">
-            <!-- 动态加载子类别 -->
-            <div class="list-group-item text-muted text-center py-3">请选择大类</div>
-          </div>
-          <div class="input-group input-group-sm mt-2">
-            <input type="text" class="form-control" id="newSubCatName" placeholder="新子类别">
-            <button class="btn btn-primary" id="addSubCatBtn">新增</button>
-          </div>
-        </div>
-        
         <div class="attribute-group">
           <label for="plotArea">面积（公顷）</label>
           <input type="number" id="plotArea" readonly>

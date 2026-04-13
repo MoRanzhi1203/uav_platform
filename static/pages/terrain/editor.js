@@ -135,21 +135,18 @@ function bindAttributeEvents() {
   if (plotType) {
     plotType.addEventListener('change', function() {
       const type = this.value;
-      // 农田支持水稻池子类型
-      if (type === 'farmland') {
+      // 所有大类都支持显示子类别下拉列表
+      if (type) {
         subTypeGroup.style.display = 'block';
-        remarkGroup.style.display = 'none';
-        plotSubType.innerHTML = `
-          <option value="">普通农田</option>
-          <option value="rice">水稻种植池</option>
-        `;
-      } else if (type === 'mixed') {
-        subTypeGroup.style.display = 'none';
-        remarkGroup.style.display = 'block';
+        if (terrainEditor) {
+          terrainEditor.loadSubCategories();
+        }
       } else {
         subTypeGroup.style.display = 'none';
-        remarkGroup.style.display = 'none';
       }
+      
+      // 备注字段仅在混合类型或特定需要时显示
+      remarkGroup.style.display = (type === 'mixed') ? 'block' : 'none';
       
       // 更新当前激活地块的属性 (如果有)
       if (terrainEditor && terrainEditor.activePlotId) {
@@ -159,7 +156,7 @@ function bindAttributeEvents() {
   }
 
   // 其他属性变化监听
-  ['plotName', 'plotSubType', 'riskLevel', 'description', 'plotRemark'].forEach(id => {
+  ['plotName', 'riskLevel', 'description', 'plotRemark', 'plotSubType'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', function() {
@@ -236,8 +233,7 @@ function bindActionEvents() {
   document.getElementById('createNewZoneBtn')?.addEventListener('click', () => terrainEditor.handleCreateNewZone());
 
   // 子类别管理按钮
-  document.getElementById('addSubCatBtn')?.addEventListener('click', () => terrainEditor.handleAddSubCategory());
-  document.getElementById('manageSubCatsBtn')?.addEventListener('click', () => terrainEditor.toggleSubCatManagement());
+  document.getElementById('addNewSubCatBtn')?.addEventListener('click', () => terrainEditor.handleAddSubCategory());
   
   // 底图切换
   document.querySelectorAll('[data-basemap]').forEach(item => {
