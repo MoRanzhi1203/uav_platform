@@ -104,7 +104,7 @@ function initEditor() {
   const subTypeGroup = document.getElementById('subTypeGroup');
   if (plotTypeSelect && subTypeGroup) {
     plotTypeSelect.addEventListener('change', function() {
-      if (this.value === 'farmland' || this.value === 'mixed') {
+      if (this.value) {
         subTypeGroup.style.display = 'block';
       } else {
         subTypeGroup.style.display = 'none';
@@ -135,18 +135,17 @@ function bindAttributeEvents() {
   if (plotType) {
     plotType.addEventListener('change', function() {
       const type = this.value;
-      // 所有大类都支持显示子类别下拉列表
+      // 所有大类都支持显示子类别下拉列表，实现全类型统一
       if (type) {
         subTypeGroup.style.display = 'block';
         if (terrainEditor) {
+          // 切换大类时，统一清除旧子类型并加载新大类的可选列表
+          terrainEditor.selectSubCategory('');
           terrainEditor.loadSubCategories();
         }
       } else {
         subTypeGroup.style.display = 'none';
       }
-      
-      // 备注字段仅在混合类型或特定需要时显示
-      remarkGroup.style.display = (type === 'mixed') ? 'block' : 'none';
       
       // 更新当前激活地块的属性 (如果有)
       if (terrainEditor && terrainEditor.activePlotId) {
@@ -155,8 +154,8 @@ function bindAttributeEvents() {
     });
   }
 
-  // 其他属性变化监听
-  ['plotName', 'riskLevel', 'description', 'plotRemark', 'plotSubType'].forEach(id => {
+  // 其他属性变化监听，移除 plotRemark (已集成到子类型)
+  ['plotName', 'riskLevel', 'description', 'plotSubType'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', function() {

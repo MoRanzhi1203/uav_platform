@@ -146,13 +146,11 @@
 }
 
 /* 滚动条美化 */
-#selectedAreas::-webkit-scrollbar,
-#subCategoryList::-webkit-scrollbar {
+#selectedAreas::-webkit-scrollbar {
   width: 4px;
 }
 
-#selectedAreas::-webkit-scrollbar-thumb,
-#subCategoryList::-webkit-scrollbar-thumb {
+#selectedAreas::-webkit-scrollbar-thumb {
   background-color: #ccc;
   border-radius: 4px;
 }

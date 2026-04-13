@@ -42,12 +42,25 @@ htmlcov/
 # Temporary files
 tmp/
 temp/
-CHANGELOG.md
-changelog.md
 
 # Log files
 logs/
 *.log
+
+# Project Documentation
+# FINAL_RECOMMENDATION.md
+# IMPLEMENTATION_PLAN.md
+# project_fix_report.md
+# project_full_fix_report.md
+# shp_cleanup_report.md
+# instructions/
+
+# Scripts & Debug
+check_session.py
+debug_error.py
+import_terrain_data.py
+# init_admin.py  # 保留作为初始化参考
+error_page.html
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -10,8 +10,7 @@ class TerrainArea(models.Model):
         ('plateau', '高原'),
         ('plain', '平原'),
         ('forest', '林区'),
-        ('farm', '农田'),
-        ('mixed', '混合')
+        ('farm', '农田')
     ])
     risk_level = models.CharField(max_length=20, verbose_name='风险等级', choices=[
         ('low', '低'),
@@ -56,8 +55,7 @@ class TerrainZone(models.Model):
         ('farmland', '农田'),
         ('water', '水域'),
         ('road', '道路'),
-        ('building', '建筑'),
-        ('mixed', '混合')
+        ('building', '建筑')
     ])
     type = models.CharField(max_length=50, verbose_name="地块类型", null=True, blank=True)
     risk_level = models.CharField(max_length=20, verbose_name="风险等级", choices=[

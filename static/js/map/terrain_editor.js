@@ -64,10 +64,9 @@ class TerrainEditor {
     this.colorScheme = {
       forest: '#2ecc71',      // 林区 - 绿色
       farmland: '#f39c12',    // 农田 - 橙色
-      buildings: '#7f8c8d',   // 建筑 - 深灰色
+      building: '#7f8c8d',    // 建筑 - 深灰色
       water: '#3498db',       // 水域 - 蓝色
-      roads: '#95a5a6',       // 道路 - 灰色
-      mixed: '#9b59b6',       // 混合 - 紫色
+      road: '#95a5a6',        // 道路 - 灰色
       selected: '#0d6efd',    // 选中 - 蓝色
       editing: '#ffc107',     // 编辑中 - 黄色
       highlight: '#198754'    // 高亮 - 绿色
@@ -826,12 +825,10 @@ class TerrainEditor {
     const subTypeGroup = document.getElementById('subTypeGroup');
     if (typeSelect) {
       typeSelect.value = plot.properties?.type || 'farmland';
+      // 统一展示子类型模块
       if (subTypeGroup) subTypeGroup.style.display = 'block';
       this.loadSubCategories(plot.properties?.subType);
     }
-
-    const remarkInput = document.getElementById('plotRemark');
-    if (remarkInput) remarkInput.value = plot.properties?.remark || '';
 
     const riskSelect = document.getElementById('riskLevel');
     if (riskSelect) riskSelect.value = plot.properties?.riskLevel || 'low';
@@ -1576,9 +1573,6 @@ class TerrainEditor {
 
       // 构建请求负载
       let landType = properties.type || 'farmland';
-      // 兼容处理：前端 plural 映射到后端 singular
-      if (landType === 'buildings') landType = 'building';
-      if (landType === 'roads') landType = 'road';
 
       const payload = {
         id: plot.db_id || null,
@@ -1601,8 +1595,7 @@ class TerrainEditor {
         meta_json: {
           source: 'manual_draw',
           editor_mode: 'pixel_brush',
-          sub_type: properties.subType || '',
-          remark: properties.remark || ''
+          sub_type: properties.subType || ''
         }
       };
 
@@ -1731,8 +1724,7 @@ class TerrainEditor {
       riskLevel: data.risk_level,
       description: data.description,
       areaHa: data.area,
-      subType: data.type || data.meta_json?.sub_type || '', // 优先使用数据库 type 字段
-      remark: data.meta_json?.remark || ''
+      subType: data.type || data.meta_json?.sub_type || ''
     };
 
     const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -2717,31 +2709,38 @@ class TerrainEditor {
   }
 
   renderSubCategoryDropdown(subcategories, selectedValue = null) {
-    const subTypeInput = document.getElementById('plotSubType');
     const dropdownMenu = document.getElementById('subTypeDropdownMenu');
-    if (!subTypeInput || !dropdownMenu) return;
+    const selectedNameSpan = document.getElementById('selectedSubTypeName');
+    const subTypeHiddenInput = document.getElementById('plotSubType');
+    if (!dropdownMenu) return;
 
     // 清空现有列表
     dropdownMenu.innerHTML = '';
 
-    // 添加默认选项
-    const defaultLi = document.createElement('li');
-    defaultLi.innerHTML = `<a class="dropdown-item small" href="#" onclick="terrainEditor.selectSubCategory('', ''); return false;">清除选择</a>`;
-    dropdownMenu.appendChild(defaultLi);
-    dropdownMenu.appendChild(document.createElement('li')).innerHTML = '<hr class="dropdown-divider">';
+    // 1. 添加“清除选择”项
+    const clearLi = document.createElement('li');
+    clearLi.innerHTML = `<a class="dropdown-item small text-muted" href="javascript:void(0)" onclick="terrainEditor.selectSubCategory('', ''); return false;">清除选择</a>`;
+    dropdownMenu.appendChild(clearLi);
+    dropdownMenu.appendChild(document.createElement('li')).innerHTML = '<hr class="dropdown-divider m-1">';
 
+    // 2. 动态渲染子类别项
     if (subcategories && subcategories.length > 0) {
       subcategories.forEach(item => {
         const li = document.createElement('li');
-        li.className = 'dropdown-item d-flex justify-content-between align-items-center small py-2';
-        li.style.cursor = 'pointer';
-        li.setAttribute('onclick', `terrainEditor.selectSubCategory('${item.name}', this)`);
+        li.className = 'subcat-item-wrapper';
         
+        // 使用 flex 布局实现：名称区域（点击触发选择） + 删除按钮（点击触发删除）
+        const isActive = selectedValue === item.name;
         li.innerHTML = `
-          <span>${item.name} <small class="text-muted">(${item.count_area}/${item.count_db})</small></span>
-          <i class="bi bi-trash text-danger ms-2 delete-subcat-icon" 
-             title="删除该子类别" 
-             onclick="event.stopPropagation(); terrainEditor.handleDeleteSubCategory(${item.id}, '${item.name}')"></i>
+          <div class="subcat-item ${isActive ? 'active' : ''}" onclick="terrainEditor.selectSubCategory('${item.name}')">
+            <div class="subcat-name-wrapper">
+              <span>${item.name}</span>
+              <small class="text-muted ms-1">(${item.count_area}/${item.count_db})</small>
+            </div>
+            <span class="subcat-delete-btn" onclick="event.stopPropagation(); terrainEditor.handleDeleteSubCategory(${item.id}, '${item.name}')">
+              <i class="bi bi-trash small"></i>
+            </span>
+          </div>
         `;
         dropdownMenu.appendChild(li);
       });
@@ -2751,19 +2750,33 @@ class TerrainEditor {
       dropdownMenu.appendChild(emptyLi);
     }
 
-    // 更新输入框显示值
+    // 3. 更新当前选中状态显示
     if (selectedValue) {
-      subTypeInput.value = selectedValue;
+      if (selectedNameSpan) selectedNameSpan.textContent = selectedValue;
+      if (subTypeHiddenInput) subTypeHiddenInput.value = selectedValue;
+    } else {
+      if (selectedNameSpan) selectedNameSpan.textContent = '请选择或新增';
+      if (subTypeHiddenInput) subTypeHiddenInput.value = '';
     }
   }
 
-  selectSubCategory(name, element) {
-    const subTypeInput = document.getElementById('plotSubType');
-    if (subTypeInput) {
-      subTypeInput.value = name;
-      // 触发属性更新
-      this.updateActivePlotProperties({ subType: name });
+  selectSubCategory(name) {
+    const selectedNameSpan = document.getElementById('selectedSubTypeName');
+    const subTypeHiddenInput = document.getElementById('plotSubType');
+    
+    if (selectedNameSpan) selectedNameSpan.textContent = name || '请选择或新增';
+    if (subTypeHiddenInput) {
+      subTypeHiddenInput.value = name;
+      // 手动触发 change 事件，以便 editor.js 中的监听器能捕获到
+      const event = new Event('change', { bubbles: true });
+      subTypeHiddenInput.dispatchEvent(event);
     }
+
+    // 更新当前激活地块的属性
+    this.updateActivePlotProperties({ subType: name });
+    
+    // 重新渲染下拉列表以更新 active 样式
+    this.loadSubCategories(name);
   }
 
   async handleAddSubCategory() {
@@ -2774,19 +2787,18 @@ class TerrainEditor {
     }
 
     const name = prompt(`请输入新的 [${category}] 子类别名称:`);
-    if (!name) return;
+    if (!name || !name.trim()) return;
 
     try {
       const response = await fetch('/terrain/api/subcategories/add/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') },
-        body: JSON.stringify({ category, name, area_id: this.areaId })
+        body: JSON.stringify({ category, name: name.trim(), area_id: this.areaId })
       });
       const result = await response.json();
       if (result.code === 0) {
-        await this.loadSubCategories(name);
-        // 自动更新属性
-        this.updateActivePlotProperties({ subType: name });
+        // 新增成功后，自动选中该项并刷新列表
+        this.selectSubCategory(name.trim());
       } else {
         alert('新增失败: ' + result.msg);
       }
@@ -2807,12 +2819,13 @@ class TerrainEditor {
       const result = await response.json();
       if (result.code === 0) {
         // 如果当前选中的正是被删除的项，则清除选择
-        const subTypeInput = document.getElementById('plotSubType');
-        if (subTypeInput && subTypeInput.value === name) {
-          subTypeInput.value = '';
-          this.updateActivePlotProperties({ subType: '' });
+        const subTypeHiddenInput = document.getElementById('plotSubType');
+        if (subTypeHiddenInput && subTypeHiddenInput.value === name) {
+          this.selectSubCategory('');
+        } else {
+          // 否则只需刷新列表
+          this.loadSubCategories(subTypeHiddenInput ? subTypeHiddenInput.value : null);
         }
-        await this.loadSubCategories();
       } else {
         alert('删除失败: ' + result.msg);
       }
