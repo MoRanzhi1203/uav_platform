@@ -139,15 +139,21 @@
       right: 0;
       bottom: 0;
     }
-    .admin-label {
+    .admin-label, .admin-label-large {
       background: transparent !important;
       border: none !important;
       box-shadow: none !important;
       font-weight: bold;
-      color: #333;
-      text-shadow: 1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white;
-      font-size: 14px;
+      color: #2c3e50;
+      text-shadow: 2px 2px 4px rgba(255,255,255,0.9), -2px -2px 4px rgba(255,255,255,0.9);
       pointer-events: none;
+      white-space: nowrap;
+    }
+    .admin-label { font-size: 12px; }
+    .admin-label-large { 
+      font-size: 16px; 
+      letter-spacing: 1px;
+      color: #1a252f;
     }
   </style>
 {% endblock %}
@@ -369,6 +375,7 @@
 {% block extra_js %}
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <script src="https://unpkg.com/shpjs@latest/dist/shp.js"></script>
   
   <script src="{% static 'js/map/map_init.js' %}"></script>

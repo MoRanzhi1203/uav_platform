@@ -132,61 +132,148 @@ class TerrainEditor {
   // 加载行政区划边界 (调用 shp 文件)
   async loadAdminBoundaries() {
     try {
+      if (typeof shp === 'undefined') {
+        console.error('shpjs 库未找到，请确保已正确引入');
+        return;
+      }
+
+      // 确保 Proj4 已定义，这对 3857 -> 4326 转换至关重要
+      if (typeof proj4 !== 'undefined') {
+        // 定义 EPSG:3857 (Web Mercator) 的投影参数
+        proj4.defs("EPSG:3857","+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs");
+      }
+
       // 指向 static 下的 shp 文件目录
-      const shpUrl = '/static/shp/chongqing_admin_3857/chongqing_admin_3857';
+      // 使用绝对路径避免 URL 构造失败问题
+      const shpUrl = window.location.origin + '/static/shp/chongqing_admin_3857/chongqing_admin_3857';
       this.adminBoundaryColor = document.getElementById('adminBoundaryColor')?.value || '#4a90e2';
       
+      console.log('正在请求行政区划边界 (SHP):', shpUrl);
+      
       // 使用 shpjs 的通用方法加载并转换 GeoJSON
+      // 由于已配置 Proj4，shpjs 应该能够根据 .prj 文件自动完成转换
       const geojson = await shp(shpUrl);
       
-      if (geojson && geojson.features) {
-        // 过滤区县级边界，提高性能
-        const districts = geojson.features.filter(f => f.properties.fclass === 'admin_level6');
-        
-        // 分块加载以避免 UI 卡顿
-        const chunkSize = 10;
-        let index = 0;
-        
-        const loadChunk = () => {
-          const chunk = districts.slice(index, index + chunkSize);
-          if (chunk.length === 0) {
-            console.log('行政区划边界加载完成');
-            return;
-          }
-          
-          L.geoJSON({ type: 'FeatureCollection', features: chunk }, {
-            style: () => ({
-              color: this.adminBoundaryColor,
-              weight: 2,
-              opacity: 0.8,
-              fillOpacity: 0.05,
-              fillColor: this.adminBoundaryColor,
-              dashArray: '5, 5',
-              interactive: false // 确保不影响用户点击和绘制地块
-            }),
-            onEachFeature: (feature, layer) => {
-              // 显示区名标签
-              if (feature.properties && feature.properties.name) {
-                layer.bindTooltip(feature.properties.name, {
-                  permanent: true,
-                  direction: 'center',
-                  className: 'admin-label',
-                  opacity: 0.9,
-                  interactive: false
-                });
-              }
+      if (geojson) {
+        const data = Array.isArray(geojson) ? geojson[0] : geojson;
+        if (data && data.features && data.features.length > 0) {
+          // 智能过滤：仅保留区县级行政区划，过滤掉密集的乡镇和街道
+          let allFeatures = data.features;
+          let districts = allFeatures.filter(f => {
+            const p = f.properties;
+            // 1. 优先使用 admin_level (6 通常代表区县)
+            if (p.admin_level !== undefined) {
+              return parseInt(p.admin_level) <= 6;
             }
-          }).addTo(this.adminBoundaryLayer);
+            // 2. 检查 fclass 字段 (OSM 数据常见)
+            if (p.fclass) {
+              return p.fclass === 'admin_level6' || p.fclass === 'district' || p.fclass === 'county';
+            }
+            // 3. 根据名称后缀兜底过滤（排除乡、镇、街道、社区）
+            const name = p.name || p.NAME || '';
+            const isSubLevel = /街道$|镇$|乡$|社区$|村$/.test(name);
+            return !isSubLevel;
+          });
+
+          // 如果过滤后一个都没剩，则退回到显示全部（防止数据源定义不规范导致空白）
+          if (districts.length === 0) {
+            console.warn('行政区划层级过滤未命中，退回到全量显示');
+            districts = allFeatures;
+          }
+
+          console.log(`成功解析行政区划数据，原始数量: ${allFeatures.length}，过滤后区县数量: ${districts.length}`);
           
-          index += chunkSize;
-          setTimeout(loadChunk, 10); // 分散到下一个事件循环
-        };
-        
-        loadChunk();
+          // 增加强制手动转换逻辑，确保数据一定能落在 4326 范围内
+          if (typeof proj4 !== 'undefined') {
+            districts.forEach(f => {
+              if (f.geometry && f.geometry.coordinates) {
+                this._transformGeometry(f.geometry);
+              }
+            });
+            console.log('坐标系强制转换/检查完成 (3857 -> 4326)');
+          }
+
+          // 分块渲染以避免 UI 卡顿
+          const chunkSize = 50;
+          let index = 0;
+          
+          const loadChunk = () => {
+            const chunk = districts.slice(index, index + chunkSize);
+            if (chunk.length === 0) {
+              console.log('行政区划边界渲染完成');
+              // 如果勾选框默认是开着的，直接添加到地图
+              const adminToggle = document.getElementById('adminBoundaryToggle');
+              if (adminToggle && adminToggle.checked) {
+                this.adminBoundaryLayer.addTo(this.map);
+              }
+              return;
+            }
+            
+            L.geoJSON({ type: 'FeatureCollection', features: chunk }, {
+              style: () => ({
+                color: this.adminBoundaryColor,
+                weight: 2.5,      // 稍微加粗区县边界
+                opacity: 0.9,
+                fillOpacity: 0.03,
+                fillColor: this.adminBoundaryColor,
+                dashArray: '8, 8', // 更长的虚线
+                interactive: false
+              }),
+              onEachFeature: (feature, layer) => {
+                const props = feature.properties;
+                const name = props.name || props.NAME || props.district || props.city || props.COUNTY;
+                
+                if (name) {
+                  // 优化标签：只有区县级才显示永久标签，且增加背景阴影防止重叠
+                  layer.bindTooltip(name, {
+                    permanent: true,
+                    direction: 'center',
+                    className: 'admin-label-large', // 使用更大的样式名
+                    opacity: 1.0,
+                    interactive: false
+                  });
+                }
+              }
+            }).addTo(this.adminBoundaryLayer);
+            
+            index += chunkSize;
+            setTimeout(loadChunk, 10);
+          };
+          
+          loadChunk();
+        } else {
+          console.error('GeoJSON 数据解析失败或要素为空');
+        }
       }
     } catch (error) {
-      console.warn('行政区划边界加载失败，请检查 static/shp 路径或 shpjs 库是否引入:', error);
+      console.error('行政区划边界加载或渲染失败:', error);
+      console.warn('如果是 404，请确认 Django 是否开启了 static 目录下的 .shp 文件访问权限');
     }
+  }
+
+  // 内部辅助方法：递归转换几何坐标
+  _transformGeometry(geometry) {
+    if (!geometry || !geometry.coordinates) return;
+    
+    const transformPoint = (coord) => {
+      // 检查是否已经是 4326 (经纬度通常在 -180 到 180 之间)
+      if (Math.abs(coord[0]) > 180 || Math.abs(coord[1]) > 90) {
+        // 只有在坐标值明显偏大时才执行转换
+        const converted = proj4('EPSG:3857', 'EPSG:4326', [coord[0], coord[1]]);
+        coord[0] = converted[0];
+        coord[1] = converted[1];
+      }
+    };
+
+    const processCoords = (coords) => {
+      if (typeof coords[0] === 'number') {
+        transformPoint(coords);
+      } else {
+        coords.forEach(processCoords);
+      }
+    };
+
+    processCoords(geometry.coordinates);
   }
 
   // 更新行政边界颜色
@@ -235,31 +322,39 @@ class TerrainEditor {
   // 绘制 10m x 10m 参考网格
   drawReferenceGrid10m() {
     this.refGridLayer10m.clearLayers();
-    if (this.map.getZoom() < 17) return;
+    // 调低缩放限制，使其在缩放级别 16 也能显示（由于优化了绘制逻辑，性能影响较小）
+    if (this.map.getZoom() < 16) return;
     
     this._drawGridGeneric(this.refGridLayer10m, this.gridLatStep, this.gridLngStep, {
-      color: '#aaaaaa', weight: 0.5, opacity: 0.4
+      color: '#888888', // 稍微加深颜色
+      weight: 0.5, 
+      opacity: 0.3
     });
   }
 
   // 绘制 1km x 1km 参考网格
   drawReferenceGrid1km() {
     this.refGridLayer1km.clearLayers();
-    if (this.map.getZoom() < 11) return;
+    // 调低缩放限制，使其在缩放级别 10 也能显示
+    if (this.map.getZoom() < 10) return;
 
     this._drawGridGeneric(this.refGridLayer1km, this.gridLatStep1km, this.gridLngStep1km, {
-      color: '#aaaaaa', weight: 0.6, opacity: 0.25, dashArray: '5, 10'
+      color: '#4a90e2', // 改为较深的蓝色，更容易辨认
+      weight: 1.2,      // 稍微加宽
+      opacity: 0.5,     // 增加不透明度
+      dashArray: '10, 10' // 调整虚线比例
     });
   }
 
   // 通用网格绘制逻辑
   _drawGridGeneric(layerGroup, latStep, lngStep, style) {
-    const bounds = this.map.getBounds();
+    const bounds = this.map.getBounds().pad(0.5); // 增加 50% 的填充，减少频繁重绘感
     const north = bounds.getNorth();
     const south = bounds.getSouth();
     const east = bounds.getEast();
     const west = bounds.getWest();
     
+    // 对齐到步长
     const startLat = Math.floor(south / latStep) * latStep;
     const endLat = Math.ceil(north / latStep) * latStep;
     const startLng = Math.floor(west / lngStep) * lngStep;
@@ -267,17 +362,22 @@ class TerrainEditor {
     
     const gridStyle = { ...style, interactive: false };
     
+    // 限制绘制数量以保证性能
     let count = 0;
-    const maxLines = 300;
+    const maxLines = 500; // 稍微增加限制
 
+    // 绘制纬线 (水平线)
     for (let lat = startLat; lat <= endLat && count < maxLines; lat += latStep) {
-      L.polyline([[lat, startLng], [lat, endLng]], gridStyle).addTo(layerGroup);
+      // 确保经度范围覆盖当前视图
+      L.polyline([[lat, west], [lat, east]], gridStyle).addTo(layerGroup);
       count++;
     }
     
+    // 绘制经线 (垂直线)
     count = 0;
     for (let lng = startLng; lng <= endLng && count < maxLines; lng += lngStep) {
-      L.polyline([[startLat, lng], [endLat, lng]], gridStyle).addTo(layerGroup);
+      // 确保纬度范围覆盖当前视图
+      L.polyline([[south, lng], [north, lng]], gridStyle).addTo(layerGroup);
       count++;
     }
   }
