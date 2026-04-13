@@ -263,24 +263,27 @@ def subcategory_list(request):
         # 获取所有子类别
         subcats = TerrainSubCategory.objects.filter(category=category)
         
-        # 统计 m (全数据库数量)
-        total_counts = TerrainZone.objects.filter(category=category, is_deleted=False).values('type').annotate(m=Count('id'))
-        m_map = {item['type']: item['m'] for item in total_counts if item['type']}
+        # 统计 m (全数据库数量 - count_db)
+        total_counts = TerrainZone.objects.filter(category=category, is_deleted=False).values('type').annotate(count_db=Count('id'))
+        m_map = {item['type']: item['count_db'] for item in total_counts if item['type']}
         
-        # 统计 n (当前区域数量)
-        current_counts = TerrainZone.objects.filter(category=category, area_obj_id=area_id, is_deleted=False).values('type').annotate(n=Count('id'))
-        n_map = {item['type']: item['n'] for item in current_counts if item['type']}
+        # 统计 n (当前区域数量 - count_area)
+        current_counts = TerrainZone.objects.filter(category=category, area_obj_id=area_id, is_deleted=False).values('type').annotate(count_area=Count('id'))
+        n_map = {item['type']: item['count_area'] for item in current_counts if item['type']}
         
-        data = []
+        subcategories = []
         for sc in subcats:
-            data.append({
+            subcategories.append({
                 "id": sc.id,
                 "name": sc.name,
-                "n": n_map.get(sc.name, 0),
-                "m": m_map.get(sc.name, 0)
+                "count_area": n_map.get(sc.name, 0),
+                "count_db": m_map.get(sc.name, 0)
             })
             
-        return api_response(data=data)
+        return api_response(data={
+            "category": category,
+            "subcategories": subcategories
+        })
     except Exception as e:
         return api_error(msg=str(e), status=500)
 

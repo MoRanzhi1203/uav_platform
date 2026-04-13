@@ -2709,26 +2709,26 @@ class TerrainEditor {
     try {
       const response = await fetch(`/terrain/api/zones/subcategories/?category=${category}&area_id=${this.areaId || ''}`);
       const result = await response.json();
-      if (result.code === 0) {
-        this.renderSubCategoryList(result.data);
+      if (result.code === 0 && result.data) {
+        this.renderSubCategoryList(result.data.subcategories);
       }
     } catch (e) {
       console.error('加载子类别失败:', e);
     }
   }
 
-  renderSubCategoryList(data) {
+  renderSubCategoryList(subcategories) {
     const listEl = document.getElementById('subCategoryList');
     if (!listEl) return;
 
-    if (!data || data.length === 0) {
+    if (!subcategories || subcategories.length === 0) {
       listEl.innerHTML = '<div class="list-group-item text-muted text-center py-3">无子类别记录</div>';
       return;
     }
 
-    listEl.innerHTML = data.map(item => `
+    listEl.innerHTML = subcategories.map(item => `
       <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-2" style="cursor: pointer;" onclick="terrainEditor.selectSubCategory('${item.name}')">
-        <span style="font-size: 13px;">${item.name} <small class="text-muted">(${item.n}/${item.m})</small></span>
+        <span style="font-size: 13px;">${item.name} <small class="text-muted">(${item.count_area}/${item.count_db})</small></span>
         <i class="bi bi-x-circle text-danger" style="cursor: pointer;" onclick="event.stopPropagation(); terrainEditor.handleDeleteSubCategory(${item.id})"></i>
       </div>
     `).join('');
