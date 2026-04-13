@@ -340,15 +340,30 @@
         <div class="attribute-group">
           <label>地理信息</label>
           <div class="row">
-            <div class="col-6">
+            <div class="col-4">
               <p class="small mb-1">中心点</p>
-              <p id="centerPoint" class="text-muted">-</p>
+              <p id="centerPoint" class="text-muted" style="font-size: 10px;">-</p>
             </div>
-            <div class="col-6">
+            <div class="col-4">
               <p class="small mb-1">边界点</p>
               <p id="boundaryCount" class="text-muted">-</p>
             </div>
+            <div class="col-4">
+              <p class="small mb-1">要素</p>
+              <p id="elementCount" class="text-muted">-</p>
+            </div>
           </div>
+        </div>
+        
+        <hr>
+        <div class="attribute-group">
+          <label>要素列表 (Elements)</label>
+          <div id="elementList" class="small text-muted">
+            选中地块后查看要素
+          </div>
+          <button class="btn btn-sm btn-outline-primary mt-2 w-100" id="addElementBtn" disabled>
+            <i class="bi bi-plus"></i> 添加要素
+          </button>
         </div>
       </div>
     </div>

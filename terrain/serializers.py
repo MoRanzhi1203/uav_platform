@@ -1,16 +1,28 @@
 from rest_framework import serializers
-from .models import TerrainPlot
+from .models import TerrainArea, TerrainZone, TerrainElement
 
-class TerrainPlotSerializer(serializers.ModelSerializer):
+class TerrainAreaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TerrainPlot
+        model = TerrainArea
+        fields = '__all__'
+
+class TerrainElementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TerrainElement
+        fields = '__all__'
+
+class TerrainZoneSerializer(serializers.ModelSerializer):
+    elements = TerrainElementSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = TerrainZone
         fields = '__all__'
         read_only_fields = ('id', 'created_at', 'updated_at', 'is_deleted')
 
-    def validate_land_type(self, value):
-        allowed_types = ['forest', 'farmland', 'water', 'road', 'building', 'mixed']
-        if value not in allowed_types:
-            raise serializers.ValidationError(f"Invalid land type: {value}")
+    def validate_category(self, value):
+        allowed_categories = ['forest', 'farmland', 'water', 'road', 'building', 'mixed']
+        if value not in allowed_categories:
+            raise serializers.ValidationError(f"Invalid land category: {value}")
         return value
 
     def validate_risk_level(self, value):
@@ -24,3 +36,6 @@ class TerrainPlotSerializer(serializers.ModelSerializer):
         if not data.get('name'):
             data['name'] = "未命名地块"
         return super().to_internal_value(data)
+
+# 保留旧名以兼容（如果还有其他地方用到）
+TerrainPlotSerializer = TerrainZoneSerializer

@@ -222,12 +222,12 @@ new Vue({
     // 初始化地图
     initMap() {
       // 初始化 Leaflet 地图
-      this.map = L.map('terrainMap').setView([30.05, 107.60], 7);
+      this.map = L.map('terrainMap', {
+        attributionControl: false
+      }).setView([30.05, 107.60], 7);
       
       // 添加底图
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(this.map);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(this.map);
       
       // 初始化图层
       this.layers.terrain = L.layerGroup().addTo(this.map);

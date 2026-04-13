@@ -4,7 +4,8 @@ const mapConfig = {
   center: [30.600, 106.570],
   zoom: 14,
   minZoom: 8,
-  maxZoom: 18
+  maxZoom: 18,
+  attributionControl: false
 };
 
 // 基础地图图层

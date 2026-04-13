@@ -5,7 +5,8 @@ const mapConfig = {
   // 初始缩放级别调整，使重庆全境在画面中占约 1/3 高度和宽度
   zoom: 7,
   minZoom: 5,
-  maxZoom: 18
+  maxZoom: 18,
+  attributionControl: false // 禁用右下角 Leaflet 归属说明
 };
 
 // 基础地图图层配置 (供参考，实际使用时请通过 getBaseLayer 获取新实例)

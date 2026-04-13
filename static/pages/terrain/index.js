@@ -41,8 +41,8 @@ function initPage() {
 // 加载真实数据
 async function loadRealData() {
   try {
-    // 1. 加载地块列表
-    const response = await fetch('/terrain/api/plots/list/');
+    // 1. 加载区域列表 (Area List)
+    const response = await fetch('/terrain/api/areas/');
     const result = await response.json();
     
     if (result.code === 0) {
@@ -51,14 +51,13 @@ async function loadRealData() {
         id: item.id,
         name: item.name,
         area: item.area,
-        type: translateLandType(item.land_type),
-        land_type: item.land_type,
+        type: translateLandType(item.type),
+        land_type: item.type,
         risk_level: translateRiskLevel(item.risk_level),
         riskLevelRaw: item.risk_level,
         description: item.description,
-        coordinates: item.geom_json?.geometry?.coordinates || [],
+        boundary_json: item.boundary_json,
         center: [item.center_lat, item.center_lng],
-        geom_json: item.geom_json,
         updated_at: item.updated_at
       }));
 
@@ -70,17 +69,23 @@ async function loadRealData() {
         terrainMap.loadTerrains(terrainData.terrains);
       }
     } else {
-      console.error('加载地块数据失败:', result.message);
+      console.error('加载区域数据失败:', result.message);
     }
   } catch (e) {
-    console.error('请求地块数据异常:', e);
+    console.error('请求区域数据异常:', e);
   }
 }
 
 // 类型转换辅助函数
 function translateLandType(type) {
   const mapping = {
+    'mountain': '山地',
+    'hill': '丘陵',
+    'valley': '山谷',
+    'plateau': '高原',
+    'plain': '平原',
     'forest': '林区',
+    'farm': '农田',
     'farmland': '农田',
     'water': '水域',
     'road': '道路',
@@ -266,8 +271,8 @@ function initVue() {
         offcanvas.show();
       },
       viewDetail: function(terrain) {
-        // 跳转到编辑器进行编辑
-        window.location.href = `/terrain/editor/?id=${terrain.id}`;
+        // 直接跳转到地块编辑器，传递区域 ID
+        window.location.href = `/terrain/editor/?area_id=${terrain.id}`;
       }
     }
   });
