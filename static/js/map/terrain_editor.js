@@ -39,6 +39,7 @@ class TerrainEditor {
     this.historyIndex = -1;
     this.areaId = null; // 当前正在编辑的区域 ID
     this.areaData = null; // 区域基础信息
+    this.subcategoryOptionsByCategory = {};
     
     // 网格配置 (10m x 10m)
     this.gridLatStep = 0.0000898;
@@ -3006,7 +3007,8 @@ class TerrainEditor {
       const response = await fetch(`/terrain/api/zones/subcategories/?category=${category}&area_id=${this.areaId || ''}`);
       const result = await response.json();
       if (result.code === 0 && result.data) {
-        this.renderSubCategoryDropdown(result.data.subcategories, selectedValue);
+        this.subcategoryOptionsByCategory[category] = result.data.subcategories || [];
+        this.renderSubCategoryDropdown(this.subcategoryOptionsByCategory[category], selectedValue);
       }
     } catch (e) {
       console.error('加载子类别失败:', e);
@@ -3064,43 +3066,136 @@ class TerrainEditor {
     }
   }
 
+  showSubCategoryDescription(name, description, anchorElement = null) {
+    const preview = document.getElementById('subTypeDescriptionPreview');
+    if (!preview) return;
+    if (preview.parentElement !== document.body) {
+      document.body.appendChild(preview);
+    }
+
+    const titleEl = preview.querySelector('.subcat-desc-title');
+    const bodyEl = preview.querySelector('.subcat-desc-body');
+    if (!titleEl || !bodyEl) return;
+
+    const cleanDescription = typeof description === 'string' ? description.trim() : '';
+    titleEl.textContent = name || '子类别说明';
+
+    if (cleanDescription) {
+      bodyEl.textContent = cleanDescription;
+      bodyEl.classList.remove('subcat-desc-empty');
+    } else {
+      bodyEl.textContent = '无说明';
+      bodyEl.classList.add('subcat-desc-empty');
+    }
+
+    if (anchorElement) {
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const previewWidth = Math.min(240, window.innerWidth - 24);
+      const horizontalGap = 12;
+      const preferLeftOffset = anchorRect.left - previewWidth - horizontalGap;
+      const preferRightOffset = anchorRect.right + horizontalGap;
+      const topOffset = Math.max(12, Math.min(anchorRect.top - 4, window.innerHeight - 120));
+      const leftOffset = preferLeftOffset >= 12
+        ? preferLeftOffset
+        : Math.min(
+            Math.max(12, preferRightOffset),
+            Math.max(12, window.innerWidth - previewWidth - 12)
+          );
+
+      preview.style.top = `${topOffset}px`;
+      preview.style.left = `${leftOffset}px`;
+    } else {
+      preview.style.top = '12px';
+      preview.style.left = '12px';
+    }
+
+    preview.classList.add('show');
+    preview.setAttribute('aria-hidden', 'false');
+  }
+
+  hideSubCategoryDescription() {
+    const preview = document.getElementById('subTypeDescriptionPreview');
+    if (!preview) return;
+
+    preview.classList.remove('show');
+    preview.setAttribute('aria-hidden', 'true');
+    preview.style.left = '';
+    preview.style.top = '';
+  }
+
   renderSubCategoryDropdown(subcategories, selectedValue = null) {
     const dropdownMenu = document.getElementById('subTypeDropdownMenu');
     const selectedNameSpan = document.getElementById('selectedSubTypeName');
     const subTypeHiddenInput = document.getElementById('plotSubType');
+    const dropdownBtn = document.getElementById('subTypeDropdownBtn');
     if (!dropdownMenu) return;
+
+    this.hideSubCategoryDescription();
+    if (dropdownBtn && !dropdownBtn.dataset.descPreviewBound) {
+      dropdownBtn.addEventListener('hide.bs.dropdown', () => this.hideSubCategoryDescription());
+      dropdownBtn.dataset.descPreviewBound = 'true';
+    }
 
     // 清空现有列表
     dropdownMenu.innerHTML = '';
 
     // 1. 添加“清除选择”项
     const clearLi = document.createElement('li');
-    clearLi.innerHTML = `<a class="dropdown-item small text-muted" href="javascript:void(0)" onclick="terrainEditor.selectSubCategory(''); return false;">清除选择</a>`;
+    const clearLink = document.createElement('a');
+    clearLink.className = 'dropdown-item small text-muted';
+    clearLink.href = 'javascript:void(0)';
+    clearLink.textContent = '清除选择';
+    clearLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      this.selectSubCategory('');
+    });
+    clearLi.appendChild(clearLink);
     dropdownMenu.appendChild(clearLi);
     dropdownMenu.appendChild(document.createElement('li')).innerHTML = '<hr class="dropdown-divider m-1">';
+    dropdownMenu.onmouseleave = () => this.hideSubCategoryDescription();
 
     // 2. 动态渲染子类别项
     if (subcategories && subcategories.length > 0) {
       subcategories.forEach(item => {
         const li = document.createElement('li');
         li.className = 'subcat-item-wrapper';
-        
-        // 使用 flex 布局实现：名称区域（点击触发选择） + 删除按钮（点击触发删除，仅限非默认项）
-        const isActive = selectedValue === item.name;
-        const deleteBtnHtml = item.is_default ? '' : `
-            <span class="subcat-delete-btn" onclick="event.stopPropagation(); terrainEditor.handleDeleteSubCategory(${item.id}, '${item.name}')">
-              <i class="bi bi-trash small"></i>
-            </span>`;
-            
-        li.innerHTML = `
-          <div class="subcat-item ${isActive ? 'active' : ''}" onclick="terrainEditor.selectSubCategory('${item.name}')">
-            <div class="subcat-name-wrapper">
-              <span>${item.name}</span>
-              <small class="text-muted ms-1">(${item.count_area}/${item.count_db})</small>
-            </div>
-            ${deleteBtnHtml}
-          </div>
-        `;
+
+        const itemRow = document.createElement('div');
+        itemRow.className = `subcat-item ${selectedValue === item.name ? 'active' : ''}`;
+        itemRow.addEventListener('click', () => this.selectSubCategory(item.name));
+        itemRow.addEventListener('mouseenter', () => {
+          this.showSubCategoryDescription(item.name, item.description || '', itemRow);
+        });
+        itemRow.addEventListener('focusin', () => {
+          this.showSubCategoryDescription(item.name, item.description || '', itemRow);
+        });
+
+        const nameWrapper = document.createElement('div');
+        nameWrapper.className = 'subcat-name-wrapper';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = item.name;
+        nameWrapper.appendChild(nameSpan);
+
+        const countSpan = document.createElement('small');
+        countSpan.className = 'text-muted ms-1';
+        countSpan.textContent = `(${item.count_area}/${item.count_db})`;
+        nameWrapper.appendChild(countSpan);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'subcat-delete-btn';
+        deleteBtn.title = `删除 ${item.name}`;
+        deleteBtn.setAttribute('aria-label', `删除 ${item.name}`);
+        deleteBtn.textContent = '×';
+        deleteBtn.addEventListener('click', (event) => {
+          event.stopPropagation();
+          this.handleDeleteSubCategory(item.id, item.name);
+        });
+
+        itemRow.appendChild(nameWrapper);
+        itemRow.appendChild(deleteBtn);
+        li.appendChild(itemRow);
         dropdownMenu.appendChild(li);
       });
     } else {
@@ -3122,7 +3217,8 @@ class TerrainEditor {
   selectSubCategory(name) {
     const selectedNameSpan = document.getElementById('selectedSubTypeName');
     const subTypeHiddenInput = document.getElementById('plotSubType');
-    
+    this.hideSubCategoryDescription();
+
     if (selectedNameSpan) selectedNameSpan.textContent = name || '请选择或新增';
     if (subTypeHiddenInput) {
       subTypeHiddenInput.value = name;
@@ -3138,31 +3234,191 @@ class TerrainEditor {
     this.loadSubCategories(name);
   }
 
-  async handleAddSubCategory() {
+  getSubCategoryModalInstance() {
+    const modalEl = document.getElementById('subCategoryModal');
+    if (!modalEl || typeof bootstrap === 'undefined') {
+      return null;
+    }
+
+    return bootstrap.Modal.getOrCreateInstance(modalEl);
+  }
+
+  ensureSubCategoryModalBound() {
+    if (this._subCategoryModalBound) return;
+
+    const modalEl = document.getElementById('subCategoryModal');
+    const formEl = document.getElementById('subCategoryForm');
+    const nameInput = document.getElementById('subCategoryNameInput');
+    const descInput = document.getElementById('subCategoryDescriptionInput');
+    const categoryInput = document.getElementById('subCategoryModalCategory');
+    const saveBtn = document.getElementById('saveSubCategoryBtn');
+
+    if (!modalEl || !formEl || !nameInput || !descInput || !categoryInput || !saveBtn) {
+      return;
+    }
+
+    formEl.addEventListener('submit', this.submitAddSubCategoryForm.bind(this));
+    modalEl.addEventListener('shown.bs.modal', () => {
+      nameInput.focus();
+      nameInput.select();
+    });
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      formEl.reset();
+      formEl.classList.remove('was-validated');
+      categoryInput.value = '';
+      saveBtn.disabled = false;
+    });
+
+    this._subCategoryModalBound = true;
+  }
+
+  getCurrentCategoryDisplayName(category) {
+    const activeItem = document.querySelector('#plotTypeDropdownMenu .dropdown-item.active');
+    if (activeItem) {
+      return activeItem.textContent.trim();
+    }
+
+    const categoryMap = {
+      forest: '林区',
+      farmland: '农田',
+      building: '建筑',
+      water: '水域',
+      road: '道路',
+      bare: '裸地'
+    };
+    return categoryMap[category] || category;
+  }
+
+  getSubCategoryExampleData(category) {
+    const categoryItems = this.subcategoryOptionsByCategory[category];
+    const firstItem = Array.isArray(categoryItems) ? categoryItems.find(item => item && item.name) : null;
+
+    if (firstItem) {
+      return {
+        name: firstItem.name,
+        description: (firstItem.description || '').trim()
+      };
+    }
+
+    const fallbackMap = {
+      forest: {
+        name: '针叶林',
+        description: '以松、杉等针叶树种为主的林地，树冠形态较整齐，常见于山地或人工培育区域。'
+      },
+      farmland: {
+        name: '普通农田',
+        description: '常规耕作农田，主要用于粮食或经济作物种植，地块形态相对规则。'
+      },
+      building: {
+        name: '民房',
+        description: '以居住功能为主的普通房屋建筑，多分布于村庄或居民点内部。'
+      },
+      water: {
+        name: '河流',
+        description: '天然形成、持续流动的地表水体，具有较稳定的主河道形态。'
+      },
+      road: {
+        name: '主干道',
+        description: '承担主要交通组织功能的道路，通行等级和承载能力较高。'
+      },
+      bare: {
+        name: '施工裸地',
+        description: '受施工、堆放或临时扰动影响形成的裸露地表区域，植被覆盖较少。'
+      }
+    };
+
+    return fallbackMap[category] || {
+      name: '针叶林',
+      description: '以松、杉等针叶树种为主的林地，树冠形态较整齐，常见于山地或人工培育区域。'
+    };
+  }
+
+  handleAddSubCategory() {
     const category = document.getElementById('plotType')?.value;
     if (!category) {
       alert('请先选择地块大类');
       return;
     }
 
-    const name = prompt(`请输入新的 [${category}] 子类别名称:`);
-    if (!name || !name.trim()) return;
+    this.ensureSubCategoryModalBound();
+
+    const modalEl = document.getElementById('subCategoryModal');
+    const titleEl = document.getElementById('subCategoryModalLabel');
+    const subtitleEl = document.getElementById('subCategoryModalSubtitle');
+    const categoryTagEl = document.getElementById('subCategoryModalCategoryTag');
+    const categoryInput = document.getElementById('subCategoryModalCategory');
+    const nameInput = document.getElementById('subCategoryNameInput');
+    const descInput = document.getElementById('subCategoryDescriptionInput');
+    const descExampleEl = document.getElementById('subCategoryDescriptionExample');
+    const modal = this.getSubCategoryModalInstance();
+    const categoryName = this.getCurrentCategoryDisplayName(category);
+    const exampleData = this.getSubCategoryExampleData(category);
+    const namePlaceholder = `如：${exampleData.name}`;
+    const descExampleText = exampleData.description || '暂无示例说明';
+
+    if (!modalEl || !titleEl || !subtitleEl || !categoryTagEl || !categoryInput || !nameInput || !descInput || !descExampleEl || !modal) {
+      return;
+    }
+
+    titleEl.innerHTML = `新增 <span class="subcat-modal-category-tag" id="subCategoryModalCategoryTag">${categoryName}</span> 子类别`;
+    subtitleEl.textContent = `为${categoryName}补充新的子类别名称与说明`;
+    categoryInput.value = category;
+    nameInput.value = '';
+    nameInput.placeholder = namePlaceholder;
+    descInput.value = '';
+    descExampleEl.textContent = `示例：${descExampleText}`;
+    modal.show();
+  }
+
+  async submitAddSubCategoryForm(event) {
+    event.preventDefault();
+
+    const formEl = document.getElementById('subCategoryForm');
+    const categoryInput = document.getElementById('subCategoryModalCategory');
+    const nameInput = document.getElementById('subCategoryNameInput');
+    const descInput = document.getElementById('subCategoryDescriptionInput');
+    const saveBtn = document.getElementById('saveSubCategoryBtn');
+    const modal = this.getSubCategoryModalInstance();
+
+    if (!formEl || !categoryInput || !nameInput || !descInput || !saveBtn || !modal) {
+      return;
+    }
+
+    const category = categoryInput.value;
+    const name = nameInput.value.trim();
+    const description = descInput.value.trim();
+
+    if (!name) {
+      formEl.classList.add('was-validated');
+      nameInput.focus();
+      return;
+    }
+
+    saveBtn.disabled = true;
 
     try {
       const response = await fetch('/terrain/api/subcategories/add/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') },
-        body: JSON.stringify({ category, name: name.trim(), area_id: this.areaId })
+        body: JSON.stringify({
+          category,
+          name: name.trim(),
+          description,
+          area_id: this.areaId
+        })
       });
       const result = await response.json();
       if (result.code === 0) {
-        // 新增成功后，自动选中该项并刷新列表
+        modal.hide();
         this.selectSubCategory(name.trim());
       } else {
         alert('新增失败: ' + result.msg);
+        saveBtn.disabled = false;
       }
     } catch (e) {
       console.error('新增子类别异常:', e);
+      alert('新增子类别异常，请稍后重试');
+      saveBtn.disabled = false;
     }
   }
 

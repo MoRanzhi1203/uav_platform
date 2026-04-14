@@ -1,6 +1,7 @@
 import logging
 import traceback
 import json
+from pathlib import Path
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
@@ -16,6 +17,106 @@ from .serializers import (
 from common.responses import api_response, api_error
 
 logger = logging.getLogger(__name__)
+SUBCATEGORY_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "terrain_subcategories.json"
+
+
+def load_subcategory_config():
+    """读取并标准化子类别 JSON 配置。"""
+    if not SUBCATEGORY_CONFIG_PATH.exists():
+        return {}
+
+    try:
+        with SUBCATEGORY_CONFIG_PATH.open("r", encoding="utf-8") as fp:
+            config = json.load(fp)
+    except (OSError, json.JSONDecodeError):
+        logger.warning("Failed to read subcategory config: %s", SUBCATEGORY_CONFIG_PATH)
+        return {}
+
+    if not isinstance(config, dict):
+        return {}
+
+    normalized_config = {}
+    for category, raw_items in config.items():
+        if not isinstance(raw_items, list):
+            continue
+
+        seen_names = set()
+        normalized_items = []
+        for raw_item in raw_items:
+            if isinstance(raw_item, str):
+                name = raw_item.strip()
+                description = ""
+            elif isinstance(raw_item, dict):
+                raw_name = raw_item.get("name", "")
+                raw_description = raw_item.get("description", "")
+                if not isinstance(raw_name, str):
+                    continue
+                if raw_description is None:
+                    raw_description = ""
+                if not isinstance(raw_description, str):
+                    raw_description = str(raw_description)
+                name = raw_name.strip()
+                description = raw_description.strip()
+            else:
+                continue
+
+            if not name or name in seen_names:
+                continue
+
+            seen_names.add(name)
+            normalized_items.append({
+                "name": name,
+                "description": description,
+            })
+
+        normalized_config[category] = normalized_items
+
+    return normalized_config
+
+
+def save_subcategory_config(config):
+    """保存子类别 JSON 配置。"""
+    try:
+        with SUBCATEGORY_CONFIG_PATH.open("w", encoding="utf-8") as fp:
+            json.dump(config, fp, ensure_ascii=False, indent=2)
+            fp.write("\n")
+    except OSError:
+        logger.warning("Failed to write subcategory config: %s", SUBCATEGORY_CONFIG_PATH)
+
+
+def upsert_subcategory_in_config(category, name, description=""):
+    """新增或更新 JSON 配置中的子类别及说明。"""
+    config = load_subcategory_config()
+    clean_name = (name or "").strip()
+    clean_description = (description or "").strip()
+    if not clean_name:
+        return ""
+
+    category_items = config.setdefault(category, [])
+    for item in category_items:
+        if item["name"] == clean_name:
+            item["description"] = clean_description
+            save_subcategory_config(config)
+            return clean_description
+
+    category_items.append({
+        "name": clean_name,
+        "description": clean_description,
+    })
+    save_subcategory_config(config)
+    return clean_description
+
+
+def remove_subcategory_from_config(category, name):
+    """删除 JSON 配置中的子类别，避免后续同步命令重新创建。"""
+    config = load_subcategory_config()
+    category_items = config.get(category, [])
+    updated_items = [item for item in category_items if item["name"] != name]
+    if updated_items == category_items:
+        return
+
+    config[category] = updated_items
+    save_subcategory_config(config)
 
 # 地形管理主页 (区域列表页)
 def terrain_index(request):
@@ -362,9 +463,12 @@ def subcategory_list(request):
     try:
         category = request.query_params.get('category')
         area_id = request.query_params.get('area_id')
+        config = load_subcategory_config()
         
         # 获取所有子类别
-        subcats = TerrainSubCategory.objects.filter(category=category)
+        subcats = list(TerrainSubCategory.objects.filter(category=category).order_by('id'))
+        config_items = config.get(category, [])
+        config_name_set = {item["name"] for item in config_items}
         
         # 统计 m (全数据库数量 - count_db)
         total_counts = TerrainZone.objects.filter(category=category, is_deleted=False).values('type').annotate(count_db=Count('id'))
@@ -378,14 +482,32 @@ def subcategory_list(request):
             n_map = {item['type']: item['count_area'] for item in current_counts if item['type']}
         
         subcategories = []
-        for sc in subcats:
+        subcat_map = {sc.name: sc for sc in subcats}
+
+        for item in config_items:
+            sc = subcat_map.pop(item["name"], None)
+            if not sc:
+                continue
+
             subcategories.append({
                 "id": sc.id,
                 "name": sc.name,
+                "description": item.get("description", ""),
                 "is_default": sc.is_default,
                 "count_area": n_map.get(sc.name, 0),
                 "count_db": m_map.get(sc.name, 0)
             })
+
+        for sc in subcats:
+            if sc.name not in config_name_set:
+                subcategories.append({
+                    "id": sc.id,
+                    "name": sc.name,
+                    "description": "",
+                    "is_default": sc.is_default,
+                    "count_area": n_map.get(sc.name, 0),
+                    "count_db": m_map.get(sc.name, 0)
+                })
             
         return api_response(data={
             "category": category,
@@ -401,11 +523,26 @@ def add_subcategory(request):
     try:
         category = request.data.get('category')
         name = request.data.get('name')
+        description = request.data.get('description', '')
         if not category or not name:
             return api_error(msg="参数不完整")
-            
-        subcat, created = TerrainSubCategory.objects.get_or_create(category=category, name=name)
-        return api_response(data=TerrainSubCategorySerializer(subcat).data, msg="子类别已新增")
+
+        clean_name = str(name).strip()
+        clean_description = str(description or '').strip()
+        subcat, created = TerrainSubCategory.objects.get_or_create(
+            category=category,
+            name=clean_name,
+            defaults={"is_default": True},
+        )
+        if not created and not subcat.is_default:
+            subcat.is_default = True
+            subcat.save(update_fields=["is_default"])
+
+        upsert_subcategory_in_config(category, clean_name, clean_description)
+        return api_response(data={
+            **TerrainSubCategorySerializer(subcat).data,
+            "description": clean_description,
+        }, msg="子类别已新增")
     except Exception as e:
         return api_error(msg=str(e), status=500)
 
@@ -416,17 +553,14 @@ def delete_subcategory(request):
     try:
         subcat_id = request.data.get('id')
         subcat = get_object_or_404(TerrainSubCategory, id=subcat_id)
-        
-        # 1. 系统默认项不允许删除
-        if getattr(subcat, 'is_default', False):
-            return api_error(msg=f"无法删除：【{subcat.name}】是系统预定义的默认子类别，不允许删除。")
 
-        # 2. 业务规则检查：是否有地块正在使用此子类别
+        # 业务规则检查：是否有地块正在使用此子类别
         # 我们在地块中存储的是 sub_type (字符串名称)，而不是外键，所以需要查名称
         usage_count = TerrainZone.objects.filter(category=subcat.category, type=subcat.name, is_deleted=False).count()
         if usage_count > 0:
             return api_error(msg=f"无法删除：当前有 {usage_count} 个地块正使用该子类别。请先修改这些地块的分类。")
-            
+
+        remove_subcategory_from_config(subcat.category, subcat.name)
         subcat.delete()
         return api_response(msg="子类别已删除")
     except Exception as e:

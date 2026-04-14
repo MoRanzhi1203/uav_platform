@@ -1,71 +1,106 @@
-from django.core.management.base import BaseCommand
-from terrain.models import TerrainSubCategory
+import json
+from pathlib import Path
+
+from django.core.management.base import BaseCommand, CommandError
+from terrain.models import TerrainSubCategory, TerrainZone
+
+
+PLOT_CATEGORIES = {
+    "forest": "林区",
+    "farmland": "农田",
+    "building": "建筑",
+    "water": "水域",
+    "road": "道路",
+    "bare": "裸地",
+}
+
+SUBCATEGORY_CONFIG_PATH = (
+    Path(__file__).resolve().parents[2] / "config" / "terrain_subcategories.json"
+)
+
 
 class Command(BaseCommand):
     help = 'Initialize default terrain subcategories'
 
+    def load_subcategory_config(self):
+        if not SUBCATEGORY_CONFIG_PATH.exists():
+            raise CommandError(f'Config file not found: {SUBCATEGORY_CONFIG_PATH}')
+
+        try:
+            with SUBCATEGORY_CONFIG_PATH.open('r', encoding='utf-8') as fp:
+                config = json.load(fp)
+        except json.JSONDecodeError as exc:
+            raise CommandError(
+                f'Invalid JSON in config file: {SUBCATEGORY_CONFIG_PATH}'
+            ) from exc
+
+        if not isinstance(config, dict):
+            raise CommandError('Subcategory config must be a JSON object.')
+
+        missing_categories = [key for key in PLOT_CATEGORIES if key not in config]
+        if missing_categories:
+            raise CommandError(
+                f'Missing categories in config: {", ".join(missing_categories)}'
+            )
+
+        invalid_categories = [key for key in config if key not in PLOT_CATEGORIES]
+        if invalid_categories:
+            raise CommandError(
+                f'Unknown categories in config: {", ".join(invalid_categories)}'
+            )
+
+        normalized_config = {}
+        for category in PLOT_CATEGORIES:
+            subcategories = config[category]
+            if not isinstance(subcategories, list):
+                raise CommandError(
+                    f'Category "{category}" must map to a list of subcategory items.'
+                )
+
+            normalized_names = []
+            seen_names = set()
+            for raw_item in subcategories:
+                if isinstance(raw_item, str):
+                    clean_name = raw_item.strip()
+                elif isinstance(raw_item, dict):
+                    raw_name = raw_item.get("name", "")
+                    if not isinstance(raw_name, str):
+                        raise CommandError(
+                            f'Category "{category}" contains an invalid subcategory item.'
+                        )
+                    clean_name = raw_name.strip()
+                else:
+                    raise CommandError(
+                        f'Category "{category}" contains an invalid subcategory item.'
+                    )
+
+                if not clean_name:
+                    raise CommandError(
+                        f'Category "{category}" contains an invalid subcategory name.'
+                    )
+
+                if clean_name in seen_names:
+                    continue
+
+                seen_names.add(clean_name)
+                normalized_names.append(clean_name)
+
+            normalized_config[category] = normalized_names
+
+        return normalized_config
+
     def handle(self, *args, **options):
-        default_config = {
-            "plot_categories": [
-                {
-                    "key": "forest",
-                    "name": "林区",
-                    "default_subcategories": [
-                        "针叶林", "阔叶林", "混交林", "竹林", "灌木林", "经济林", 
-                        "果林", "人工林", "天然林", "防护林", "次生林", "疏林地"
-                    ]
-                },
-                {
-                    "key": "farmland",
-                    "name": "农田",
-                    "default_subcategories": [
-                        "普通农田", "水田", "旱地", "梯田", "坡耕地", "菜地", 
-                        "果园", "茶园", "大棚", "水浇地", "玉米地", 
-                        "水稻田", "小麦地", "油菜地", "药材地", "休耕地"
-                    ]
-                },
-                {
-                    "key": "building",
-                    "name": "建筑",
-                    "default_subcategories": [
-                        "民房", "村居建筑", "公共建筑", "仓库", "厂房", 
-                        "农业设施建筑", "光伏设施", "临时建筑", "废弃建筑", "学校", 
-                        "医疗点", "办公建筑", "旅游服务建筑"
-                    ]
-                },
-                {
-                    "key": "water",
-                    "name": "水域",
-                    "default_subcategories": [
-                        "河流", "溪流", "水库", "湖泊", "池塘", "水渠", 
-                        "鱼塘", "湿地", "蓄水池", "山塘", "灌溉渠", "排水沟"
-                    ]
-                },
-                {
-                    "key": "road",
-                    "name": "道路",
-                    "default_subcategories": [
-                        "主干道", "次干道", "村道", "乡道", "机耕道", 
-                        "田间道路", "山路", "土路", "硬化道路", "步道", 
-                        "支路", "生产便道"
-                    ]
-                },
-                {
-                    "key": "bare",
-                    "name": "裸地",
-                    "default_subcategories": [
-                        "草地", "荒地", "沙地", "沙滩", "滩涂", "裸土", 
-                        "裸岩地", "碎石地", "鹅卵石地", "空场地", 
-                        "施工空地", "河滩地"
-                    ]
-                }
-            ]
-        }
+        subcategory_config = self.load_subcategory_config()
 
         created_count = 0
-        for cat_config in default_config["plot_categories"]:
-            category = cat_config["key"]
-            for sub_name in cat_config["default_subcategories"]:
+        updated_count = 0
+        deleted_count = 0
+        demoted_count = 0
+
+        for category in PLOT_CATEGORIES:
+            sub_names = subcategory_config[category]
+
+            for sub_name in sub_names:
                 obj, created = TerrainSubCategory.objects.get_or_create(
                     category=category,
                     name=sub_name,
@@ -73,8 +108,44 @@ class Command(BaseCommand):
                 )
                 if not created and not obj.is_default:
                     obj.is_default = True
-                    obj.save()
+                    obj.save(update_fields=['is_default'])
+                    updated_count += 1
                 if created:
                     created_count += 1
 
-        self.stdout.write(self.style.SUCCESS(f'Successfully initialized {created_count} subcategories'))
+            obsolete_defaults = TerrainSubCategory.objects.filter(
+                category=category,
+                is_default=True,
+            ).exclude(name__in=sub_names)
+
+            for subcategory in obsolete_defaults:
+                usage_count = TerrainZone.objects.filter(
+                    category=category,
+                    type=subcategory.name,
+                    is_deleted=False,
+                ).count()
+
+                if usage_count > 0:
+                    subcategory.is_default = False
+                    subcategory.save(update_fields=['is_default'])
+                    demoted_count += 1
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'Subcategory "{subcategory.name}" is still in use, '
+                            'demoted from default instead of being deleted.'
+                        )
+                    )
+                    continue
+
+                subcategory.delete()
+                deleted_count += 1
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                'Subcategory sync complete: '
+                f'created={created_count}, '
+                f'updated={updated_count}, '
+                f'deleted={deleted_count}, '
+                f'demoted={demoted_count}'
+            )
+        )

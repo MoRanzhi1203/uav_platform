@@ -294,6 +294,35 @@
       border-color: #93c5fd;
       box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
     }
+    .editor-select-dropdown .dropdown-toggle {
+      width: 100%;
+      min-height: 44px;
+      padding: 11px 13px;
+      border: 1px solid #d4dbe4;
+      border-radius: 12px;
+      background: #fff;
+      color: #1f2937;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .editor-select-dropdown .dropdown-toggle:hover,
+    .editor-select-dropdown .dropdown-toggle:active,
+    .editor-select-dropdown .dropdown-toggle.show {
+      border-color: #cbd5e1;
+      background: #fff;
+      color: #1f2937;
+    }
+    .editor-select-dropdown .dropdown-toggle::after {
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .editor-select-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .attribute-group textarea {
       min-height: 84px;
       resize: vertical;
@@ -662,7 +691,9 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      position: relative;
       padding: 0.4rem 0.8rem;
+      padding-right: 2rem;
       cursor: pointer;
       font-size: 0.875rem;
       transition: background-color 0.2s;
@@ -676,21 +707,173 @@
     }
     .subcat-name-wrapper {
       flex: 1;
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      margin-right: 10px;
+      margin-right: 0;
     }
     .subcat-delete-btn {
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: #dc3545;
-      opacity: 0.6;
-      transition: all 0.2s;
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 16px;
+      line-height: 1;
+      font-weight: 500;
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.18s ease, color 0.18s ease, background-color 0.18s ease;
+    }
+    .subcat-item:hover .subcat-delete-btn,
+    .subcat-item:focus-within .subcat-delete-btn {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
     }
     .subcat-delete-btn:hover {
-      opacity: 1;
-      background-color: rgba(220, 53, 69, 0.1);
+      background-color: rgba(239, 68, 68, 0.12);
+      color: #dc2626;
+    }
+    .subcat-delete-btn:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+    }
+    #subTypeDropdownWrapper {
+      position: relative;
+    }
+    .subcat-desc-preview {
+      position: fixed;
+      width: 240px;
+      max-width: min(240px, calc(100vw - 24px));
+      padding: 10px 12px;
+      border: 1px solid #dbe3ec;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+      display: none;
+      z-index: 4000;
+      pointer-events: none;
+    }
+    .subcat-desc-preview.show {
+      display: block;
+    }
+    .subcat-desc-title {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+    .subcat-desc-body {
+      font-size: 0.82rem;
+      line-height: 1.55;
+      color: #475569;
+      white-space: normal;
+      word-break: break-word;
+    }
+    .subcat-desc-body.subcat-desc-empty {
+      color: #94a3b8;
+      font-style: italic;
+    }
+    .subcat-action-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .subcat-add-btn {
+      height: 44px;
+      min-width: 44px;
+      width: 44px;
+      padding: 0;
+      border: 1px solid #3b82f6;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #4f8df7 0%, #3b82f6 100%);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-weight: 600;
+      box-shadow: 0 10px 20px rgba(59, 130, 246, 0.18);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+    }
+    .subcat-add-btn:hover,
+    .subcat-add-btn:focus {
+      color: #fff;
+      background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+    }
+    .subcat-add-btn i {
+      font-size: 1.12rem;
+      font-weight: 700;
+      -webkit-text-stroke: 0.35px currentColor;
+    }
+    .subcat-modal .modal-content {
+      border: 1px solid #dbe3ec;
+      border-radius: 18px;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+    }
+    .subcat-modal .modal-header {
+      padding: 16px 20px;
+      background: linear-gradient(180deg, #f8fbff 0%, #f4f8fd 100%);
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .subcat-modal .modal-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .subcat-modal-category-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(59, 130, 246, 0.18);
+      background: rgba(59, 130, 246, 0.08);
+      color: #2563eb;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    .subcat-modal .modal-body {
+      padding: 18px 20px 10px;
+    }
+    .subcat-modal .modal-footer {
+      padding: 14px 20px 18px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .subcat-modal .form-label {
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 8px;
+    }
+    .subcat-modal .form-control {
+      border-radius: 12px;
+      border-color: #d4dbe4;
+      padding: 0.7rem 0.9rem;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
+    }
+    .subcat-modal .form-control:focus {
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+    }
+    .subcat-modal-help {
+      font-size: 0.82rem;
+      color: #64748b;
     }
     @media (max-width: 1440px) {
       .editor-body {
@@ -944,9 +1127,9 @@
           
           <div class="attribute-group">
             <label for="plotType">地块类型</label>
-            <div class="dropdown w-100" id="plotTypeDropdownWrapper">
-              <button class="btn btn-sm btn-outline-secondary w-100 text-start dropdown-toggle d-flex align-items-center" type="button" id="plotTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                <span id="selectedPlotTypeName" class="d-flex align-items-center flex-grow-1">
+            <div class="dropdown w-100 editor-select-dropdown" id="plotTypeDropdownWrapper">
+              <button class="btn btn-sm text-start dropdown-toggle d-flex align-items-center" type="button" id="plotTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                <span id="selectedPlotTypeName" class="d-flex align-items-center flex-grow-1 editor-select-label">
                   <span class="layer-color me-2" style="background-color: #2ecc71;"></span>
                   <span>林区</span>
                 </span>
@@ -964,18 +1147,22 @@
           </div>
         
         <div class="attribute-group" id="subTypeGroup" style="display: none;">
-          <label>子类型 / 备注</label>
-          <div class="d-flex gap-1 align-items-center">
-            <div class="dropdown flex-grow-1" id="subTypeDropdownWrapper">
-              <button class="btn btn-sm btn-outline-secondary w-100 text-start dropdown-toggle d-flex align-items-center" type="button" id="subTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                <span id="selectedSubTypeName" class="text-truncate flex-grow-1" style="max-width: 180px;">请选择或新增</span>
+          <label>子类型</label>
+          <div class="subcat-action-row">
+            <div class="dropdown flex-grow-1 editor-select-dropdown" id="subTypeDropdownWrapper">
+              <div id="subTypeDescriptionPreview" class="subcat-desc-preview" aria-hidden="true">
+                <div class="subcat-desc-title">子类别说明</div>
+                <div class="subcat-desc-body subcat-desc-empty">无说明</div>
+              </div>
+              <button class="btn btn-sm text-start dropdown-toggle d-flex align-items-center" type="button" id="subTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                <span id="selectedSubTypeName" class="flex-grow-1 editor-select-label">请选择或新增</span>
               </button>
               <ul class="dropdown-menu w-100 shadow-sm" id="subTypeDropdownMenu" style="max-height: 250px; overflow-y: auto;">
                 <!-- 动态渲染子类型项 -->
               </ul>
               <input type="hidden" id="plotSubType" value="">
             </div>
-            <button class="btn btn-sm btn-primary" type="button" id="addNewSubCatBtn" title="新增子类别">
+            <button class="subcat-add-btn" type="button" id="addNewSubCatBtn" title="新增子类别" aria-label="新增子类别">
               <i class="bi bi-plus-lg"></i>
             </button>
           </div>
@@ -1012,6 +1199,44 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade subcat-modal" id="subCategoryModal" tabindex="-1" aria-labelledby="subCategoryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="subCategoryModalLabel">
+            新增
+            <span class="subcat-modal-category-tag" id="subCategoryModalCategoryTag">当前地块类型</span>
+            子类别
+          </h5>
+          <div class="small text-muted mt-1" id="subCategoryModalSubtitle">为当前地块类型补充新的子类别名称与说明</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="subCategoryForm">
+        <div class="modal-body">
+          <input type="hidden" id="subCategoryModalCategory">
+            <div class="alert alert-danger d-none" id="subCategoryFormAlert" role="alert"></div>
+          <div class="mb-3">
+            <label for="subCategoryNameInput" class="form-label">子类别名称 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="subCategoryNameInput" maxlength="100" placeholder="如：生态防护林" required>
+          </div>
+          <div class="mb-2">
+            <label for="subCategoryDescriptionInput" class="form-label">说明</label>
+            <textarea class="form-control" id="subCategoryDescriptionInput" rows="4" placeholder="请输入该子类别的解释说明，可留空"></textarea>
+            <div class="subcat-modal-help mt-2">说明会在鼠标悬停子类别选项时显示。</div>
+            <div class="subcat-modal-help mt-1" id="subCategoryDescriptionExample">示例：以松、杉等针叶树种为主的林地，树冠形态较整齐，常见于山地或人工培育区域。</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary" id="saveSubCategoryBtn">保存子类别</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
