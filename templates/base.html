@@ -36,7 +36,7 @@
   {% block extra_css %}{% endblock %}
 </head>
 
-<body>
+<body class="{% block body_class %}{% endblock %}">
 
   {% if not hide_nav %}
     <!-- ======= Header ======= -->

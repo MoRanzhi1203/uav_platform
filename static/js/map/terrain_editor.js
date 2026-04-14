@@ -715,10 +715,25 @@ class TerrainEditor {
   // 切换批量选择模式
   toggleMultiSelectMode() {
     this.isMultiSelectMode = !this.isMultiSelectMode;
+    
+    // 如果进入批量模式且当前没有选中的地块，可以考虑默认不选，或者维持现状
+    // 如果退出批量模式，则清空所有勾选
     if (!this.isMultiSelectMode) {
-      // 退出批量模式时，清空已选项
       this.multiSelectedPlotIds.clear();
+    } else {
+      // 构思优化：如果当前是全选状态，则点击变为全不选；如果不是全选，则变为全选
+      const allPlotIds = this.userPlots.map(p => p.id);
+      const isAllSelected = allPlotIds.length > 0 && allPlotIds.every(id => this.multiSelectedPlotIds.has(id));
+      
+      if (isAllSelected) {
+        this.multiSelectedPlotIds.clear();
+        // 此时如果不想要批量模式了，可以顺便退出
+        this.isMultiSelectMode = false;
+      } else {
+        allPlotIds.forEach(id => this.multiSelectedPlotIds.add(id));
+      }
     }
+    
     this.updateLayerPanelButtons();
     this.updateSelectedPlotsList();
   }
