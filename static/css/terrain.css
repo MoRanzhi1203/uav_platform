@@ -94,42 +94,163 @@
   border-color: #3b82f6;
 }
 
-/* 图层面板样式 */
+/* 图层面板样式优化 */
 .layer-item {
+  display: block;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background-color: #ffffff;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  user-select: none;
+  cursor: pointer;
+}
+
+/* 悬停态：非常轻微的灰色，增强可点击感 */
+.layer-item:hover {
+  background-color: #F9FAFB;
+  border-color: #F3F4F6;
+}
+
+/* 当前选中图层 (active)：浅灰色系，克制高级，带微弱阴影和左侧标识条 */
+.layer-item.active {
+  background-color: #F3F4F6;
+  border-color: #E5E7EB;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  position: relative;
+}
+
+.layer-item.active::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background-color: #4B5563; /* 深灰/中性灰标识条 */
+  border-radius: 0 2px 2px 0;
+}
+
+.layer-item.active .layer-name {
+  font-weight: 600;
+  color: #111827; /* 近黑色，保证清晰 */
+}
+
+/* 勾选态 (multi-selected)：极浅灰色背景 */
+.layer-item.multi-selected {
+  background-color: #FDFDFD;
+  border-color: #F3F4F6;
+}
+
+.layer-item.layer-hidden {
+  opacity: 0.6;
+}
+
+.layer-item.layer-locked .layer-lock {
+  opacity: 1;
+  color: #dc3545;
+}
+
+.layer-item-content {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid #eee;
+  padding: 6px 8px;
+  height: 36px;
+}
+
+.layer-check-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 100%;
+}
+
+.layer-multi-check {
+  margin: 0;
   cursor: pointer;
-  transition: all 0.2s;
-  user-select: none;
 }
 
-.layer-item:hover {
-  background-color: #f8f9fa;
+.layer-visibility-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 100%;
 }
 
-.layer-item.active {
-  background-color: #e7f1ff;
-  border-left: 4px solid #0d6efd;
+.layer-visibility {
+  font-size: 14px;
+  color: #6c757d;
+  cursor: pointer;
 }
 
-.layer-item.multi-selected {
-  background-color: rgba(13, 110, 253, 0.05);
+.layer-color-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 100%;
+  margin: 0 4px;
+}
+
+.layer-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.layer-name-area {
+  flex: 1;
+  min-width: 0; /* 让 text-truncate 生效 */
+  padding-right: 8px;
 }
 
 .layer-name {
-  font-weight: 500;
-  color: #333;
+  display: block;
+  font-size: 13px;
+  color: #374151; /* 默认未选中颜色改为中性灰，区分选中时的纯黑 */
+  transition: color 0.2s ease;
+}
+
+.layer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
 }
 
 .layer-actions i {
-  opacity: 0.6;
-  transition: opacity 0.2s;
+  font-size: 14px;
+  color: #9CA3AF; /* 调整默认图标色 */
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .layer-actions i:hover {
+  color: #4B5563; /* hover 图标色加深 */
+  transform: scale(1.1);
+}
+
+.layer-item.active .layer-actions i {
+  color: #6B7280; /* 选中态下默认图标略微加深，与背景保持对比 */
+}
+
+.layer-item.active .layer-actions i:hover {
+  color: #111827; /* 选中态下hover变为黑色 */
+}
+
+.layer-actions .layer-delete {
+  opacity: 0.4;
+}
+
+.layer-item:hover .layer-actions .layer-delete {
   opacity: 1;
+}
+
+.layer-actions .layer-delete:hover {
+  color: #EF4444 !important; /* 删除图标 hover 弱红色 */
 }
 
 .btn-xs {

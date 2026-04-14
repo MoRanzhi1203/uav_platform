@@ -749,7 +749,6 @@ class TerrainEditor {
       }
       if (this.multiSelectedPlotIds.has(plot.id)) {
         item.classList.add('multi-selected');
-        item.style.backgroundColor = 'rgba(13, 110, 253, 0.1)';
       }
       
       const name = plot.properties?.name || `地块 ${index + 1}`;
@@ -758,20 +757,40 @@ class TerrainEditor {
       const isMultiSelected = this.multiSelectedPlotIds.has(plot.id);
 
       item.innerHTML = `
-        <div class="d-flex align-items-center w-100 p-1" style="${plot.id === this.activePlotId ? 'background-color: #e9ecef; border-left: 3px solid #0d6efd; border-radius: 3px;' : 'border-left: 3px solid transparent;'}">
-          <input type="checkbox" class="layer-multi-check me-2" ${isMultiSelected ? 'checked' : ''} style="display: ${this.multiSelectedPlotIds.size > 0 || this.isMultiSelectMode ? 'inline-block' : 'none'};" title="批量选择">
-          <i class="bi ${isVisible ? 'bi-eye' : 'bi-eye-slash'} layer-visibility me-2" style="cursor: pointer; font-size: 14px; color: #6c757d;" title="显示/隐藏"></i>
-          <span class="layer-color" style="background-color: ${this.getPlotColor(plot.properties?.type)}; width: 12px; height: 12px; display: inline-block; margin-right: 8px; border-radius: 2px;"></span>
-          <span class="layer-name text-truncate" style="flex: 1; font-size: 13px; cursor: pointer; ${plot.id === this.activePlotId ? 'font-weight: bold;' : ''}" title="${name}">${name}</span>
-          <div class="layer-actions ms-2 d-flex gap-2">
-            <i class="bi ${isLocked ? 'bi-lock-fill text-danger' : 'bi-unlock text-muted'} layer-lock" style="cursor: pointer; font-size: 14px;" title="${isLocked ? '解锁图层' : '锁定图层'}"></i>
-            <i class="bi bi-trash layer-delete text-danger" style="cursor: pointer; font-size: 14px;" title="删除图层"></i>
+        <div class="layer-item-content">
+          <div class="layer-check-area" title="批量选择">
+            <input type="checkbox" class="layer-multi-check" ${isMultiSelected ? 'checked' : ''}>
+          </div>
+          <div class="layer-visibility-area" title="显示/隐藏">
+            <i class="bi ${isVisible ? 'bi-eye' : 'bi-eye-slash'} layer-visibility"></i>
+          </div>
+          <div class="layer-color-area">
+            <span class="layer-color" style="background-color: ${this.getPlotColor(plot.properties?.type)};"></span>
+          </div>
+          <div class="layer-name-area">
+            <span class="layer-name text-truncate" title="${name}">${name}</span>
+          </div>
+          <div class="layer-actions">
+            <i class="bi ${isLocked ? 'bi-lock-fill text-danger' : 'bi-unlock'} layer-lock" title="${isLocked ? '解锁图层' : '锁定图层'}"></i>
+            <i class="bi bi-trash layer-delete text-danger" title="删除图层"></i>
           </div>
         </div>
       `;
+
+      if (!isVisible) {
+        item.classList.add('layer-hidden');
+      }
+
+      if (isLocked) {
+        item.classList.add('layer-locked');
+      }
       
-      // 点击选择（单选/激活）
-      item.querySelector('.layer-name').addEventListener('click', (e) => {
+      // 点击选择（单选/激活） - 点击整个 item content
+      item.querySelector('.layer-item-content').addEventListener('click', (e) => {
+        // 如果点击的是复选框、眼睛、锁定、删除图标，不触发图层切换
+        if (e.target.closest('.layer-check-area, .layer-visibility-area, .layer-actions')) {
+          return;
+        }
         e.stopPropagation();
         this.selectPlot(plot.id);
       });
@@ -844,19 +863,27 @@ class TerrainEditor {
     const oldSubtype = document.getElementById('plotSubType')?.value;
     console.log('- 切换前表单 subtype:', oldSubtype);
 
+    // 更新当前选中 ID
     this.activePlotId = plotId;
     const plot = this.userPlots.find(p => p.id === plotId);
-    if (!plot) return;
+    
+    // 如果找不到地块（理论上不应该发生），也需要更新列表 UI 取消所有高亮
+    if (!plot) {
+      this.updateSelectedPlotsList();
+      return;
+    }
 
     console.log('- 切换后 activeLayerId:', plot.id);
     console.log('- 切换后准备从 layer 回填的 subtype:', plot.properties?.subType || '');
 
-    // 更新 UI 状态
+    // 更新地图上所有图层的样式
     this.userPlots.forEach(p => {
       if (p.layer && p.layer.setStyle) {
         p.layer.setStyle(this.getPlotStyle(p.properties?.type, false));
       }
     });
+    
+    // 设置当前图层高亮
     if (plot.layer && plot.layer.setStyle) {
       plot.layer.setStyle(this.getPlotStyle(plot.properties?.type, true));
       if (plot.layer.bringToFront) plot.layer.bringToFront();
@@ -865,10 +892,11 @@ class TerrainEditor {
       }
     }
 
+    // 更新右侧属性面板
     this.updateAttributePanel(plot);
+    
+    // 无论是否存在 layer (比如新建的空图层)，都必须更新左侧图层列表的 DOM 激活状态
     this.updateSelectedPlotsList();
-    // 修复问题4：删除错误的无参数 loadSubCategories 调用，因为它会用 null 覆盖已回填的子类别 UI
-    // this.loadSubCategories(); 
   }
   
   // 移除地块
