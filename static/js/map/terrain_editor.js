@@ -29,17 +29,24 @@ class TerrainEditor {
     this.contourLayer = null;
     
     // 状态管理
-    this.currentTool = 'brush';
+    this.currentTool = 'browse';
     this.eraserMode = 'block'; // 'block' 或 'brush'
     this.selectedFeatures = [];
     this.userPlots = [];
     this.activePlotId = null;
     this.multiSelectedPlotIds = new Set(); // 多选地块 ID
+    this.isMultiSelectMode = false;
     this.history = [];
     this.historyIndex = -1;
     this.areaId = null; // 当前正在编辑的区域 ID
     this.areaData = null; // 区域基础信息
     this.subcategoryOptionsByCategory = {};
+    this._disjointSplitModalBound = false;
+    this._pendingDisjointSplitResolver = null;
+    this._disjointSplitModalConfirmed = false;
+    this._movingPlotsState = null;
+    this._marqueeSelectionState = null;
+    this._marqueeSelectionLayer = null;
     
     // 网格配置 (10m x 10m)
     this.gridLatStep = 0.0000898;
@@ -97,6 +104,12 @@ class TerrainEditor {
     };
 
     this._handlers = {
+      mapClick: this.handleMapClick.bind(this),
+      plotMove: this.handlePlotMove.bind(this),
+      plotMoveEnd: this.endPlotMove.bind(this),
+      marqueeStart: this.startMarqueeSelection.bind(this),
+      marqueeMove: this.handleMarqueeSelection.bind(this),
+      marqueeEnd: this.endMarqueeSelection.bind(this),
       brushStart: this.startBrush.bind(this),
       brushMove: this.handleBrush.bind(this),
       brushEnd: this.endBrush.bind(this),
@@ -618,17 +631,300 @@ class TerrainEditor {
     // this.selectPlot(null);
   }
 
-  // 启用选择工具
+  // 兼容旧入口：选择工具改为移动工具
   enableSelect() {
+    this.enableMoveLayer();
+  }
+
+  enableBrowseMode() {
     this.clearToolEvents();
-    this.currentTool = 'select';
-    this.updateEditMode('选择');
-    
-    // 设置鼠标样式
-    this.map.getContainer().style.cursor = 'default';
-    
-    // 监听地图点击
-    this.map.on('click', this._handlers.mapClick);
+    this.currentTool = 'browse';
+    this.updateEditMode('鼠标');
+    this.map.getContainer().style.cursor = 'grab';
+    this.map.dragging.enable();
+    this.map.scrollWheelZoom.enable();
+    this.map.doubleClickZoom.enable();
+    this.refreshPlotInteractivity();
+  }
+
+  enableMoveLayer() {
+    this.clearToolEvents();
+    this.currentTool = 'move-layer';
+    this.updateEditMode('移动');
+    this.map.getContainer().style.cursor = 'grab';
+    this.map.dragging.enable();
+    this.refreshPlotInteractivity();
+    this.map.on('mousemove', this._handlers.plotMove);
+    this.map.on('mouseup', this._handlers.plotMoveEnd);
+  }
+
+  bindPlotSelectionEvents(plot) {
+    if (!plot?.layer) return;
+
+    plot.layer.off('click');
+    plot.layer.off('mousedown');
+    plot.layer.on('click', (e) => {
+      if (this.currentTool !== 'move-layer') return;
+      if (e) {
+        L.DomEvent.stopPropagation(e);
+      }
+      this.selectPlot(plot.id);
+    });
+    plot.layer.on('mousedown', (e) => {
+      if (this.currentTool !== 'move-layer') return;
+      if (e) {
+        L.DomEvent.stopPropagation(e);
+      }
+      this.startPlotMove(plot.id, e?.latlng);
+    });
+  }
+
+  refreshPlotInteractivity() {
+    const interactive = this.currentTool === 'move-layer';
+
+    this.userPlots.forEach(plot => {
+      if (!plot?.layer?.eachLayer) return;
+
+      plot.layer.eachLayer(layer => {
+        layer.options.interactive = interactive && !plot.locked;
+      });
+    });
+  }
+
+  getMoveTargetPlotIds(plotId) {
+    if (this.multiSelectedPlotIds.has(plotId) && this.multiSelectedPlotIds.size > 1) {
+      return Array.from(this.multiSelectedPlotIds);
+    }
+
+    return [plotId];
+  }
+
+  startPlotMove(plotId, latlng) {
+    if (this.currentTool !== 'move-layer' || !latlng) return;
+
+    const plot = this.userPlots.find(p => p.id === plotId);
+    if (!plot || plot.locked) return;
+
+    const targetPlotIds = this.getMoveTargetPlotIds(plotId)
+      .filter(id => {
+        const item = this.userPlots.find(p => p.id === id);
+        return item && !item.locked;
+      });
+
+    if (targetPlotIds.length === 0) return;
+
+    if (!this.multiSelectedPlotIds.has(plotId)) {
+      this.multiSelectedPlotIds.clear();
+      this.multiSelectedPlotIds.add(plotId);
+    }
+
+    this.selectPlot(plotId);
+    this.updateSelectedPlotsList();
+
+    this._movingPlotsState = {
+      plotIds: targetPlotIds,
+      startLatLng: latlng,
+      basePlots: new Map(targetPlotIds.map(id => {
+        const item = this.userPlots.find(p => p.id === id);
+        return [id, {
+          geojson: item?.geojson ? JSON.parse(JSON.stringify(item.geojson)) : null,
+          gridData: item?.gridData ? JSON.parse(JSON.stringify(item.gridData)) : null
+        }];
+      })),
+      appliedLatSteps: 0,
+      appliedLngSteps: 0,
+      hasMoved: false
+    };
+
+    this.map.dragging.disable();
+    this.map.getContainer().style.cursor = 'grabbing';
+  }
+
+  handlePlotMove(e) {
+    if (this.currentTool !== 'move-layer' || !this._movingPlotsState?.startLatLng || !e?.latlng) {
+      return;
+    }
+
+    const rawDeltaLat = e.latlng.lat - this._movingPlotsState.startLatLng.lat;
+    const rawDeltaLng = e.latlng.lng - this._movingPlotsState.startLatLng.lng;
+    const latSteps = Math.trunc(rawDeltaLat / this.gridLatStep);
+    const lngSteps = Math.trunc(rawDeltaLng / this.gridLngStep);
+
+    if (
+      latSteps === this._movingPlotsState.appliedLatSteps &&
+      lngSteps === this._movingPlotsState.appliedLngSteps
+    ) {
+      return;
+    }
+
+    const snappedDeltaLat = latSteps * this.gridLatStep;
+    const snappedDeltaLng = lngSteps * this.gridLngStep;
+
+    this._movingPlotsState.plotIds.forEach(plotId => {
+      const plot = this.userPlots.find(p => p.id === plotId);
+      if (!plot?.geojson) return;
+      const basePlot = this._movingPlotsState.basePlots.get(plotId);
+      if (!basePlot?.geojson) return;
+      plot.geojson = this.translatePlotGeoJSON(basePlot.geojson, snappedDeltaLat, snappedDeltaLng);
+      plot.gridData = this.translateGridData(basePlot.gridData, lngSteps, latSteps);
+      this.rebuildPlotLayer(plot);
+    });
+
+    this._movingPlotsState.appliedLatSteps = latSteps;
+    this._movingPlotsState.appliedLngSteps = lngSteps;
+    this._movingPlotsState.hasMoved = true;
+    this.applyPlotOrder();
+
+    const activePlot = this.userPlots.find(p => p.id === this.activePlotId);
+    if (activePlot) {
+      this.updateAttributePanel(activePlot);
+    }
+  }
+
+  endPlotMove() {
+    if (!this._movingPlotsState) return;
+
+    const hasMoved = this._movingPlotsState.hasMoved;
+    this._movingPlotsState = null;
+
+    this.map.dragging.enable();
+    this.map.getContainer().style.cursor = 'grab';
+
+    if (hasMoved) {
+      this.captureHistorySnapshot();
+      this.updateSelectedArea();
+      this.updateSelectedPlotsList();
+    }
+  }
+
+  translatePlotGeoJSON(geojson, deltaLat, deltaLng) {
+    if (!geojson) return geojson;
+
+    const translated = JSON.parse(JSON.stringify(geojson));
+    const geometry = translated.geometry || translated;
+
+    const shiftCoordinates = (coords) => {
+      if (!Array.isArray(coords)) return coords;
+      if (coords.length >= 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+        return [coords[0] + deltaLng, coords[1] + deltaLat];
+      }
+      return coords.map(shiftCoordinates);
+    };
+
+    geometry.coordinates = shiftCoordinates(geometry.coordinates);
+    return translated;
+  }
+
+  translateGridData(gridData, deltaX, deltaY) {
+    if (!gridData) return gridData;
+
+    const translated = JSON.parse(JSON.stringify(gridData));
+    if (Array.isArray(translated.cells)) {
+      translated.cells = translated.cells.map(cell => ({
+        ...cell,
+        x: Number(cell.x) + deltaX,
+        y: Number(cell.y) + deltaY
+      }));
+    }
+
+    return translated;
+  }
+
+  rebuildPlotLayer(plot) {
+    if (!plot) return;
+
+    if (plot.layer) {
+      this.layerManager.layerGroups.working.removeLayer(plot.layer);
+    }
+
+    const layerOptions = {
+      style: this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)),
+      interactive: this.currentTool === 'move-layer' && !plot.locked
+    };
+    if (!plot.db_id) {
+      layerOptions.renderer = this.canvasRenderer;
+    }
+
+    plot.layer = L.geoJSON(plot.geojson, layerOptions);
+    if (plot.visible) {
+      this.layerManager.layerGroups.working.addLayer(plot.layer);
+    }
+    this.bindPlotSelectionEvents(plot);
+  }
+
+  enableMarqueeSelect() {
+    this.clearToolEvents();
+    this.currentTool = 'marquee-select';
+    this.isMultiSelectMode = true;
+    this.updateEditMode('框选');
+    this.map.getContainer().style.cursor = 'crosshair';
+    this.map.dragging.disable();
+    this.refreshPlotInteractivity();
+    this.map.on('mousedown', this._handlers.marqueeStart);
+    this.map.on('mousemove', this._handlers.marqueeMove);
+    this.map.on('mouseup', this._handlers.marqueeEnd);
+  }
+
+  startMarqueeSelection(e) {
+    if (this.currentTool !== 'marquee-select' || !e?.latlng) return;
+
+    this._marqueeSelectionState = {
+      startLatLng: e.latlng,
+      lastLatLng: e.latlng
+    };
+
+    if (this._marqueeSelectionLayer) {
+      this.map.removeLayer(this._marqueeSelectionLayer);
+    }
+
+    this._marqueeSelectionLayer = L.rectangle([e.latlng, e.latlng], {
+      color: '#0d6efd',
+      weight: 1,
+      dashArray: '6, 4',
+      fillColor: '#0d6efd',
+      fillOpacity: 0.12,
+      interactive: false
+    }).addTo(this.map);
+  }
+
+  handleMarqueeSelection(e) {
+    if (this.currentTool !== 'marquee-select' || !this._marqueeSelectionState || !e?.latlng) return;
+
+    this._marqueeSelectionState.lastLatLng = e.latlng;
+    if (this._marqueeSelectionLayer) {
+      this._marqueeSelectionLayer.setBounds(L.latLngBounds(
+        this._marqueeSelectionState.startLatLng,
+        this._marqueeSelectionState.lastLatLng
+      ));
+    }
+  }
+
+  endMarqueeSelection() {
+    if (this.currentTool !== 'marquee-select' || !this._marqueeSelectionState) return;
+
+    const selectionBounds = this._marqueeSelectionLayer?.getBounds();
+    this.isMultiSelectMode = true;
+    this.multiSelectedPlotIds.clear();
+
+    const matchedPlots = this.userPlots.filter(plot => {
+      if (!plot || plot.visible === false) return false;
+      const plotBounds = this.getPlotBounds(plot);
+      return plotBounds && selectionBounds && plotBounds.intersects(selectionBounds);
+    });
+
+    matchedPlots.forEach(plot => this.multiSelectedPlotIds.add(plot.id));
+
+    if (this._marqueeSelectionLayer) {
+      this.map.removeLayer(this._marqueeSelectionLayer);
+      this._marqueeSelectionLayer = null;
+    }
+
+    this._marqueeSelectionState = null;
+    this.updateSelectedPlotsList();
+
+    if (matchedPlots[0]) {
+      this.selectPlot(matchedPlots[0].id);
+    }
   }
   
   // 智能选区工具
@@ -751,6 +1047,8 @@ class TerrainEditor {
     if (!selectedAreasContainer) return;
     selectedAreasContainer.innerHTML = '';
     selectedAreasContainer.classList.toggle('is-empty', this.userPlots.length === 0);
+    this.updateCurrentPlotTitle();
+    this.refreshPlotStyles();
     
     // 如果存在多选按钮，动态控制其高亮状态
     const toggleMultiSelectBtn = document.getElementById('toggleMultiSelectBtn');
@@ -788,7 +1086,7 @@ class TerrainEditor {
         item.classList.add('multi-selected');
       }
       
-      const name = plot.properties?.name || `地块 ${index + 1}`;
+      const name = this.getPlotDisplayName(plot, `地块 ${index + 1}`);
       item.title = name;
       const isLocked = !!plot.locked;
       const isVisible = plot.visible !== false;
@@ -831,6 +1129,16 @@ class TerrainEditor {
         }
         e.stopPropagation();
         this.selectPlot(plot.id);
+      });
+
+      item.querySelector('.layer-item-content').addEventListener('dblclick', (e) => {
+        if (e.target.closest('.layer-check-area, .layer-visibility-area, .layer-actions')) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        this.selectPlot(plot.id);
+        this.focusPlotOnMap(plot.id);
       });
 
       // 多选框 (selected)
@@ -888,11 +1196,91 @@ class TerrainEditor {
     if (splitBtn) splitBtn.disabled = !this.activePlotId;
   }
 
+  getPlotDisplayName(plot, fallback = '未命名地块') {
+    const name = plot?.properties?.name;
+    if (typeof name === 'string' && name.trim()) {
+      return name.trim();
+    }
+    return fallback;
+  }
+
+  updateCurrentPlotTitle() {
+    const titleEl = document.getElementById('currentPlotTitleName');
+    if (!titleEl) return;
+
+    const activePlot = this.userPlots.find(p => p.id === this.activePlotId);
+    if (activePlot) {
+      const plotName = this.getPlotDisplayName(activePlot);
+      titleEl.textContent = plotName;
+      titleEl.title = plotName;
+      return;
+    }
+
+    titleEl.textContent = '-';
+    titleEl.title = '当前未选择地块';
+  }
+
+  refreshPlotStyles() {
+    this.userPlots.forEach(plot => {
+      if (!plot?.layer?.setStyle) return;
+      plot.layer.setStyle(this.getPlotStyle(
+        plot.properties?.type,
+        plot.id === this.activePlotId,
+        this.multiSelectedPlotIds.has(plot.id)
+      ));
+    });
+  }
+
+  getPlotBounds(plot) {
+    if (!plot) return null;
+
+    if (plot.layer && typeof plot.layer.getBounds === 'function') {
+      const layerBounds = plot.layer.getBounds();
+      if (layerBounds && typeof layerBounds.isValid === 'function' && layerBounds.isValid()) {
+        return layerBounds;
+      }
+    }
+
+    const geojson = plot.geojson?.geometry ? plot.geojson : (plot.geojson ? { type: 'Feature', geometry: plot.geojson, properties: {} } : null);
+    if (!geojson || typeof turf === 'undefined') {
+      return null;
+    }
+
+    try {
+      const bbox = turf.bbox(geojson);
+      const bounds = L.latLngBounds([bbox[1], bbox[0]], [bbox[3], bbox[2]]);
+      if (bounds.isValid()) {
+        return bounds;
+      }
+    } catch (error) {
+      console.warn('计算地块视野范围失败:', error);
+    }
+
+    return null;
+  }
+
+  focusPlotOnMap(plotId) {
+    const plot = this.userPlots.find(p => p.id === plotId);
+    if (!plot || !this.map) return false;
+
+    const bounds = this.getPlotBounds(plot);
+    if (!bounds) return false;
+
+    const maxZoom = Number.isFinite(this.map.options?.maxZoom) ? this.map.options.maxZoom : 18;
+    this.map.fitBounds(bounds, {
+      padding: [48, 48],
+      maxZoom,
+      animate: true
+    });
+
+    return true;
+  }
+
   // 选择地块
-  selectPlot(plotId) {
+  async selectPlot(plotId) {
     // 切换地块前，检查旧地块是否有不相连部分
     if (this.activePlotId && this.activePlotId !== plotId) {
-      this.checkAndSplitDisjointPartsLocally(this.activePlotId);
+      await this.checkAndSplitDisjointPartsLocally(this.activePlotId);
     }
 
     // --- 日志3：图层切换日志 ---
@@ -915,15 +1303,10 @@ class TerrainEditor {
     console.log('- 切换后准备从 layer 回填的 subtype:', plot.properties?.subType || '');
 
     // 更新地图上所有图层的样式
-    this.userPlots.forEach(p => {
-      if (p.layer && p.layer.setStyle) {
-        p.layer.setStyle(this.getPlotStyle(p.properties?.type, false));
-      }
-    });
-    
-    // 设置当前图层高亮
+    this.refreshPlotStyles();
+
+    // 设置当前图层前置显示
     if (plot.layer && plot.layer.setStyle) {
-      plot.layer.setStyle(this.getPlotStyle(plot.properties?.type, true));
       if (plot.layer.bringToFront) plot.layer.bringToFront();
       if (plot.layer.eachLayer) {
         plot.layer.eachLayer(l => l.bringToFront && l.bringToFront());
@@ -1142,19 +1525,9 @@ class TerrainEditor {
     this.eraserMode = mode;
   }
 
-  // 平移地图工具
+  // 兼容旧入口：平移功能并入移动工具
   enablePan() {
-    this.clearToolEvents();
-    this.currentTool = 'pan';
-    this.updateEditMode('平移/拖动');
-    
-    // 平移模式下启用地图拖拽
-    this.map.dragging.enable();
-    this.map.scrollWheelZoom.enable();
-    this.map.doubleClickZoom.enable();
-    
-    // 改变鼠标样式
-    this.map.getContainer().style.cursor = 'grab';
+    this.enableMoveLayer();
   }
 
   // 橡皮擦工具
@@ -1162,6 +1535,7 @@ class TerrainEditor {
     this.clearToolEvents();
     this.currentTool = 'eraser';
     this.updateEditMode(`橡皮擦 (${this.eraserMode === 'block' ? '整块' : '画笔'})`);
+    this.refreshPlotInteractivity();
     
     // 设置鼠标样式
     this.map.getContainer().style.cursor = 'url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/icons/eraser.svg"), auto';
@@ -1315,7 +1689,7 @@ class TerrainEditor {
           if (plot.layer) {
             plot.layer.clearLayers();
             L.geoJSON(diff, {
-              style: this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId),
+              style: this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)),
               renderer: this.canvasRenderer
             }).eachLayer(l => plot.layer.addLayer(l));
           }
@@ -1351,6 +1725,7 @@ class TerrainEditor {
     this.clearToolEvents();
     this.currentTool = 'brush';
     this.updateEditMode('像素画笔');
+    this.refreshPlotInteractivity();
     
     // 画笔模式下设置鼠标样式
     this.map.getContainer().style.cursor = 'crosshair';
@@ -1382,12 +1757,24 @@ class TerrainEditor {
     this.map.off('mouseout', this._handlers.eraserEnd);
     
     this.map.off('click', this._handlers.eraserClick);
+    this.map.off('mousemove', this._handlers.plotMove);
+    this.map.off('mouseup', this._handlers.plotMoveEnd);
+    this.map.off('mousedown', this._handlers.marqueeStart);
+    this.map.off('mousemove', this._handlers.marqueeMove);
+    this.map.off('mouseup', this._handlers.marqueeEnd);
     
     if (this.brushPreviewLayer) {
       this.map.removeLayer(this.brushPreviewLayer);
       this.brushPreviewLayer = null;
     }
+    if (this._marqueeSelectionLayer) {
+      this.map.removeLayer(this._marqueeSelectionLayer);
+      this._marqueeSelectionLayer = null;
+    }
+    this._marqueeSelectionState = null;
+    this._movingPlotsState = null;
     this.map.dragging.enable();
+    this.map.getContainer().style.cursor = 'default';
   }
 
   // 开始画笔
@@ -1442,7 +1829,7 @@ class TerrainEditor {
       plot.properties = { ...plot.properties, ...newProps };
       // 如果类型改变，更新样式
       if (newProps.type && plot.layer) {
-        plot.layer.setStyle(this.getPlotStyle(newProps.type, true));
+        plot.layer.setStyle(this.getPlotStyle(newProps.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
       }
       this.updateSelectedPlotsList();
     }
@@ -1689,14 +2076,14 @@ class TerrainEditor {
 
     snapshot.plots.forEach(p => {
       const layer = L.geoJSON(p.geojson, {
-        style: this.getPlotStyle(p.properties?.type, p.id === this.activePlotId),
+        style: this.getPlotStyle(p.properties?.type, p.id === this.activePlotId, this.multiSelectedPlotIds.has(p.id)),
         interactive: !p.locked,
         renderer: this.canvasRenderer // 使用 Canvas 渲染以提升性能
       });
       if (p.visible) {
         this.layerManager.layerGroups.working.addLayer(layer);
       }
-      this.userPlots.push({
+      const plot = {
         id: p.id,
         db_id: p.db_id,
         geojson: p.geojson,
@@ -1705,9 +2092,12 @@ class TerrainEditor {
         visible: p.visible,
         locked: p.locked,
         layer
-      });
+      };
+      this.userPlots.push(plot);
+      this.bindPlotSelectionEvents(plot);
     });
 
+    this.refreshPlotInteractivity();
     this.applyPlotOrder();
     this.updateSelectedArea();
     this.updateSelectedPlotsList();
@@ -1940,7 +2330,7 @@ class TerrainEditor {
     let layer;
     try {
       layer = L.geoJSON(data.geom_json, {
-        style: this.getPlotStyle(properties.type, false),
+        style: this.getPlotStyle(properties.type, false, false),
         interactive: !(data.style_json?.locked),
         // 渲染已保存地块时，为了保证附加记录点击事件正常，移除 renderer: this.canvasRenderer 限制
       });
@@ -1967,12 +2357,8 @@ class TerrainEditor {
     }
 
     this.userPlots.push(plot);
-    
-    // 为地块绑定点击事件以支持再次选择
-    layer.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
-      this.selectPlot(plot.id);
-    });
+    this.bindPlotSelectionEvents(plot);
+    this.refreshPlotInteractivity();
   }
 
   // 获取 CSRF Token
@@ -2025,7 +2411,7 @@ class TerrainEditor {
     return this.colorScheme.selected;
   }
 
-  getPlotStyle(type, isActive) {
+  getPlotStyle(type, isActive, isMultiSelected = false) {
     const fill = this.getPlotColor(type);
     if (isActive) {
       return {
@@ -2033,6 +2419,14 @@ class TerrainEditor {
         weight: 3,
         fillColor: fill,
         fillOpacity: 0.45
+      };
+    }
+    if (isMultiSelected) {
+      return {
+        color: this.colorScheme.highlight,
+        weight: 3,
+        fillColor: fill,
+        fillOpacity: 0.42
       };
     }
     return {
@@ -2073,13 +2467,13 @@ class TerrainEditor {
   createPlotFromGeoJSON(geojson, properties, gridData = null, db_id = null) {
     const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const layer = L.geoJSON(geojson, {
-      style: this.getPlotStyle(properties.type, true),
-      interactive: true,
+      style: this.getPlotStyle(properties.type, false, false),
+      interactive: this.currentTool === 'move-layer',
       renderer: this.canvasRenderer
     });
     this.layerManager.layerGroups.working.addLayer(layer);
 
-    return {
+    const plot = {
       id,
       db_id, // 允许传入数据库 ID
       geojson,
@@ -2089,6 +2483,10 @@ class TerrainEditor {
       locked: false,
       layer
     };
+
+    this.bindPlotSelectionEvents(plot);
+    this.refreshPlotInteractivity();
+    return plot;
   }
 
   // 提示添加标记
@@ -2258,6 +2656,7 @@ class TerrainEditor {
         l.options.interactive = !plot.locked;
       });
     }
+    this.refreshPlotInteractivity();
     this.captureHistorySnapshot();
     this.updateSelectedPlotsList();
   }
@@ -2376,7 +2775,7 @@ class TerrainEditor {
   updateLayerColors() {
     this.userPlots.forEach(plot => {
       if (plot.layer && plot.layer.setStyle) {
-        plot.layer.setStyle(this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId));
+        plot.layer.setStyle(this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
       }
     });
   }
@@ -2833,15 +3232,34 @@ class TerrainEditor {
   // --- 新增功能实现 ---
 
   // 处理新建地块图层
-  handleCreateNewZone() {
-    const name = prompt('请输入新地块名称:', `新地块_${Date.now().toString().slice(-4)}`);
-    if (!name) return;
+  async handleCreateNewZone() {
+    if (this.activePlotId) {
+      await this.checkAndSplitDisjointPartsLocally(this.activePlotId);
+    }
 
-    // 修复问题2：新建图层默认类型优先继承“当前正在编辑图层”的类型
+    this.ensureCreateZoneModalBound();
+
+    const modal = this.getCreateZoneModalInstance();
+    const categorySelect = document.getElementById('createZoneCategorySelect');
+    const nameInput = document.getElementById('createZoneNameInput');
+    if (!modal || !categorySelect || !nameInput) return;
+
+    const defaults = this.getDefaultNewZoneConfig();
+    this._createZoneDefaultRiskLevel = defaults.riskLevel;
+    this._createZoneNameManuallyEdited = false;
+    this._lastCreateZoneAutoName = '';
+
+    categorySelect.value = defaults.type;
+    await this.populateCreateZoneSubtypeOptions(defaults.type, defaults.subType);
+    this.updateCreateZoneNameSuggestion(true);
+    modal.show();
+  }
+
+  getDefaultNewZoneConfig() {
     let defaultType = 'forest';
     let defaultSubtype = '';
     let defaultRiskLevel = 'low';
-    
+
     if (this.activePlotId) {
       const activePlot = this.userPlots.find(p => p.id === this.activePlotId);
       if (activePlot && activePlot.properties) {
@@ -2856,26 +3274,11 @@ class TerrainEditor {
       defaultRiskLevel = document.getElementById('riskLevel')?.value || 'low';
     }
 
-    const properties = {
-      name: name,
+    return {
       type: defaultType,
       subType: defaultSubtype,
-      riskLevel: defaultRiskLevel,
-      description: '',
-      areaHa: 0
+      riskLevel: defaultRiskLevel
     };
-
-    // --- 日志1：新建图层日志 ---
-    console.log('[日志1：新建图层]');
-    console.log('- 新建前 activeLayerId:', this.activePlotId);
-    console.log('- 继承的 plot_type:', defaultType, '继承的 plot_subtype:', defaultSubtype);
-    console.log('- 新图层初始对象属性:', properties);
-
-    // 修复问题3：直接创建空图层对象，不阻塞流程
-    const plot = this.createPlotFromGeoJSON({ type: 'Feature', geometry: null, properties: {} }, properties);
-    this.userPlots.push(plot);
-    this.selectPlot(plot.id);
-    this.updateSelectedPlotsList();
   }
 
   async handleMergeZones() {
@@ -2948,11 +3351,12 @@ class TerrainEditor {
     if (!plot) return;
 
     if (!plot.db_id) {
-      this.checkAndSplitDisjointPartsLocally(targetId);
+      await this.checkAndSplitDisjointPartsLocally(targetId);
       return;
     }
 
-    if (!confirm(`确定要拆分地块 "${plot.properties.name}" 的不相连部分吗？`)) return;
+    const shouldSplit = await this.showDisjointSplitConfirm(plot, this.getDisjointRegionCount(plot.geojson));
+    if (!shouldSplit) return;
 
     try {
       const response = await fetch(`/terrain/api/zones/${plot.db_id}/split/`, {
@@ -2961,7 +3365,6 @@ class TerrainEditor {
       });
       const result = await response.json();
       if (result.code === 0) {
-        alert(result.msg);
         await this.loadAreaEditDetail(this.areaId);
       } else {
         alert('拆分失败: ' + result.msg);
@@ -2971,14 +3374,14 @@ class TerrainEditor {
     }
   }
 
-  checkAndSplitDisjointPartsLocally(plotId) {
+  async checkAndSplitDisjointPartsLocally(plotId) {
     const plot = this.userPlots.find(p => p.id === plotId);
-    if (!plot || !plot.geojson || typeof turf === 'undefined') return;
+    if (!plot || !plot.geojson || typeof turf === 'undefined') return false;
 
     const geom = plot.geojson.geometry || plot.geojson;
-    if (geom.type !== 'MultiPolygon') return;
-
-    if (!confirm('检测到当前地块包含不相连区域，是否拆分为多个独立图层？')) return;
+    if (geom.type !== 'MultiPolygon' || !Array.isArray(geom.coordinates) || geom.coordinates.length < 2) {
+      return false;
+    }
 
     const polygons = geom.coordinates.map(coords => ({
       type: 'Feature',
@@ -2986,33 +3389,68 @@ class TerrainEditor {
       properties: {}
     }));
 
+    const shouldSplit = await this.showDisjointSplitConfirm(plot, polygons.length);
+    if (!shouldSplit) return false;
+
     this._removePlotInternal(plotId);
+    const createdPlots = [];
     polygons.forEach((poly, i) => {
       const newPlot = this.createPlotFromGeoJSON(poly, {
         ...plot.properties,
-        name: `${plot.properties.name}_拆分_${i+1}`
+        name: `${this.getPlotDisplayName(plot)}_拆分_${i + 1}`
       });
       this.userPlots.push(newPlot);
+      createdPlots.push(newPlot);
     });
 
-    this.updateSelectedPlotsList();
-    alert(`已拆分为 ${polygons.length} 个独立地块。`);
+    this.captureHistorySnapshot();
+    this.updateSelectedArea();
+    if (createdPlots.length > 0) {
+      this.activePlotId = createdPlots[0].id;
+      this.selectPlot(createdPlots[0].id);
+    } else {
+      this.updateSelectedPlotsList();
+    }
+
+    return true;
   }
 
-  async loadSubCategories(selectedValue = null, categoryOverride = null) {
-    const category = categoryOverride || document.getElementById('plotType')?.value;
-    if (!category) return;
+  getDisjointRegionCount(geojson) {
+    const geom = geojson?.geometry || geojson;
+    if (!geom || geom.type !== 'MultiPolygon' || !Array.isArray(geom.coordinates)) {
+      return 0;
+    }
+
+    return geom.coordinates.length;
+  }
+
+  async fetchSubCategories(category, forceRefresh = false) {
+    if (!category) return [];
+    if (!forceRefresh && Array.isArray(this.subcategoryOptionsByCategory[category])) {
+      return this.subcategoryOptionsByCategory[category];
+    }
 
     try {
       const response = await fetch(`/terrain/api/zones/subcategories/?category=${category}&area_id=${this.areaId || ''}`);
       const result = await response.json();
       if (result.code === 0 && result.data) {
         this.subcategoryOptionsByCategory[category] = result.data.subcategories || [];
-        this.renderSubCategoryDropdown(this.subcategoryOptionsByCategory[category], selectedValue);
+        return this.subcategoryOptionsByCategory[category];
       }
     } catch (e) {
       console.error('加载子类别失败:', e);
     }
+
+    this.subcategoryOptionsByCategory[category] = [];
+    return [];
+  }
+
+  async loadSubCategories(selectedValue = null, categoryOverride = null) {
+    const category = categoryOverride || document.getElementById('plotType')?.value;
+    if (!category) return;
+
+    const subcategories = await this.fetchSubCategories(category);
+    this.renderSubCategoryDropdown(subcategories, selectedValue);
   }
 
   // 统一地块类型和子类型联动设置方法
@@ -3243,6 +3681,254 @@ class TerrainEditor {
     return bootstrap.Modal.getOrCreateInstance(modalEl);
   }
 
+  getDisjointSplitModalInstance() {
+    const modalEl = document.getElementById('disjointSplitModal');
+    if (!modalEl || typeof bootstrap === 'undefined') {
+      return null;
+    }
+
+    return bootstrap.Modal.getOrCreateInstance(modalEl);
+  }
+
+  ensureDisjointSplitModalBound() {
+    if (this._disjointSplitModalBound) return;
+
+    const modalEl = document.getElementById('disjointSplitModal');
+    const confirmBtn = document.getElementById('confirmDisjointSplitBtn');
+    if (!modalEl || !confirmBtn) {
+      return;
+    }
+
+    confirmBtn.addEventListener('click', () => {
+      this._disjointSplitModalConfirmed = true;
+      const modal = this.getDisjointSplitModalInstance();
+      if (modal) modal.hide();
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      const resolver = this._pendingDisjointSplitResolver;
+      const confirmed = this._disjointSplitModalConfirmed === true;
+
+      this._pendingDisjointSplitResolver = null;
+      this._disjointSplitModalConfirmed = false;
+
+      if (typeof resolver === 'function') {
+        resolver(confirmed);
+      }
+    });
+
+    this._disjointSplitModalBound = true;
+  }
+
+  showDisjointSplitConfirm(plot, regionCount = 0) {
+    const plotName = this.getPlotDisplayName(plot);
+    const fallbackMessage = Number.isFinite(regionCount) && regionCount > 1
+      ? `检测到当前地块“${plotName}”包含 ${regionCount} 个不相连区域，是否拆分为 ${regionCount} 个独立图层？`
+      : `检测到当前地块“${plotName}”包含不相连区域，是否拆分为多个独立图层？`;
+
+    this.ensureDisjointSplitModalBound();
+
+    const modal = this.getDisjointSplitModalInstance();
+    const subtitleEl = document.getElementById('disjointSplitModalSubtitle');
+    const messageEl = document.getElementById('disjointSplitModalMessage');
+    if (!modal || !messageEl) {
+      return Promise.resolve(window.confirm(fallbackMessage));
+    }
+
+    if (subtitleEl) {
+      subtitleEl.textContent = `当前地块：${plotName}`;
+    }
+    messageEl.textContent = fallbackMessage;
+
+    if (typeof this._pendingDisjointSplitResolver === 'function') {
+      this._pendingDisjointSplitResolver(false);
+      this._pendingDisjointSplitResolver = null;
+    }
+
+    this._disjointSplitModalConfirmed = false;
+
+    return new Promise(resolve => {
+      this._pendingDisjointSplitResolver = resolve;
+      modal.show();
+    });
+  }
+
+  getCreateZoneModalInstance() {
+    const modalEl = document.getElementById('createZoneModal');
+    if (!modalEl || typeof bootstrap === 'undefined') {
+      return null;
+    }
+
+    return bootstrap.Modal.getOrCreateInstance(modalEl);
+  }
+
+  ensureCreateZoneModalBound() {
+    if (this._createZoneModalBound) return;
+
+    const modalEl = document.getElementById('createZoneModal');
+    const formEl = document.getElementById('createZoneForm');
+    const categorySelect = document.getElementById('createZoneCategorySelect');
+    const subtypeSelect = document.getElementById('createZoneSubtypeSelect');
+    const nameInput = document.getElementById('createZoneNameInput');
+    const confirmBtn = document.getElementById('confirmCreateZoneBtn');
+
+    if (!modalEl || !formEl || !categorySelect || !subtypeSelect || !nameInput || !confirmBtn) {
+      return;
+    }
+
+    formEl.addEventListener('submit', this.submitCreateZoneForm.bind(this));
+    categorySelect.addEventListener('change', async () => {
+      await this.populateCreateZoneSubtypeOptions(categorySelect.value, '');
+      this.updateCreateZoneNameSuggestion();
+    });
+    subtypeSelect.addEventListener('change', () => this.updateCreateZoneNameSuggestion());
+    nameInput.addEventListener('input', () => {
+      const currentName = nameInput.value.trim();
+      this._createZoneNameManuallyEdited = currentName !== '' && currentName !== this._lastCreateZoneAutoName;
+      this.updateCreateZoneNameHint();
+    });
+    modalEl.addEventListener('shown.bs.modal', () => {
+      nameInput.focus();
+      nameInput.select();
+    });
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      formEl.reset();
+      formEl.classList.remove('was-validated');
+      subtypeSelect.innerHTML = '<option value="">请选择子类型</option>';
+      subtypeSelect.disabled = false;
+      confirmBtn.disabled = false;
+      this._createZoneDefaultRiskLevel = 'low';
+      this._createZoneNameManuallyEdited = false;
+      this._lastCreateZoneAutoName = '';
+      this.updateCreateZoneNameHint();
+    });
+
+    this._createZoneModalBound = true;
+  }
+
+  async populateCreateZoneSubtypeOptions(category, preferredSubtype = '') {
+    const subtypeSelect = document.getElementById('createZoneSubtypeSelect');
+    if (!subtypeSelect) return '';
+
+    const subcategories = await this.fetchSubCategories(category);
+    subtypeSelect.innerHTML = '';
+
+    if (subcategories.length > 0) {
+      subcategories.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.name;
+        option.textContent = item.name;
+        subtypeSelect.appendChild(option);
+      });
+      subtypeSelect.disabled = false;
+    } else {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = '暂不设置子类型';
+      subtypeSelect.appendChild(option);
+      subtypeSelect.disabled = true;
+    }
+
+    const hasPreferred = subcategories.some(item => item.name === preferredSubtype);
+    const selectedSubtype = hasPreferred ? preferredSubtype : (subcategories[0]?.name || '');
+    subtypeSelect.value = selectedSubtype;
+    return selectedSubtype;
+  }
+
+  buildDefaultPlotName(category, subtype = '') {
+    const categoryName = this.getCategoryDisplayName(category);
+    const baseName = subtype ? `${categoryName}-${subtype}` : `${categoryName}`;
+    const escapedBaseName = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const namePattern = new RegExp(`^${escapedBaseName}-(\\d+)(?:$|_拆分_\\d+$)`);
+    let maxIndex = 0;
+
+    this.userPlots.forEach(plot => {
+      const plotName = (plot.properties?.name || '').trim();
+      const match = plotName.match(namePattern);
+      if (!match) return;
+
+      const currentIndex = parseInt(match[1], 10);
+      if (Number.isFinite(currentIndex) && currentIndex > maxIndex) {
+        maxIndex = currentIndex;
+      }
+    });
+
+    return `${baseName}-${String(maxIndex + 1).padStart(2, '0')}`;
+  }
+
+  updateCreateZoneNameSuggestion(forceReplace = false) {
+    const categorySelect = document.getElementById('createZoneCategorySelect');
+    const subtypeSelect = document.getElementById('createZoneSubtypeSelect');
+    const nameInput = document.getElementById('createZoneNameInput');
+    if (!categorySelect || !subtypeSelect || !nameInput) return;
+
+    const suggestedName = this.buildDefaultPlotName(categorySelect.value, subtypeSelect.value);
+    const currentName = nameInput.value.trim();
+    const shouldReplace = forceReplace || !currentName || !this._createZoneNameManuallyEdited || currentName === this._lastCreateZoneAutoName;
+
+    this._lastCreateZoneAutoName = suggestedName;
+    if (shouldReplace) {
+      nameInput.value = suggestedName;
+      this._createZoneNameManuallyEdited = false;
+    }
+
+    this.updateCreateZoneNameHint();
+  }
+
+  updateCreateZoneNameHint() {
+    const hintEl = document.getElementById('createZoneNameHint');
+    if (!hintEl) return;
+
+    if (this._lastCreateZoneAutoName) {
+      hintEl.textContent = `默认名称建议：${this._lastCreateZoneAutoName}。你也可以手动修改为更符合业务场景的名称。`;
+    } else {
+      hintEl.textContent = '系统将根据当前类型与子类型自动生成默认名称，你也可以手动修改。';
+    }
+  }
+
+  async submitCreateZoneForm(event) {
+    event.preventDefault();
+
+    const formEl = document.getElementById('createZoneForm');
+    const categorySelect = document.getElementById('createZoneCategorySelect');
+    const subtypeSelect = document.getElementById('createZoneSubtypeSelect');
+    const nameInput = document.getElementById('createZoneNameInput');
+    const confirmBtn = document.getElementById('confirmCreateZoneBtn');
+    const modal = this.getCreateZoneModalInstance();
+
+    if (!formEl || !categorySelect || !subtypeSelect || !nameInput || !confirmBtn || !modal) {
+      return;
+    }
+
+    const name = nameInput.value.trim();
+    if (!name) {
+      formEl.classList.add('was-validated');
+      nameInput.focus();
+      return;
+    }
+
+    confirmBtn.disabled = true;
+
+    const properties = {
+      name,
+      type: categorySelect.value || 'forest',
+      subType: subtypeSelect.value || '',
+      riskLevel: this._createZoneDefaultRiskLevel || 'low',
+      description: '',
+      areaHa: 0
+    };
+
+    const plot = this.createPlotFromGeoJSON({ type: 'Feature', geometry: null, properties: {} }, properties);
+    this.userPlots.push(plot);
+    this.activePlotId = plot.id;
+    this.applyPlotOrder();
+    this.captureHistorySnapshot();
+    this.updateSelectedArea();
+    this.updateSelectedPlotsList();
+    modal.hide();
+    this.selectPlot(plot.id);
+  }
+
   ensureSubCategoryModalBound() {
     if (this._subCategoryModalBound) return;
 
@@ -3272,12 +3958,7 @@ class TerrainEditor {
     this._subCategoryModalBound = true;
   }
 
-  getCurrentCategoryDisplayName(category) {
-    const activeItem = document.querySelector('#plotTypeDropdownMenu .dropdown-item.active');
-    if (activeItem) {
-      return activeItem.textContent.trim();
-    }
-
+  getCategoryDisplayName(category) {
     const categoryMap = {
       forest: '林区',
       farmland: '农田',
@@ -3287,6 +3968,15 @@ class TerrainEditor {
       bare: '裸地'
     };
     return categoryMap[category] || category;
+  }
+
+  getCurrentCategoryDisplayName(category) {
+    const activeItem = document.querySelector('#plotTypeDropdownMenu .dropdown-item.active');
+    if (activeItem) {
+      return activeItem.textContent.trim();
+    }
+
+    return this.getCategoryDisplayName(category);
   }
 
   getSubCategoryExampleData(category) {
@@ -3409,7 +4099,9 @@ class TerrainEditor {
       });
       const result = await response.json();
       if (result.code === 0) {
+        delete this.subcategoryOptionsByCategory[category];
         modal.hide();
+        await this.loadSubCategories(name.trim(), category);
         this.selectSubCategory(name.trim());
       } else {
         alert('新增失败: ' + result.msg);
@@ -3433,6 +4125,10 @@ class TerrainEditor {
       });
       const result = await response.json();
       if (result.code === 0) {
+        const currentCategory = document.getElementById('plotType')?.value;
+        if (currentCategory) {
+          delete this.subcategoryOptionsByCategory[currentCategory];
+        }
         // 如果当前选中的正是被删除的项，则清除选择
         const subTypeHiddenInput = document.getElementById('plotSubType');
         if (subTypeHiddenInput && subTypeHiddenInput.value === name) {

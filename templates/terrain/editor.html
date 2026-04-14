@@ -425,12 +425,12 @@
       overflow-y: auto;
       border: 1px solid #dbe3ec !important;
       border-radius: 14px !important;
-      padding: 8px !important;
+      padding: 6px !important;
       background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
       display: grid;
       grid-auto-rows: max-content;
       align-content: start;
-      gap: 8px;
+      gap: 6px;
       container-type: inline-size;
     }
     #selectedAreas.is-empty {
@@ -478,12 +478,12 @@
       display: block;
       flex: none;
       margin-bottom: 0;
-      border-radius: 14px;
+      border-radius: 10px;
       border: 1px solid #dbe3ec;
       background: #ffffff;
       overflow: hidden;
-      min-height: 50px;
-      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
+      min-height: 34px;
+      box-shadow: 0 1px 6px rgba(15, 23, 42, 0.03);
       transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
     }
     #selectedAreas .layer-item:hover {
@@ -493,18 +493,18 @@
     }
     #selectedAreas .layer-item-content {
       display: grid;
-      grid-template-columns: 26px 26px 18px minmax(0, 1fr) auto;
+      grid-template-columns: 20px 20px 14px minmax(0, 1fr) auto;
       grid-template-areas: "check visibility color name actions";
       align-items: center;
       width: 100%;
-      min-height: 48px;
-      padding: 8px 10px;
-      column-gap: 6px;
+      min-height: 32px;
+      padding: 4px 6px;
+      column-gap: 4px;
     }
     #selectedAreas .layer-check-area,
     #selectedAreas .layer-visibility-area {
-      width: 26px;
-      flex: 0 0 26px;
+      width: 20px;
+      flex: 0 0 20px;
     }
     #selectedAreas .layer-check-area {
       grid-area: check;
@@ -514,17 +514,17 @@
     }
     #selectedAreas .layer-color-area {
       grid-area: color;
-      width: 18px;
-      flex: 0 0 18px;
+      width: 14px;
+      flex: 0 0 14px;
     }
     #selectedAreas .layer-name-area {
       grid-area: name;
       min-width: 0;
     }
     #selectedAreas .layer-name {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 500;
-      line-height: 1.35;
+      line-height: 1.15;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -534,30 +534,31 @@
       display: inline-flex;
       justify-self: end;
       flex: 0 0 auto;
-      gap: 6px;
+      gap: 4px;
     }
     #selectedAreas .layer-actions i {
-      width: 18px;
-      height: 18px;
+      width: 14px;
+      height: 14px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      font-size: 0.82rem;
     }
     #selectedAreas .layer-color {
-      width: 12px;
-      height: 12px;
+      width: 10px;
+      height: 10px;
       border-radius: 2px;
       border: 1px solid rgba(0, 0, 0, 0.1);
     }
     @container (max-width: 300px) {
       #selectedAreas .layer-item {
-        min-height: 56px;
+        min-height: 38px;
       }
       #selectedAreas .layer-item-content {
-        grid-template-columns: 22px 22px 18px minmax(0, 1fr) auto;
+        grid-template-columns: 18px 18px 14px minmax(0, 1fr) auto;
         grid-template-areas: "check visibility color name actions";
         align-items: center;
-        column-gap: 6px;
+        column-gap: 4px;
         row-gap: 0;
       }
       #selectedAreas .layer-name {
@@ -567,13 +568,13 @@
     }
     @container (max-width: 240px) {
       #selectedAreas .layer-item {
-        min-height: 56px;
+        min-height: 38px;
       }
       #selectedAreas .layer-item-content {
-        grid-template-columns: 16px 16px 16px minmax(0, 1fr) auto;
+        grid-template-columns: 14px 14px 14px minmax(0, 1fr) auto;
         grid-template-areas: "check visibility color name actions";
         align-items: center;
-        column-gap: 6px;
+        column-gap: 4px;
       }
       #selectedAreas .layer-name-area {
         display: block;
@@ -586,13 +587,13 @@
     }
     @container (max-width: 220px) {
       #selectedAreas .layer-item {
-        min-height: 56px;
+        min-height: 38px;
       }
       #selectedAreas .layer-item-content {
         grid-template-columns: 14px 14px 14px minmax(0, 1fr) auto;
         grid-template-areas: "check visibility color name actions";
-        column-gap: 6px;
-        padding: 8px 10px;
+        column-gap: 4px;
+        padding: 4px 6px;
         align-items: center;
       }
       #selectedAreas .layer-check-area,
@@ -606,7 +607,7 @@
         min-width: 0;
       }
       #selectedAreas .layer-name {
-        font-size: 12px;
+        font-size: 11px;
       }
       #selectedAreas .layer-actions {
         justify-self: end;
@@ -875,6 +876,75 @@
       font-size: 0.82rem;
       color: #64748b;
     }
+    .create-zone-modal .modal-content {
+      border: 1px solid #dbe3ec;
+      border-radius: 18px;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+    }
+    .create-zone-modal .modal-header {
+      padding: 16px 20px;
+      background: linear-gradient(180deg, #f8fbff 0%, #f4f8fd 100%);
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .create-zone-modal .modal-title {
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .create-zone-modal .modal-body {
+      padding: 18px 20px 12px;
+    }
+    .create-zone-modal .modal-footer {
+      padding: 14px 20px 18px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .create-zone-modal .form-label {
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 8px;
+    }
+    .create-zone-modal .form-control,
+    .create-zone-modal .form-select {
+      border-radius: 12px;
+      border-color: #d4dbe4;
+      padding: 0.7rem 0.9rem;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
+    }
+    .create-zone-modal .form-control:focus,
+    .create-zone-modal .form-select:focus {
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+    }
+    .create-zone-name-hint {
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+    .confirm-action-modal .modal-content {
+      border: 1px solid #dbe3ec;
+      border-radius: 18px;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+    }
+    .confirm-action-modal .modal-header {
+      padding: 16px 20px;
+      background: linear-gradient(180deg, #fff8f1 0%, #fff7ed 100%);
+      border-bottom: 1px solid #fde7cf;
+    }
+    .confirm-action-modal .modal-title {
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .confirm-action-modal .modal-body {
+      padding: 18px 20px 10px;
+      color: #475569;
+      line-height: 1.7;
+    }
+    .confirm-action-modal .modal-footer {
+      padding: 14px 20px 18px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .confirm-action-target {
+      color: #0f172a;
+      font-weight: 600;
+    }
     @media (max-width: 1440px) {
       .editor-body {
         --left-panel-width: 292px;
@@ -934,11 +1004,14 @@
     
     <!-- 中间：编辑工具组 -->
     <div class="tool-group d-flex align-items-center">
-      <button class="tool-btn m-0" data-tool="select" title="选择并编辑地块">
-        <i class="bi bi-cursor"></i> 选择
+      <button class="tool-btn m-0 active" data-tool="browse" title="不启用编辑工具，仅保留鼠标最基本的拖拽和平移缩放">
+        <i class="bi bi-mouse"></i> 鼠标
       </button>
-      <button class="tool-btn m-0" data-tool="pan" title="平移地图">
-        <i class="bi bi-arrows-move"></i> 平移
+      <button class="tool-btn m-0" data-tool="move-layer" title="点击选中，拖拽图层移动，空白处拖拽平移视角">
+        <i class="bi bi-cursor-move"></i> 移动
+      </button>
+      <button class="tool-btn m-0" data-tool="marquee-select" title="框选多个地块图层">
+        <i class="bi bi-bounding-box"></i> 框选
       </button>
       
       <div class="vr mx-2" style="height: 24px;"></div>
@@ -956,7 +1029,7 @@
         </ul>
       </div>
       <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
-        <button class="tool-btn m-0 active" data-tool="brush">
+        <button class="tool-btn m-0" data-tool="brush">
           <i class="bi bi-brush"></i> 像素画笔
         </button>
         <button class="tool-btn dropdown-toggle m-0 border-left-0" type="button" id="brushSizeDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="padding-left: 5px; padding-right: 5px;">
@@ -1093,7 +1166,7 @@
           <div class="row g-2 small text-muted">
             <div class="col-12 text-truncate" id="cursorPosition" title="当前光标坐标">坐标: -</div>
             <div class="col-12" id="totalArea" title="当前地形内所有地块的总面积之和">地形总面积: -</div>
-            <div class="col-12 border-top pt-1 mt-1 small" id="editMode">编辑模式: 选择</div>
+            <div class="col-12 border-top pt-1 mt-1 small" id="editMode">编辑模式: 鼠标</div>
           </div>
         </div>
 
@@ -1117,7 +1190,8 @@
         <!-- 地块属性 (子对象) -->
         <div class="plot-info-section panel-card">
           <h5 class="section-title">
-            <i class="bi bi-layers-half text-success me-2"></i>当前地块属性
+            <i class="bi bi-layers-half text-success me-2"></i>当前地块
+            <span class="text-muted ms-2" id="currentPlotTitleName">-</span>
           </h5>
           
           <div class="attribute-group">
@@ -1237,6 +1311,71 @@
           <button type="submit" class="btn btn-primary" id="saveSubCategoryBtn">保存子类别</button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade create-zone-modal" id="createZoneModal" tabindex="-1" aria-labelledby="createZoneModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="createZoneModalLabel">创建地块图层</h5>
+          <div class="small text-muted mt-1">请选择地块类型和子类型，系统将自动生成默认地块名称。</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="createZoneForm">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="createZoneCategorySelect" class="form-label">地块类型</label>
+            <select class="form-select" id="createZoneCategorySelect" required>
+              <option value="forest">林区</option>
+              <option value="farmland">农田</option>
+              <option value="building">建筑</option>
+              <option value="water">水域</option>
+              <option value="road">道路</option>
+              <option value="bare">裸地</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="createZoneSubtypeSelect" class="form-label">子类型</label>
+            <select class="form-select" id="createZoneSubtypeSelect">
+              <option value="">请选择子类型</option>
+            </select>
+          </div>
+          <div class="mb-0">
+            <label for="createZoneNameInput" class="form-label">地块名称</label>
+            <input type="text" class="form-control" id="createZoneNameInput" maxlength="100" required>
+            <div class="create-zone-name-hint mt-2" id="createZoneNameHint">系统将根据当前类型与子类型自动生成默认名称，你也可以手动修改。</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary" id="confirmCreateZoneBtn">创建图层</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade confirm-action-modal" id="disjointSplitModal" tabindex="-1" aria-labelledby="disjointSplitModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="disjointSplitModalLabel">拆分不连续区域</h5>
+          <div class="small text-muted mt-1" id="disjointSplitModalSubtitle">检测到当前地块存在多个独立区域。</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="disjointSplitModalMessage">检测到当前地块包含不相连区域，是否拆分为多个独立图层？</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" id="cancelDisjointSplitBtn" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="confirmDisjointSplitBtn">确定拆分</button>
+      </div>
     </div>
   </div>
 </div>

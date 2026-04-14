@@ -37,10 +37,10 @@ function initEditor() {
   // 绑定左右工作台的显示/隐藏与拖拽调宽
   initWorkspacePanels();
 
-  // 默认进入选择模式
-  const selectBtn = document.querySelector('[data-tool="select"]');
-  if (selectBtn) {
-    selectTool('select', selectBtn);
+  // 默认进入鼠标模式，仅保留基础拖拽和缩放
+  const browseBtn = document.querySelector('[data-tool="browse"]');
+  if (browseBtn) {
+    selectTool('browse', browseBtn);
   }
 
   // 加载区域及地块数据
@@ -279,6 +279,13 @@ function bindToolEvents() {
   document.querySelectorAll('[data-tool]').forEach(button => {
     button.addEventListener('click', function() {
       const tool = this.getAttribute('data-tool');
+      if (terrainEditor?.currentTool === tool && tool !== 'browse') {
+        const browseBtn = document.querySelector('[data-tool="browse"]');
+        if (browseBtn) {
+          selectTool('browse', browseBtn);
+        }
+        return;
+      }
       selectTool(tool, this);
     });
   });
@@ -357,17 +364,20 @@ function selectTool(tool, button) {
   
   // 执行工具切换逻辑
   switch (tool) {
-    case 'select':
-      terrainEditor.enableSelect();
+    case 'browse':
+      terrainEditor.enableBrowseMode();
+      break;
+    case 'move-layer':
+      terrainEditor.enableMoveLayer();
+      break;
+    case 'marquee-select':
+      terrainEditor.enableMarqueeSelect();
       break;
     case 'brush':
       terrainEditor.enableBrush();
       break;
     case 'eraser':
       terrainEditor.enableEraser();
-      break;
-    case 'pan':
-      terrainEditor.enablePan();
       break;
   }
 }
@@ -392,10 +402,10 @@ function bindActionEvents() {
   });
   
   // 保存按钮
-  document.querySelector('[data-action="save"]').addEventListener('click', function() {
+  document.querySelector('[data-action="save"]').addEventListener('click', async function() {
     // 保存前检查不相连区域
     if (terrainEditor && terrainEditor.activePlotId) {
-      terrainEditor.checkAndSplitDisjointPartsLocally(terrainEditor.activePlotId);
+      await terrainEditor.checkAndSplitDisjointPartsLocally(terrainEditor.activePlotId);
     }
     terrainEditor.save();
   });
