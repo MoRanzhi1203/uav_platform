@@ -70,10 +70,13 @@ def area_edit_detail(request, area_id):
         area_serializer = TerrainAreaSerializer(area)
         zones_serializer = TerrainZoneSerializer(zones, many=True)
         
-        return api_response(data={
+        response_data = {
             "area": area_serializer.data,
             "zones": zones_serializer.data
-        })
+        }
+        logger.info(f"--- 加载区域编辑详情返回 ---: {len(zones_serializer.data)} 个地块")
+        
+        return api_response(data=response_data)
     except Exception as e:
         logger.error(f"获取区域编辑详情异常: {str(e)}")
         return api_error(msg=str(e), status=500)
@@ -89,6 +92,7 @@ def unified_save_terrain(request):
     """
     try:
         data = request.data
+        logger.info(f"--- 统一保存请求数据 ---: {json.dumps(data, ensure_ascii=False)}")
         terrain_data = data.get('terrain', {})
         plots_data = data.get('plots', []) # 支持批量地块
 
@@ -99,21 +103,26 @@ def unified_save_terrain(request):
             # 1. 处理地形 (TerrainArea)
             terrain_id = terrain_data.get('id')
             if terrain_id:
-                terrain = get_object_or_404(TerrainArea, id=terrain_id)
+                terrain = get_object_or_404(TerrainArea, id=terrain_id, is_deleted=False)
                 terrain.name = terrain_data.get('name')
                 terrain.description = terrain_data.get('description', '')
+                if terrain_data.get('type'):
+                    terrain.type = terrain_data.get('type')
+                if terrain_data.get('risk_level'):
+                    terrain.risk_level = terrain_data.get('risk_level')
                 terrain.save()
-                msg = "地形及地块保存成功"
+                msg = "地形与地块已成功更新"
             else:
                 terrain = TerrainArea.objects.create(
                     name=terrain_data.get('name'),
                     description=terrain_data.get('description', ''),
-                    type='farm' # 默认大类类型
+                    type=terrain_data.get('type', 'farm'),
+                    risk_level=terrain_data.get('risk_level', 'low')
                 )
-                msg = "地形及地块创建成功"
+                msg = "地形与地块已成功创建"
 
             # 2. 批量处理地块 (TerrainZone)
-            saved_plots = []
+            saved_plot_ids = []
             for plot_item in plots_data:
                 plot_id = plot_item.get('id')
                 plot_item['area_obj'] = terrain.id # 强制关联到当前地形
@@ -128,15 +137,27 @@ def unified_save_terrain(request):
 
                 if serializer.is_valid():
                     plot = serializer.save()
-                    saved_plots.append(TerrainZoneSerializer(plot).data)
+                    saved_plot_ids.append(plot.id)
                 else:
                     # 如果任何地块校验失败，回滚整个事务
                     transaction.set_rollback(True)
                     return api_error(msg=f"地块[{plot_item.get('name')}]校验失败", data=serializer.errors)
 
+            # 3. 处理删除：如果地块不在本次提交列表中，标记为已删除
+            # 注意：只针对当前 TerrainArea 下的地块
+            deleted_count = TerrainZone.objects.filter(
+                area_obj=terrain, 
+                is_deleted=False
+            ).exclude(id__in=saved_plot_ids).update(is_deleted=True)
+            
+            if deleted_count > 0:
+                logger.info(f"清理了 {deleted_count} 个未在保存列表中的旧地块")
+
+            # 重新获取最新的已保存地块数据返回给前端
+            final_plots = TerrainZone.objects.filter(id__in=saved_plot_ids).prefetch_related('elements')
             return api_response(data={
                 "terrain": TerrainAreaSerializer(terrain).data,
-                "plots": saved_plots
+                "plots": TerrainZoneSerializer(final_plots, many=True).data
             }, msg=msg)
 
     except Exception as e:

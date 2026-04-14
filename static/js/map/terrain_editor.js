@@ -1666,6 +1666,8 @@ class TerrainEditor {
       });
     }
 
+    console.log('--- 准备保存地形数据 ---', terrainPayload);
+
     try {
       const response = await fetch('/terrain/api/terrain/save/', {
         method: 'POST',
@@ -1753,6 +1755,13 @@ class TerrainEditor {
           zones.forEach(zoneData => {
             this.renderPlotFromData(zoneData);
           });
+          
+          // 自动选择第一个地块
+          const firstPlot = this.userPlots[0];
+          if (firstPlot) {
+            console.log('自动选择第一个地块:', firstPlot.id);
+            this.selectPlot(firstPlot.id);
+          }
         }
         
         this.updateSelectedPlotsList();
@@ -1767,27 +1776,31 @@ class TerrainEditor {
 
   // 渲染区域边界 (作为背景参考)
   renderAreaBoundary(geojson) {
-    if (!geojson) return;
+    if (!geojson || !geojson.type) return;
     
     // 如果已有边界层，先移除
     if (this.areaBoundaryLayer) {
       this.map.removeLayer(this.areaBoundaryLayer);
     }
     
-    this.areaBoundaryLayer = L.geoJSON(geojson, {
-      style: {
-        color: '#666',
-        weight: 2,
-        dashArray: '5, 10',
-        fillOpacity: 0.05,
-        interactive: false
+    try {
+      this.areaBoundaryLayer = L.geoJSON(geojson, {
+        style: {
+          color: '#666',
+          weight: 2,
+          dashArray: '5, 10',
+          fillOpacity: 0.05,
+          interactive: false
+        }
+      }).addTo(this.map);
+      
+      // 自动缩放到边界
+      const bounds = this.areaBoundaryLayer.getBounds();
+      if (bounds.isValid()) {
+        this.map.fitBounds(bounds);
       }
-    }).addTo(this.map);
-    
-    // 自动缩放到边界
-    const bounds = this.areaBoundaryLayer.getBounds();
-    if (bounds.isValid()) {
-      this.map.fitBounds(bounds);
+    } catch (err) {
+      console.warn('渲染区域边界失败，GeoJSON 可能不完整:', err, geojson);
     }
   }
 
@@ -1804,12 +1817,24 @@ class TerrainEditor {
 
     const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     
+    // 检查 GeoJSON 是否合法
+    if (!data.geom_json || !data.geom_json.type) {
+      console.warn(`跳过无效地块 [${data.name} (ID: ${data.id})]: 缺少 GeoJSON 数据`, data.geom_json);
+      return;
+    }
+
     // 创建 Leaflet 图层
-    const layer = L.geoJSON(data.geom_json, {
-      style: this.getPlotStyle(properties.type, false),
-      interactive: !(data.style_json?.locked),
-      renderer: this.canvasRenderer
-    });
+    let layer;
+    try {
+      layer = L.geoJSON(data.geom_json, {
+        style: this.getPlotStyle(properties.type, false),
+        interactive: !(data.style_json?.locked),
+        renderer: this.canvasRenderer
+      });
+    } catch (err) {
+      console.error(`渲染地块 [${data.name} (ID: ${data.id})] 失败:`, err, data.geom_json);
+      return;
+    }
 
     const plot = {
       id: id,

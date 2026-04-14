@@ -25,7 +25,7 @@ class TerrainZoneSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'updated_at', 'is_deleted')
 
     def validate_category(self, value):
-        allowed_categories = ['forest', 'farmland', 'water', 'road', 'building']
+        allowed_categories = ['forest', 'farmland', 'water', 'road', 'building', 'bare']
         if value not in allowed_categories:
             raise serializers.ValidationError(f"Invalid land category: {value}")
         return value
