@@ -2,6 +2,17 @@
 
 // 全局编辑器实例
 let terrainEditor;
+let workspaceLayout = null;
+
+const WORKSPACE_LAYOUT_KEY = 'terrain-editor-workspace-layout';
+const WORKSPACE_LAYOUT_DEFAULTS = {
+  leftWidth: 320,
+  rightWidth: 360
+};
+const WORKSPACE_LEFT_MIN = 240;
+const WORKSPACE_LEFT_MAX = 520;
+const WORKSPACE_RIGHT_MIN = 280;
+const WORKSPACE_RIGHT_MAX = 560;
 
 // 初始化页面
 function initEditor() {
@@ -22,6 +33,9 @@ function initEditor() {
 
   // 绑定自定义地块类型下拉菜单事件
   bindCustomPlotTypeDropdown();
+
+  // 绑定左右工作台的显示/隐藏与拖拽调宽
+  initWorkspacePanels();
 
   // 默认进入选择模式
   const selectBtn = document.querySelector('[data-tool="select"]');
@@ -45,7 +59,7 @@ function initEditor() {
     } else {
       console.warn('未指定区域 ID，部分功能可能受限');
       
-      // 新建地形时，触发默认分类（如农田）的子类型加载联动
+      // 新建地形时，触发默认分类（如林区）的子类型加载联动
       const defaultPlotType = document.getElementById('plotType')?.value;
       if (defaultPlotType) {
         terrainEditor.setPlotCategoryAndLoadSubcategories(defaultPlotType, '');
@@ -127,6 +141,136 @@ function initEditor() {
       }
     });
   }
+}
+
+function initWorkspacePanels() {
+  const workspace = document.getElementById('editorWorkspace');
+  const leftPanel = document.getElementById('editorSidebar');
+  const rightPanel = document.getElementById('editorPanel');
+  const leftResizer = document.getElementById('leftPanelResizer');
+  const rightResizer = document.getElementById('rightPanelResizer');
+
+  if (!workspace || !leftPanel || !rightPanel || !leftResizer || !rightResizer) {
+    return;
+  }
+
+  workspaceLayout = loadWorkspaceLayout();
+  applyWorkspaceLayout();
+
+  bindPanelResizer(leftResizer, 'left');
+  bindPanelResizer(rightResizer, 'right');
+
+  window.addEventListener('resize', () => {
+    applyWorkspaceLayout({ persist: false });
+  });
+}
+
+function loadWorkspaceLayout() {
+  try {
+    const saved = window.localStorage.getItem(WORKSPACE_LAYOUT_KEY);
+    if (!saved) return { ...WORKSPACE_LAYOUT_DEFAULTS };
+
+    const parsed = JSON.parse(saved);
+    return {
+      leftWidth: clampWidth(parsed.leftWidth, WORKSPACE_LEFT_MIN, WORKSPACE_LEFT_MAX, WORKSPACE_LAYOUT_DEFAULTS.leftWidth),
+      rightWidth: clampWidth(parsed.rightWidth, WORKSPACE_RIGHT_MIN, WORKSPACE_RIGHT_MAX, WORKSPACE_LAYOUT_DEFAULTS.rightWidth)
+    };
+  } catch (error) {
+    console.warn('读取工作台布局配置失败，已恢复默认布局:', error);
+    return { ...WORKSPACE_LAYOUT_DEFAULTS };
+  }
+}
+
+function saveWorkspaceLayout() {
+  if (!workspaceLayout) return;
+
+  try {
+    window.localStorage.setItem(WORKSPACE_LAYOUT_KEY, JSON.stringify(workspaceLayout));
+  } catch (error) {
+    console.warn('保存工作台布局配置失败:', error);
+  }
+}
+
+function applyWorkspaceLayout(options = {}) {
+  const { persist = false } = options;
+  const workspace = document.getElementById('editorWorkspace');
+
+  if (!workspace || !workspaceLayout) return;
+
+  workspace.style.setProperty('--left-panel-width', `${workspaceLayout.leftWidth}px`);
+  workspace.style.setProperty('--right-panel-width', `${workspaceLayout.rightWidth}px`);
+
+  if (persist) {
+    saveWorkspaceLayout();
+  }
+
+  requestMapResize();
+}
+
+function bindPanelResizer(resizer, side) {
+  resizer.addEventListener('mousedown', function(e) {
+    if (window.matchMedia('(max-width: 992px)').matches) return;
+
+    e.preventDefault();
+    startPanelResize(side, e.clientX);
+  });
+}
+
+function startPanelResize(side, startX) {
+  const workspace = document.getElementById('editorWorkspace');
+  const leftPanel = document.getElementById('editorSidebar');
+  const rightPanel = document.getElementById('editorPanel');
+
+  if (!workspace || !leftPanel || !rightPanel || !workspaceLayout) return;
+
+  const startWidth = side === 'left'
+    ? leftPanel.getBoundingClientRect().width
+    : rightPanel.getBoundingClientRect().width;
+
+  workspace.classList.add('is-resizing');
+
+  const handleMouseMove = (event) => {
+    const deltaX = event.clientX - startX;
+
+    if (side === 'left') {
+      workspaceLayout.leftWidth = clampWidth(startWidth + deltaX, WORKSPACE_LEFT_MIN, WORKSPACE_LEFT_MAX, WORKSPACE_LAYOUT_DEFAULTS.leftWidth);
+    } else {
+      workspaceLayout.rightWidth = clampWidth(startWidth - deltaX, WORKSPACE_RIGHT_MIN, WORKSPACE_RIGHT_MAX, WORKSPACE_LAYOUT_DEFAULTS.rightWidth);
+    }
+
+    applyWorkspaceLayout();
+  };
+
+  const handleMouseUp = () => {
+    workspace.classList.remove('is-resizing');
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    saveWorkspaceLayout();
+    requestMapResize();
+  };
+
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', handleMouseUp);
+}
+
+function clampWidth(value, min, max, fallback) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.min(max, Math.max(min, numericValue));
+}
+
+function requestMapResize() {
+  if (!terrainEditor || !terrainEditor.map) return;
+
+  window.requestAnimationFrame(() => {
+    terrainEditor.map.invalidateSize();
+  });
+
+  window.setTimeout(() => {
+    if (terrainEditor && terrainEditor.map) {
+      terrainEditor.map.invalidateSize();
+    }
+  }, 240);
 }
 
 // 绑定工具按钮事件

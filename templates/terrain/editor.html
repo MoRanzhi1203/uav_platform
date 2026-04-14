@@ -29,9 +29,12 @@
       display: flex;
       overflow: hidden;
       z-index: 1;
+      background: #eef3f8;
+      --left-panel-width: 320px;
+      --right-panel-width: 360px;
     }
     .dropdown-menu {
-      z-index: 1100 !important;
+      z-index: 3000 !important;
       min-width: 120px;
       border-radius: 0.375rem;
       box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
@@ -73,20 +76,67 @@
       color: #212529 !important;
     }
     .editor-sidebar {
-      width: 280px;
-      background: #f8f9fa;
-      border-right: 1px solid #dee2e6;
+      width: var(--left-panel-width);
+      flex: 0 0 var(--left-panel-width);
+      min-width: 0;
+      background: linear-gradient(180deg, #f8fafc 0%, #eef3f8 100%);
+      border-right: 1px solid #dbe3ec;
       overflow-y: auto;
+      overflow-x: visible;
+      padding: 18px 14px 22px;
+      transition: width 0.22s ease, flex-basis 0.22s ease, padding 0.22s ease, border-color 0.22s ease;
     }
     .editor-map {
-      flex: 1;
+      flex: 1 1 auto;
+      min-width: 0;
       position: relative;
+      transition: width 0.22s ease;
     }
     .editor-panel {
-      width: 300px;
-      background: #f8f9fa;
-      border-left: 1px solid #dee2e6;
+      width: var(--right-panel-width);
+      flex: 0 0 var(--right-panel-width);
+      min-width: 0;
+      background: linear-gradient(180deg, #f8fafc 0%, #eef3f8 100%);
+      border-left: 1px solid #dbe3ec;
       overflow-y: auto;
+      overflow-x: visible;
+      padding: 18px 14px 22px;
+      transition: width 0.22s ease, flex-basis 0.22s ease, padding 0.22s ease, border-color 0.22s ease;
+    }
+    .panel-resizer {
+      width: 18px;
+      flex: 0 0 18px;
+      position: relative;
+      cursor: col-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      z-index: 30;
+    }
+    .panel-resizer::before {
+      content: '';
+      width: 2px;
+      height: calc(100% - 32px);
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(59, 130, 246, 0.15), rgba(148, 163, 184, 0.85), rgba(59, 130, 246, 0.15));
+      transition: background-color 0.2s ease, transform 0.2s ease;
+    }
+    .panel-resizer:hover::before,
+    .panel-resizer:focus-within::before {
+      transform: scaleX(1.2);
+      background: linear-gradient(180deg, rgba(37, 99, 235, 0.25), rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.25));
+    }
+    .editor-body.is-resizing,
+    .editor-body.is-resizing * {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+    .editor-body.is-resizing .editor-sidebar,
+    .editor-body.is-resizing .editor-panel,
+    .editor-body.is-resizing .editor-map,
+    .editor-body.is-resizing .panel-resizer {
+      transition: none !important;
     }
     .editor-footer {
       height: 40px;
@@ -135,34 +185,453 @@
       background: white;
       cursor: not-allowed;
     }
-    .layer-list {
-      padding: 15px;
+    .layer-list,
+    .attribute-form {
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .sidebar-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #1f2937;
+      margin: 0;
+      letter-spacing: 0.01em;
+    }
+    .sidebar-card,
+    .plot-status-summary,
+    .terrain-info-section,
+    .plot-info-section {
+      position: relative;
+      z-index: 1;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #dde5ee;
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      backdrop-filter: blur(6px);
+    }
+    .sidebar-card:focus-within,
+    .terrain-info-section:focus-within,
+    .plot-info-section:focus-within,
+    .plot-status-summary:focus-within {
+      z-index: 50;
+    }
+    .editor-sidebar .dropdown,
+    .editor-panel .dropdown {
+      position: relative;
+    }
+    .sidebar-card {
+      padding: 16px;
+    }
+    .sidebar-section-title,
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #1f2937;
+    }
+    .sidebar-section-title i,
+    .section-title i {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      background: rgba(59, 130, 246, 0.12);
+    }
+    .terrain-info-section .section-title i {
+      background: rgba(37, 99, 235, 0.12);
+      color: #2563eb !important;
+    }
+    .plot-info-section .section-title i {
+      background: rgba(16, 185, 129, 0.14);
+      color: #059669 !important;
+    }
+    .sidebar-section-title .bi-map,
+    .sidebar-section-title .bi-stack,
+    .sidebar-section-title .bi-sliders {
+      color: #2563eb;
     }
     .layer-checkbox {
       margin-right: 10px;
-    }
-    .attribute-form {
-      padding: 15px;
+      accent-color: #2563eb;
     }
     .attribute-group {
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
     .attribute-group label {
       display: block;
-      margin-bottom: 5px;
-      font-weight: 500;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #334155;
+      font-size: 0.95rem;
     }
     .attribute-group input,
     .attribute-group select,
     .attribute-group textarea {
       width: 100%;
-      padding: 8px;
-      border: 1px solid #dee2e6;
-      border-radius: 4px;
+      padding: 11px 13px;
+      border: 1px solid #d4dbe4;
+      border-radius: 12px;
+      background: #fff;
+      color: #1f2937;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
+    }
+    .attribute-group input:focus,
+    .attribute-group select:focus,
+    .attribute-group textarea:focus,
+    #plotTypeDropdownBtn:focus,
+    #subTypeDropdownBtn:focus,
+    #basemapDropdownSidebar:focus {
+      outline: none;
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+    }
+    .attribute-group textarea {
+      min-height: 84px;
+      resize: vertical;
+    }
+    .attribute-group input[readonly] {
+      background: #f8fafc;
+      color: #475569;
+    }
+    #plotTypeDropdownBtn,
+    #subTypeDropdownBtn,
+    #basemapDropdownSidebar {
+      min-height: 46px;
+      border-radius: 12px;
+      border-color: #d4dbe4;
+      background: #fff;
+      padding: 10px 12px;
+      color: #334155;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
+    }
+    #plotTypeDropdownBtn:hover,
+    #subTypeDropdownBtn:hover,
+    #basemapDropdownSidebar:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
     }
     .map-container {
       height: 100%;
       width: 100%;
+    }
+    .plot-status-summary {
+      padding: 14px 16px !important;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(239, 246, 255, 0.92));
+      border-color: #cfe0ff;
+    }
+    .plot-status-summary .row > div {
+      border-radius: 12px;
+      background: rgba(248, 250, 252, 0.92);
+      border: 1px solid #e2e8f0;
+      padding: 10px 12px;
+      color: #475569 !important;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .terrain-info-section,
+    .plot-info-section {
+      padding: 18px;
+    }
+    .terrain-info-section {
+      border-color: #dbeafe;
+    }
+    .plot-info-section {
+      border-color: #d1fae5;
+    }
+    .layer-panel-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .layer-panel-header .sidebar-section-title {
+      flex: 1 1 120px;
+      min-width: 0;
+      margin-bottom: 0;
+    }
+    .layer-toolbar {
+      display: flex;
+      flex: 0 1 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+      max-width: 100%;
+    }
+    .layer-toolbar .btn {
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      border-radius: 10px;
+      border-color: #d4dbe4;
+      background: #fff;
+      color: #475569;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .layer-toolbar .btn:hover:not(:disabled) {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #2563eb;
+    }
+    .layer-toolbar .btn:disabled {
+      opacity: 0.55;
+    }
+    .layer-toolbar .btn i {
+      font-size: 0.95rem;
+    }
+    #selectedAreas {
+      max-height: 320px;
+      overflow-y: auto;
+      border: 1px solid #dbe3ec !important;
+      border-radius: 14px !important;
+      padding: 8px !important;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      display: grid;
+      grid-auto-rows: max-content;
+      align-content: start;
+      gap: 8px;
+      container-type: inline-size;
+    }
+    #selectedAreas.is-empty {
+      min-height: 168px;
+      padding: 14px !important;
+      justify-content: center;
+    }
+    #selectedAreas .layer-empty-state {
+      min-height: 132px;
+      padding: 18px 16px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #f8fbff 0%, #f8fafc 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #64748b;
+    }
+    #selectedAreas .layer-empty-icon {
+      width: 40px;
+      height: 40px;
+      margin-bottom: 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(59, 130, 246, 0.12);
+      color: #2563eb;
+      font-size: 1rem;
+    }
+    #selectedAreas .layer-empty-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+    #selectedAreas .layer-empty-text {
+      font-size: 12px;
+      line-height: 1.6;
+      max-width: 240px;
+    }
+    #selectedAreas .layer-item {
+      display: block;
+      flex: none;
+      margin-bottom: 0;
+      border-radius: 14px;
+      border: 1px solid #dbe3ec;
+      background: #ffffff;
+      overflow: hidden;
+      min-height: 50px;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
+      transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    #selectedAreas .layer-item:hover {
+      background: #f8fbff;
+      border-color: #bfdbfe;
+      box-shadow: 0 8px 20px rgba(59, 130, 246, 0.08);
+    }
+    #selectedAreas .layer-item-content {
+      display: grid;
+      grid-template-columns: 26px 26px 18px minmax(0, 1fr) auto;
+      grid-template-areas: "check visibility color name actions";
+      align-items: center;
+      width: 100%;
+      min-height: 48px;
+      padding: 8px 10px;
+      column-gap: 6px;
+    }
+    #selectedAreas .layer-check-area,
+    #selectedAreas .layer-visibility-area {
+      width: 26px;
+      flex: 0 0 26px;
+    }
+    #selectedAreas .layer-check-area {
+      grid-area: check;
+    }
+    #selectedAreas .layer-visibility-area {
+      grid-area: visibility;
+    }
+    #selectedAreas .layer-color-area {
+      grid-area: color;
+      width: 18px;
+      flex: 0 0 18px;
+    }
+    #selectedAreas .layer-name-area {
+      grid-area: name;
+      min-width: 0;
+    }
+    #selectedAreas .layer-name {
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #selectedAreas .layer-actions {
+      grid-area: actions;
+      display: inline-flex;
+      justify-self: end;
+      flex: 0 0 auto;
+      gap: 6px;
+    }
+    #selectedAreas .layer-actions i {
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #selectedAreas .layer-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    @container (max-width: 300px) {
+      #selectedAreas .layer-item {
+        min-height: 56px;
+      }
+      #selectedAreas .layer-item-content {
+        grid-template-columns: 22px 22px 18px minmax(0, 1fr) auto;
+        grid-template-areas: "check visibility color name actions";
+        align-items: center;
+        column-gap: 6px;
+        row-gap: 0;
+      }
+      #selectedAreas .layer-name {
+        white-space: nowrap;
+        display: block;
+      }
+    }
+    @container (max-width: 240px) {
+      #selectedAreas .layer-item {
+        min-height: 56px;
+      }
+      #selectedAreas .layer-item-content {
+        grid-template-columns: 16px 16px 16px minmax(0, 1fr) auto;
+        grid-template-areas: "check visibility color name actions";
+        align-items: center;
+        column-gap: 6px;
+      }
+      #selectedAreas .layer-name-area {
+        display: block;
+        min-width: 0;
+      }
+      #selectedAreas .layer-actions {
+        justify-self: end;
+        gap: 6px;
+      }
+    }
+    @container (max-width: 220px) {
+      #selectedAreas .layer-item {
+        min-height: 56px;
+      }
+      #selectedAreas .layer-item-content {
+        grid-template-columns: 14px 14px 14px minmax(0, 1fr) auto;
+        grid-template-areas: "check visibility color name actions";
+        column-gap: 6px;
+        padding: 8px 10px;
+        align-items: center;
+      }
+      #selectedAreas .layer-check-area,
+      #selectedAreas .layer-visibility-area,
+      #selectedAreas .layer-color-area {
+        width: 14px;
+        flex-basis: 14px;
+      }
+      #selectedAreas .layer-name-area {
+        display: block;
+        min-width: 0;
+      }
+      #selectedAreas .layer-name {
+        font-size: 12px;
+      }
+      #selectedAreas .layer-actions {
+        justify-self: end;
+        gap: 6px;
+      }
+    }
+    .assist-layer-list .layer-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 10px;
+      color: #334155;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+    .assist-layer-list .layer-item:hover {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+    }
+    .assist-layer-list .layer-item:last-child {
+      margin-bottom: 0;
+    }
+    .assist-layer-list .layer-item > div {
+      display: flex;
+      align-items: center;
+    }
+    .geo-info-box {
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .geo-info-box p:last-child {
+      margin-bottom: 0;
+    }
+    .editor-sidebar::-webkit-scrollbar,
+    .editor-panel::-webkit-scrollbar,
+    #selectedAreas::-webkit-scrollbar {
+      width: 6px;
+    }
+    .editor-sidebar::-webkit-scrollbar-thumb,
+    .editor-panel::-webkit-scrollbar-thumb,
+    #selectedAreas::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.7);
+      border-radius: 999px;
+    }
+    .editor-sidebar::-webkit-scrollbar-track,
+    .editor-panel::-webkit-scrollbar-track,
+    #selectedAreas::-webkit-scrollbar-track {
+      background: transparent;
     }
     .canvas-area {
       position: absolute;
@@ -222,6 +691,54 @@
     .subcat-delete-btn:hover {
       opacity: 1;
       background-color: rgba(220, 53, 69, 0.1);
+    }
+    @media (max-width: 1440px) {
+      .editor-body {
+        --left-panel-width: 292px;
+        --right-panel-width: 332px;
+      }
+    }
+    @media (max-width: 1200px) {
+      .editor-body {
+        --left-panel-width: 276px;
+        --right-panel-width: 312px;
+      }
+    }
+    @media (max-width: 992px) {
+      .editor-body {
+        flex-direction: column;
+        --left-panel-width: 100%;
+        --right-panel-width: 100%;
+      }
+      .editor-sidebar,
+      .editor-panel {
+        width: 100%;
+        flex-basis: auto;
+        max-height: 34vh;
+        border-left: none;
+        border-right: none;
+      }
+      .panel-resizer {
+        display: none;
+      }
+      .editor-sidebar {
+        border-bottom: 1px solid #dbe3ec;
+      }
+      .editor-panel {
+        border-top: 1px solid #dbe3ec;
+      }
+      .editor-map {
+        min-height: 45vh;
+      }
+    }
+    @media (max-width: 1280px) {
+      .layer-panel-header {
+        align-items: stretch;
+      }
+      .layer-toolbar {
+        width: 100%;
+        justify-content: flex-start;
+      }
     }
   </style>
 {% endblock %}
@@ -297,15 +814,15 @@
   </div>
   
   <!-- 主体区域 -->
-  <div class="editor-body">
+  <div class="editor-body" id="editorWorkspace">
     <!-- 左侧图层/区域面板 -->
-    <div class="editor-sidebar">
-      <div class="layer-list">
-        <h5 class="mb-3">图层管理</h5>
+    <div class="editor-sidebar" id="editorSidebar">
+      <div class="layer-list sidebar-scroll">
+        <h5 class="sidebar-title">图层管理</h5>
         
         <!-- 底图模式 -->
-        <div class="mb-4">
-          <h6 class="mb-2">底图模式</h6>
+        <div class="sidebar-card">
+          <h6 class="sidebar-section-title"><i class="bi bi-map"></i>底图模式</h6>
           <div class="dropdown w-100" id="basemapDropdownSidebarContainer">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 d-flex align-items-center justify-content-between" type="button" id="basemapDropdownSidebar" data-bs-toggle="dropdown" aria-expanded="false">
               <span><i class="bi bi-map me-2"></i>当前：<span id="currentBasemapNameSidebar" class="fw-bold">卫星底图</span></span>
@@ -318,26 +835,32 @@
         </div>
         
         <!-- 用户绘制图层 -->
-        <div class="mb-4">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="m-0">图层面板</h6>
-            <div class="btn-group btn-group-sm">
-              <button class="btn btn-outline-secondary" id="toggleMultiSelectBtn" title="进入/退出批量模式">
+        <div class="sidebar-card">
+          <div class="layer-panel-header">
+            <h6 class="sidebar-section-title mb-0"><i class="bi bi-stack"></i>图层面板</h6>
+            <div class="layer-toolbar">
+              <button class="btn btn-sm btn-outline-secondary" id="toggleMultiSelectBtn" title="进入/退出批量模式">
                 <i class="bi bi-list-check"></i>
               </button>
-              <button class="btn btn-outline-secondary" id="mergeZonesBtn" title="合并 (Elements一致时可用)" disabled>
+              <button class="btn btn-sm btn-outline-secondary" id="mergeZonesBtn" title="合并 (Elements一致时可用)" disabled>
                 <i class="bi bi-intersect"></i>
               </button>
-              <button class="btn btn-outline-secondary" id="booleanSubtractBtn" title="布尔减法 (A减B)" disabled>
+              <button class="btn btn-sm btn-outline-secondary" id="booleanSubtractBtn" title="布尔减法 (A减B)" disabled>
                 <i class="bi bi-subtract"></i>
               </button>
-              <button class="btn btn-outline-secondary" id="splitZoneBtn" title="拆分不相连区域" disabled>
+              <button class="btn btn-sm btn-outline-secondary" id="splitZoneBtn" title="拆分不相连区域" disabled>
                 <i class="bi bi-scissors"></i>
               </button>
             </div>
           </div>
-          <div id="selectedAreas" class="mt-2" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 5px;">
-            <!-- 动态生成的已选地块项 -->
+          <div id="selectedAreas" class="mt-2 is-empty">
+            <div class="layer-empty-state">
+              <div class="layer-empty-icon">
+                <i class="bi bi-layers"></i>
+              </div>
+              <div class="layer-empty-title">当前还没有地块图层</div>
+              <div class="layer-empty-text">点击下方“新建地块图层”后，即可开始绘制和管理地块。</div>
+            </div>
           </div>
           <button class="btn btn-sm btn-primary w-100 mt-2" id="createNewZoneBtn">
             <i class="bi bi-plus-lg"></i> 新建地块图层
@@ -345,8 +868,8 @@
         </div>
 
         <!-- 辅助图层 -->
-        <div class="mb-4">
-          <h6>辅助图层</h6>
+        <div class="sidebar-card assist-layer-list">
+          <h6 class="sidebar-section-title"><i class="bi bi-sliders"></i>辅助图层</h6>
           <div class="layer-item">
             <input type="checkbox" class="layer-checkbox" id="gridToggle10m">
             <span>10m 绘制网格</span>
@@ -369,17 +892,21 @@
         </div>
       </div>
     </div>
+
+    <div class="panel-resizer panel-resizer-left" id="leftPanelResizer" data-side="left" role="separator" aria-orientation="vertical" aria-label="调整左侧工作台宽度"></div>
     
     <!-- 中间大地图编辑画布 -->
     <div class="editor-map">
       <div id="editorMap" class="map-container canvas-area"></div>
     </div>
+
+    <div class="panel-resizer panel-resizer-right" id="rightPanelResizer" data-side="right" role="separator" aria-orientation="vertical" aria-label="调整右侧工作台宽度"></div>
     
     <!-- 右侧属性编辑面板 -->
-    <div class="editor-panel">
-      <div class="attribute-form">
+    <div class="editor-panel" id="editorPanel">
+      <div class="attribute-form panel-scroll">
         <!-- 状态信息 (移至顶部，替代原有的四列布局中的状态栏) -->
-        <div class="plot-status-summary mb-3 p-2 bg-light rounded border">
+        <div class="plot-status-summary">
           <div class="row g-2 small text-muted">
             <div class="col-12 text-truncate" id="cursorPosition" title="当前光标坐标">坐标: -</div>
             <div class="col-12" id="totalArea" title="当前地形内所有地块的总面积之和">地形总面积: -</div>
@@ -388,8 +915,8 @@
         </div>
 
         <!-- 地形信息 (顶层对象) -->
-        <div class="terrain-info-section mb-4 pb-3 border-bottom">
-          <h5 class="mb-3 d-flex align-items-center">
+        <div class="terrain-info-section panel-card">
+          <h5 class="section-title">
             <i class="bi bi-geo-alt-fill text-primary me-2"></i>地形信息
           </h5>
           <div class="attribute-group">
@@ -405,14 +932,14 @@
         </div>
 
         <!-- 地块属性 (子对象) -->
-        <div class="plot-info-section">
-          <h5 class="mb-3 d-flex align-items-center">
+        <div class="plot-info-section panel-card">
+          <h5 class="section-title">
             <i class="bi bi-layers-half text-success me-2"></i>当前地块属性
           </h5>
           
           <div class="attribute-group">
             <label for="plotName">地块名称</label>
-            <input type="text" id="plotName" placeholder="如：1号农田地块">
+            <input type="text" id="plotName" placeholder="如：1号林区地块">
           </div>
           
           <div class="attribute-group">
@@ -420,19 +947,19 @@
             <div class="dropdown w-100" id="plotTypeDropdownWrapper">
               <button class="btn btn-sm btn-outline-secondary w-100 text-start dropdown-toggle d-flex align-items-center" type="button" id="plotTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
                 <span id="selectedPlotTypeName" class="d-flex align-items-center flex-grow-1">
-                  <span class="layer-color me-2" style="background-color: #f39c12;"></span>
-                  <span>农田</span>
+                  <span class="layer-color me-2" style="background-color: #2ecc71;"></span>
+                  <span>林区</span>
                 </span>
               </button>
               <ul class="dropdown-menu w-100 shadow-sm" id="plotTypeDropdownMenu">
-                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="forest"><span class="layer-color me-2" style="background-color: #2ecc71;"></span>林区</a></li>
-                <li><a class="dropdown-item d-flex align-items-center active" href="#" data-value="farmland"><span class="layer-color me-2" style="background-color: #f39c12;"></span>农田</a></li>
-                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="building"><span class="layer-color me-2" style="background-color: #7f8c8d;"></span>建筑</a></li>
+                <li><a class="dropdown-item d-flex align-items-center active" href="#" data-value="forest"><span class="layer-color me-2" style="background-color: #2ecc71;"></span>林区</a></li>
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="farmland"><span class="layer-color me-2" style="background-color: #f39c12;"></span>农田</a></li>
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="building"><span class="layer-color me-2" style="background-color: #475569;"></span>建筑</a></li>
                 <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="water"><span class="layer-color me-2" style="background-color: #3498db;"></span>水域</a></li>
-                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="road"><span class="layer-color me-2" style="background-color: #95a5a6;"></span>道路</a></li>
-                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="bare"><span class="layer-color me-2" style="background-color: #e67e22;"></span>裸地</a></li>
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="road"><span class="layer-color me-2" style="background-color: #9CA3AF;"></span>道路</a></li>
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="bare"><span class="layer-color me-2" style="background-color: #D97706;"></span>裸地</a></li>
               </ul>
-              <input type="hidden" id="plotType" value="farmland">
+              <input type="hidden" id="plotType" value="forest">
             </div>
           </div>
         
@@ -475,16 +1002,12 @@
           <textarea id="description" rows="3" placeholder="请输入地块描述"></textarea>
         </div>
         
-        <div class="attribute-group">
+        <div class="attribute-group geo-info-box">
           <label>地理信息</label>
           <div class="row">
-            <div class="col-6">
+            <div class="col-12">
               <p class="small mb-1">中心坐标</p>
               <p id="centerPoint" class="text-muted">-</p>
-            </div>
-            <div class="col-6">
-              <p class="small mb-1">要素数量</p>
-              <p id="elementCount" class="text-muted">-</p>
             </div>
           </div>
         </div>

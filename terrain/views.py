@@ -203,33 +203,33 @@ def delete_zone(request, pk):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def create_or_update_element(request):
-    """要素创建或更新"""
+    """标记创建或更新"""
     try:
         element_id = request.data.get('id')
         if element_id:
             element = get_object_or_404(TerrainElement, id=element_id)
             serializer = TerrainElementSerializer(element, data=request.data, partial=True)
-            msg = "要素更新成功"
+            msg = "标记更新成功"
         else:
             serializer = TerrainElementSerializer(data=request.data)
-            msg = "要素创建成功"
+            msg = "标记创建成功"
 
         if serializer.is_valid():
             element = serializer.save()
             return api_response(data=TerrainElementSerializer(element).data, msg=msg)
         return api_error(msg="数据校验失败", data=serializer.errors)
     except Exception as e:
-        logger.error(f"保存要素异常: {str(e)}")
+        logger.error(f"保存标记异常: {str(e)}")
         return api_error(msg=str(e), status=500)
 
 @api_view(['DELETE', 'POST'])
 @permission_classes([AllowAny])
 def delete_element(request, pk):
-    """要素物理删除"""
+    """标记物理删除"""
     try:
         element = get_object_or_404(TerrainElement, id=pk)
         element.delete()
-        return api_response(msg="要素已删除")
+        return api_response(msg="标记已删除")
     except Exception as e:
         return api_error(msg=str(e), status=500)
 
@@ -279,7 +279,7 @@ def split_zone(request, pk):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def merge_zones(request):
-    """合并地块: 检查 Elements 是否一致"""
+    """合并地块: 检查标记项是否一致"""
     try:
         zone_ids = request.data.get('ids', [])
         if len(zone_ids) < 2:
@@ -289,12 +289,12 @@ def merge_zones(request):
         if zones.count() < 2:
             return api_error(msg="部分地块不存在或已被删除")
             
-        # 检查 Elements 是否一致 (简单通过名称和类型比对)
+        # 检查标记项是否一致 (简单通过名称和类型比对)
         first_elements = set(zones[0].elements.values_list('name', 'type'))
         for zone in zones[1:]:
             curr_elements = set(zone.elements.values_list('name', 'type'))
             if first_elements != curr_elements:
-                return api_error(msg="所选地块的要素(Elements)不一致，无法合并")
+                return api_error(msg="所选地块的标记项不一致，无法合并")
                 
         # 执行几何合并
         with transaction.atomic():

@@ -64,10 +64,10 @@ class TerrainEditor {
     this.colorScheme = {
       forest: '#2ecc71',      // 林区 - 绿色
       farmland: '#f39c12',    // 农田 - 橙色
-      building: '#7f8c8d',    // 建筑 - 深灰色
+      building: '#475569',    // 建筑 - 深灰蓝
       water: '#3498db',       // 水域 - 蓝色
-      road: '#95a5a6',        // 道路 - 灰色
-      bare: '#e67e22',        // 裸地 - 褐色/橙色
+      road: '#9CA3AF',        // 道路 - 灰色
+      bare: '#D97706',        // 裸地 - 橙褐
       selected: '#0d6efd',    // 选中 - 蓝色
       editing: '#ffc107',     // 编辑中 - 黄色
       highlight: '#198754'    // 高亮 - 绿色
@@ -155,6 +155,12 @@ class TerrainEditor {
     }, 100);
 
     this.captureHistorySnapshot();
+    
+    // 初始化时，根据默认底图（satellite）设置行政区划边界的可用性
+    this.updateAdminBoundaryAvailability(this.currentBasemap);
+
+    // 首屏渲染一次左侧图层面板：无论是否携带 area_id，至少要显示空状态/按钮状态
+    this.updateSelectedPlotsList();
   }
   
   /**
@@ -350,7 +356,7 @@ class TerrainEditor {
           
           loadChunk();
         } else {
-          console.error('GeoJSON 数据解析失败或要素为空');
+          console.error('GeoJSON 数据解析失败或数据为空');
         }
       }
     } catch (error) {
@@ -513,10 +519,10 @@ class TerrainEditor {
     this.map.setView([30.05, 107.60], 7);
   }
   
-  // 显示要素信息
+  // 显示图形信息
   showFeatureInfo(feature) {
-    console.log('要素信息:', feature.properties);
-    // 这里可以实现显示要素属性的逻辑
+    console.log('图形信息:', feature.properties);
+    // 这里可以实现显示图形属性的逻辑
     // 例如更新右侧属性面板
   }
   
@@ -743,6 +749,7 @@ class TerrainEditor {
     const selectedAreasContainer = document.getElementById('selectedAreas');
     if (!selectedAreasContainer) return;
     selectedAreasContainer.innerHTML = '';
+    selectedAreasContainer.classList.toggle('is-empty', this.userPlots.length === 0);
     
     // 如果存在多选按钮，动态控制其高亮状态
     const toggleMultiSelectBtn = document.getElementById('toggleMultiSelectBtn');
@@ -754,6 +761,20 @@ class TerrainEditor {
         toggleMultiSelectBtn.classList.remove('btn-primary');
         toggleMultiSelectBtn.classList.add('btn-outline-secondary');
       }
+    }
+
+    if (this.userPlots.length === 0) {
+      selectedAreasContainer.innerHTML = `
+        <div class="layer-empty-state">
+          <div class="layer-empty-icon">
+            <i class="bi bi-layers"></i>
+          </div>
+          <div class="layer-empty-title">当前还没有地块图层</div>
+          <div class="layer-empty-text">点击下方“新建地块图层”后，即可开始绘制和管理地块。</div>
+        </div>
+      `;
+      this.updateLayerPanelButtons();
+      return;
     }
     
     this.userPlots.forEach((plot, index) => {
@@ -767,6 +788,7 @@ class TerrainEditor {
       }
       
       const name = plot.properties?.name || `地块 ${index + 1}`;
+      item.title = name;
       const isLocked = !!plot.locked;
       const isVisible = plot.visible !== false;
       const isMultiSelected = this.multiSelectedPlotIds.has(plot.id);
@@ -779,10 +801,10 @@ class TerrainEditor {
           <div class="layer-visibility-area" title="显示/隐藏">
             <i class="bi ${isVisible ? 'bi-eye' : 'bi-eye-slash'} layer-visibility"></i>
           </div>
-          <div class="layer-color-area">
-            <span class="layer-color" style="background-color: ${this.getPlotColor(plot.properties?.type)};"></span>
+          <div class="layer-color-area" title="${name}">
+            <span class="layer-color" style="background-color: ${this.getPlotColor(plot.properties?.type)};" title="${name}"></span>
           </div>
-          <div class="layer-name-area">
+          <div class="layer-name-area" title="${name}">
             <span class="layer-name text-truncate" title="${name}">${name}</span>
           </div>
           <div class="layer-actions">
@@ -971,7 +993,7 @@ class TerrainEditor {
     if (nameInput) nameInput.value = plot.properties?.name || '';
 
     // 使用统一方法设置地块类型、触发子类型加载并回填
-    const currentCategory = plot.properties?.type || 'farmland';
+    const currentCategory = plot.properties?.type || 'forest';
     const currentSubtype = plot.properties?.subType || '';
     this.setPlotCategoryAndLoadSubcategories(currentCategory, currentSubtype);
 
@@ -984,15 +1006,10 @@ class TerrainEditor {
     const plotAreaInput = document.getElementById('plotArea');
     if (plotAreaInput) plotAreaInput.value = Number(plot.properties?.areaHa || 0).toFixed(2);
 
-    // 显示要素统计和列表
-    const elementCountEl = document.getElementById('elementCount');
+    // 显示附加记录列表
     const elementListEl = document.getElementById('elementList');
     const addElementBtn = document.getElementById('addElementBtn');
-    
-    if (elementCountEl) {
-      elementCountEl.textContent = (plot.elements || []).length;
-    }
-    
+
     if (elementListEl) {
       if (plot.elements && plot.elements.length > 0) {
         elementListEl.innerHTML = plot.elements.map(el => `
@@ -1004,7 +1021,7 @@ class TerrainEditor {
           </div>
         `).join('');
       } else {
-        elementListEl.innerHTML = '<p class="text-muted italic">无要素记录</p>';
+        elementListEl.innerHTML = '<p class="text-muted italic">暂无记录</p>';
       }
     }
     
@@ -1465,7 +1482,7 @@ class TerrainEditor {
   paintAt(latlng) {
     const grids = this.getGridsForBrush(latlng);
     const newRectangles = [];
-    const type = document.getElementById('plotType')?.value || 'farmland';
+    const type = document.getElementById('plotType')?.value || 'forest';
     const color = this.getPlotColor(type);
     
     grids.forEach(g => {
@@ -1733,7 +1750,7 @@ class TerrainEditor {
       if (!plot.geojson) continue;
 
       const properties = plot.properties || this.getCurrentPlotPropertiesFromForm();
-      let landType = properties.type || 'farmland';
+      let landType = properties.type || 'forest';
 
       terrainPayload.plots.push({
         id: plot.db_id || null,
@@ -1810,7 +1827,7 @@ class TerrainEditor {
     this.updateSelectedPlotsList();
   }
 
-  // 加载区域编辑详情 (包括区域边界、地块及其要素)
+  // 加载区域编辑详情 (包括区域边界、地块及其附加记录)
   async loadAreaEditDetail(areaId) {
     if (!areaId) return;
     this.areaId = areaId;
@@ -1924,7 +1941,7 @@ class TerrainEditor {
       layer = L.geoJSON(data.geom_json, {
         style: this.getPlotStyle(properties.type, false),
         interactive: !(data.style_json?.locked),
-        // 渲染已保存地块时，为了保证要素点击事件正常，移除 renderer: this.canvasRenderer 限制
+        // 渲染已保存地块时，为了保证附加记录点击事件正常，移除 renderer: this.canvasRenderer 限制
       });
     } catch (err) {
       console.error(`渲染地块 [${data.name} (ID: ${data.id})] 失败:`, err, data.geom_json);
@@ -1937,7 +1954,7 @@ class TerrainEditor {
       geojson: data.geom_json,
       gridData: data.grid_json,
       properties: properties,
-      elements: data.elements || [], // 保存该地块下的要素
+      elements: data.elements || [], // 保存该地块下的附加记录
       visible: data.style_json?.visible !== false,
       locked: !!data.style_json?.locked,
       layer: layer
@@ -2027,7 +2044,7 @@ class TerrainEditor {
 
   getCurrentPlotPropertiesFromForm() {
     const name = document.getElementById('plotName')?.value || '未命名地块';
-    const type = document.getElementById('plotType')?.value || 'farmland';
+    const type = document.getElementById('plotType')?.value || 'forest';
     const subType = document.getElementById('plotSubType')?.value || '';
     const riskLevel = document.getElementById('riskLevel')?.value || 'low';
     const description = document.getElementById('description')?.value || '';
@@ -2073,17 +2090,17 @@ class TerrainEditor {
     };
   }
 
-  // 提示添加要素
+  // 提示添加标记
   async promptAddElement(plotId) {
     const plot = this.userPlots.find(p => p.id === plotId);
     if (!plot || !plot.db_id) {
-      alert('请先保存地块再添加要素');
+      alert('请先保存地块再添加标记');
       return;
     }
     
-    const name = prompt('请输入要素名称:', '新要素');
+    const name = prompt('请输入标记名称:', '新标记');
     if (!name) return;
-    const type = prompt('请输入要素类型:', '观测点');
+    const type = prompt('请输入标记类型:', '观测点');
     if (!type) return;
     
     const payload = {
@@ -2111,13 +2128,13 @@ class TerrainEditor {
         alert('添加失败: ' + result.msg);
       }
     } catch (e) {
-      console.error('添加要素异常:', e);
+      console.error('添加标记异常:', e);
     }
   }
 
-  // 删除要素
+  // 删除标记
   async deleteElement(elementId, plotId) {
-    if (!confirm('确定要删除该要素吗？')) return;
+    if (!confirm('确定要删除该标记吗？')) return;
     
     try {
       const response = await fetch(`/terrain/api/elements/${elementId}/delete/`, {
@@ -2137,7 +2154,7 @@ class TerrainEditor {
         alert('删除失败: ' + result.msg);
       }
     } catch (e) {
-      console.error('删除要素异常:', e);
+      console.error('删除标记异常:', e);
     }
   }
 
@@ -2768,6 +2785,48 @@ class TerrainEditor {
         item.classList.remove('active');
       }
     });
+
+    // 根据底图模式禁用/启用行政区划边界
+    this.updateAdminBoundaryAvailability(basemap);
+  }
+
+  /**
+   * 根据当前底图模式更新行政区划边界的可用性
+   * @param {string} basemap 当前底图模式
+   */
+  updateAdminBoundaryAvailability(basemap) {
+    const isSatellite = basemap === 'satellite';
+    const adminToggle = document.getElementById('adminBoundaryToggle');
+    const adminColor = document.getElementById('adminBoundaryColor');
+    
+    if (adminToggle) {
+      adminToggle.disabled = !isSatellite;
+      const parentLabel = adminToggle.closest('.layer-item');
+      if (parentLabel) {
+        if (!isSatellite) {
+          parentLabel.classList.add('text-muted');
+          parentLabel.style.opacity = '0.6';
+          parentLabel.title = '行政区划边界仅在卫星底图模式下可用';
+          // 如果当前开启了，则暂时关闭它（不改变勾选状态，只改变显示）
+          if (adminToggle.checked) {
+            this.toggleAdminBoundaries(false);
+          }
+        } else {
+          parentLabel.classList.remove('text-muted');
+          parentLabel.style.opacity = '1';
+          parentLabel.title = '';
+          // 如果复选框原本是勾选的，恢复显示
+          if (adminToggle.checked) {
+            this.toggleAdminBoundaries(true);
+          }
+        }
+      }
+    }
+    
+    if (adminColor) {
+      adminColor.disabled = !isSatellite;
+      adminColor.style.cursor = isSatellite ? 'pointer' : 'not-allowed';
+    }
   }
 
   // --- 新增功能实现 ---
@@ -2778,20 +2837,20 @@ class TerrainEditor {
     if (!name) return;
 
     // 修复问题2：新建图层默认类型优先继承“当前正在编辑图层”的类型
-    let defaultType = 'farmland';
+    let defaultType = 'forest';
     let defaultSubtype = '';
     let defaultRiskLevel = 'low';
     
     if (this.activePlotId) {
       const activePlot = this.userPlots.find(p => p.id === this.activePlotId);
       if (activePlot && activePlot.properties) {
-        defaultType = activePlot.properties.type || 'farmland';
+        defaultType = activePlot.properties.type || 'forest';
         defaultSubtype = activePlot.properties.subType || '';
         defaultRiskLevel = activePlot.properties.riskLevel || 'low';
       }
     } else {
       // 尝试从当前表单获取作为次优先级
-      defaultType = document.getElementById('plotType')?.value || 'farmland';
+      defaultType = document.getElementById('plotType')?.value || 'forest';
       defaultSubtype = document.getElementById('plotSubType')?.value || '';
       defaultRiskLevel = document.getElementById('riskLevel')?.value || 'low';
     }
@@ -2827,7 +2886,7 @@ class TerrainEditor {
       return;
     }
 
-    if (!confirm(`确定要合并选中的 ${ids.length} 个地块吗？要素(Elements)不一致将导致合并失败。`)) return;
+    if (!confirm(`确定要合并选中的 ${ids.length} 个地块吗？标记项不一致将导致合并失败。`)) return;
 
     try {
       const dbIds = zones.map(z => z.db_id);
@@ -2956,16 +3015,53 @@ class TerrainEditor {
 
   // 统一地块类型和子类型联动设置方法
   async setPlotCategoryAndLoadSubcategories(category, selectedSubcategory = '') {
-    const plotTypeSelect = document.getElementById('plotType');
+    const plotTypeInput = document.getElementById('plotType');
     const subTypeGroup = document.getElementById('subTypeGroup');
     
-    if (plotTypeSelect && category) {
-      plotTypeSelect.value = category;
+    if (plotTypeInput && category) {
+      plotTypeInput.value = category;
       if (subTypeGroup) subTypeGroup.style.display = 'block';
+      
+      // 更新自定义下拉菜单 UI
+      this.updatePlotTypeUI(category);
     }
     
     // 等待子类型加载完成并回填
     await this.loadSubCategories(selectedSubcategory, category);
+  }
+
+  /**
+   * 更新自定义地块类型下拉菜单的 UI 状态
+   * @param {string} category 选中的地块类型值
+   */
+  updatePlotTypeUI(category) {
+    const dropdownMenu = document.getElementById('plotTypeDropdownMenu');
+    const selectedNameSpan = document.getElementById('selectedPlotTypeName');
+    if (!dropdownMenu || !selectedNameSpan) return;
+
+    // 1. 更新下拉项的激活状态
+    const items = dropdownMenu.querySelectorAll('.dropdown-item');
+    let foundItem = null;
+    items.forEach(item => {
+      if (item.getAttribute('data-value') === category) {
+        item.classList.add('active');
+        foundItem = item;
+      } else {
+        item.classList.remove('active');
+      }
+    });
+
+    // 2. 同步更新按钮显示内容（颜色方块 + 文本）
+    if (foundItem) {
+      const colorBox = foundItem.querySelector('.layer-color').cloneNode(true);
+      const text = foundItem.textContent.trim();
+      
+      selectedNameSpan.innerHTML = '';
+      selectedNameSpan.appendChild(colorBox);
+      const textSpan = document.createElement('span');
+      textSpan.textContent = text;
+      selectedNameSpan.appendChild(textSpan);
+    }
   }
 
   renderSubCategoryDropdown(subcategories, selectedValue = null) {

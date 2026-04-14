@@ -88,10 +88,10 @@ class TerrainZone(models.Model):
         return self.name
 
 class TerrainElement(models.Model):
-    """要素模型 (Element)"""
+    """标记模型 (Element)"""
     zone = models.ForeignKey(TerrainZone, on_delete=models.CASCADE, related_name='elements', verbose_name="所属地块")
-    name = models.CharField(max_length=255, verbose_name="要素名称")
-    type = models.CharField(max_length=50, verbose_name="要素类型")
+    name = models.CharField(max_length=255, verbose_name="标记名称")
+    type = models.CharField(max_length=50, verbose_name="标记类型")
     area = models.FloatField(default=0.0, verbose_name="面积")
     
     geom_json = models.JSONField(default=dict, verbose_name="GeoJSON 轮廓")
@@ -102,8 +102,8 @@ class TerrainElement(models.Model):
 
     class Meta:
         db_table = 'terrain_element'
-        verbose_name = '要素'
-        verbose_name_plural = '要素'
+        verbose_name = '标记'
+        verbose_name_plural = '标记'
 
     def __str__(self):
         return self.name

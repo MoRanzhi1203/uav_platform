@@ -51,9 +51,12 @@ class TerrainEditor {
     this.colorScheme = {
       forest: '#2ecc71',      // 林区 - 绿色
       farmland: '#f39c12',    // 农田 - 橙色
-      buildings: '#7f8c8d',   // 建筑 - 深灰色
+      building: '#475569',    // 建筑 - 深灰蓝
+      buildings: '#475569',   // 建筑 - 兼容旧键名
       water: '#3498db',       // 水域 - 蓝色
-      roads: '#95a5a6',       // 道路 - 灰色
+      road: '#9CA3AF',        // 道路 - 灰色
+      roads: '#9CA3AF',       // 道路 - 兼容旧键名
+      bare: '#D97706',        // 裸地 - 橙褐
       mixed: '#9b59b6',       // 混合 - 紫色
       selected: '#0d6efd',    // 选中 - 蓝色
       editing: '#ffc107',     // 编辑中 - 黄色
@@ -237,7 +240,7 @@ class TerrainEditor {
           
           loadChunk();
         } else {
-          console.error('GeoJSON 数据解析失败或要素为空');
+          console.error('GeoJSON 数据解析失败或数据为空');
         }
       }
     } catch (error) {
@@ -400,10 +403,10 @@ class TerrainEditor {
     this.map.setView([29.5630, 106.5516], 10);
   }
   
-  // 显示要素信息
+  // 显示图形信息
   showFeatureInfo(feature) {
-    console.log('要素信息:', feature.properties);
-    // 这里可以实现显示要素属性的逻辑
+    console.log('图形信息:', feature.properties);
+    // 这里可以实现显示图形属性的逻辑
     // 例如更新右侧属性面板
   }
   
@@ -722,7 +725,7 @@ class TerrainEditor {
 
     const typeSelect = document.getElementById('plotType');
     if (typeSelect) {
-      typeSelect.value = plot.properties?.type || 'farmland';
+      typeSelect.value = plot.properties?.type || 'forest';
       // 触发 change 事件以更新子类型显示
       typeSelect.dispatchEvent(new Event('change'));
     }
@@ -1273,7 +1276,7 @@ class TerrainEditor {
   // 创建新地块
   createNewPlotFromGeoJSON(geojson) {
     const plotId = 'plot_' + Date.now();
-    const type = document.getElementById('plotType')?.value || 'farmland';
+    const type = document.getElementById('plotType')?.value || 'forest';
     
     // 计算面积
     const area = turf.area(geojson);
@@ -1309,7 +1312,7 @@ class TerrainEditor {
   
   // 获取地块样式
   getPlotStyle(type, isActive) {
-    const color = this.colorScheme[type] || this.colorScheme.farmland;
+    const color = this.colorScheme[type] || this.colorScheme.forest;
     return {
       color: isActive ? this.colorScheme.selected : color,
       weight: isActive ? 3 : 2,
@@ -1321,7 +1324,7 @@ class TerrainEditor {
 
   // 获取地块颜色
   getPlotColor(type) {
-    return this.colorScheme[type] || this.colorScheme.farmland;
+    return this.colorScheme[type] || this.colorScheme.forest;
   }
   
   // 更新激活地块的属性
