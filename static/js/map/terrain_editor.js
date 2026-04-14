@@ -895,6 +895,9 @@ class TerrainEditor {
     // 更新右侧属性面板
     this.updateAttributePanel(plot);
     
+    // 更新面积显示
+    this.updateSelectedArea();
+    
     // 无论是否存在 layer (比如新建的空图层)，都必须更新左侧图层列表的 DOM 激活状态
     this.updateSelectedPlotsList();
   }
@@ -1005,6 +1008,9 @@ class TerrainEditor {
       const center = bounds.getCenter();
       if (centerPointEl) centerPointEl.textContent = `${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}`;
     }
+
+    // 更新选中区域信息 (面积显示等)
+    this.updateSelectedArea();
   }
   
   // 多选工具
@@ -2474,22 +2480,16 @@ class TerrainEditor {
   
   // 更新选中区域信息
   updateSelectedArea() {
-    const selectedAreaEl = document.getElementById('selectedArea');
-    const vertexCountEl = document.getElementById('vertexCount');
+    const totalAreaEl = document.getElementById('totalArea');
 
     if (!this.userPlots.length) {
-      if (selectedAreaEl) selectedAreaEl.textContent = '面积: -';
-      if (vertexCountEl) vertexCountEl.textContent = '顶点: -';
+      if (totalAreaEl) totalAreaEl.textContent = '地形总面积: -';
       return;
     }
 
+    // 计算地形内所有地块的总面积
     const totalAreaHa = this.userPlots.reduce((sum, p) => sum + (Number(p.properties?.areaHa) || 0), 0);
-    if (selectedAreaEl) selectedAreaEl.textContent = `面积: ${totalAreaHa.toFixed(2)} 公顷`;
-
-    const active = this.userPlots.find(p => p.id === this.activePlotId) || this.userPlots[0];
-    const rings = this.getLatLngRingsFromLayer(active?.layer);
-    const vertices = rings.length ? rings[0].length : 0;
-    if (vertexCountEl) vertexCountEl.textContent = `顶点: ${vertices || '-'}`;
+    if (totalAreaEl) totalAreaEl.textContent = `地形总面积: ${totalAreaHa.toFixed(2)} ha`;
   }
   
   // 更新光标位置
