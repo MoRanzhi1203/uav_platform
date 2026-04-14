@@ -12,7 +12,7 @@ class TerrainEditor {
     
     // 默认缩放占比配置
     this.viewportConfig = {
-      targetHeightRatio: 1/3,
+      targetHeightRatio: 2/3,
       targetWidthRatio: 1/2,
       chongqingBounds: [[28.16, 105.18], [32.20, 110.19]]
     };
@@ -67,6 +67,7 @@ class TerrainEditor {
       building: '#7f8c8d',    // 建筑 - 深灰色
       water: '#3498db',       // 水域 - 蓝色
       road: '#95a5a6',        // 道路 - 灰色
+      bare: '#e67e22',        // 裸地 - 褐色/橙色
       selected: '#0d6efd',    // 选中 - 蓝色
       editing: '#ffc107',     // 编辑中 - 黄色
       highlight: '#198754'    // 高亮 - 绿色
@@ -118,9 +119,55 @@ class TerrainEditor {
     this.currentBasemap = null; 
     this.switchBasemap('satellite');
     
+    // 监听缩放事件以更新字体大小 (行政区划边界)
+    this.map.on('zoomend', () => {
+      this.updateLabelScaling();
+    });
+    this.updateLabelScaling(); // 初始执行一次
+
+    // 监听侧边栏切换事件，在动画完成后刷新地图尺寸，补全右侧空白，并保持中心对齐
+    const sidebarBtn = document.querySelector('.toggle-sidebar-btn');
+    if (sidebarBtn) {
+      sidebarBtn.addEventListener('click', () => {
+        // 侧边栏切换动画通常需要 300ms，延时刷新以确保获取到正确的容器尺寸
+        setTimeout(() => {
+          if (this.map) {
+            // invalidateSize 重新计算地图容器大小
+            // pan: true 选项会尝试在容器大小变化后保持地图中心点不变
+            this.map.invalidateSize({ pan: true });
+            
+            // 如果当前没有正在编辑的具体地块，或者需要重新对齐重庆市，则调用视口更新逻辑
+            // 这确保了在侧边栏切换后，底图（重庆市）依然保持在新的可视区域中心
+            if (!this.activePlotId) {
+              this.updateMapViewport(this.areaData ? this.areaData.boundary_json : null);
+            }
+            console.log('地图尺寸已刷新并重新对齐中心');
+          }
+        }, 350);
+      });
+    }
+
+    // 如果是新建地块（没有加载 areaId），自动调整一次视口到重庆
+    setTimeout(() => {
+      if (!this.areaId) {
+        this.updateMapViewport();
+      }
+    }, 100);
+
     this.captureHistorySnapshot();
   }
   
+  /**
+   * 更新行政区划边界字体大小，随缩放级别动态调整
+   */
+  updateLabelScaling() {
+    const zoom = this.map.getZoom();
+    // 使用 CSS 变量控制字体大小，基准值 16px 在 zoom 10 时，每级变化 1.5px
+    // 缩放范围限制在 8px 到 24px 之间
+    let fontSize = Math.max(8, Math.min(24, (zoom - 10) * 1.5 + 16));
+    document.documentElement.style.setProperty('--admin-label-font-size', fontSize + 'px');
+  }
+
   /**
    * 计算并设置地图视口，使当前区域或重庆市在画面中居中并按指定比例显示
    * @param {Object} boundaryGeoJSON 区域边界 GeoJSON
@@ -158,10 +205,12 @@ class TerrainEditor {
     
     const optimalZoom = this.map.getBoundsZoom(bounds, false, [paddingX, paddingY]);
     
+    // 恢复原来的地图缩放限制 (锁定到 optimalZoom)
     this.map.setMinZoom(optimalZoom);
     this.map.setMaxZoom(18);
     this.map.setView(center, optimalZoom);
     
+    // 重新启用边界锁定，防止用户移出重庆市/区域范围
     this.map.once('moveend', () => {
       const initialBounds = this.map.getBounds();
       this.map.setMaxBounds(initialBounds);
@@ -527,7 +576,7 @@ class TerrainEditor {
   handleMapClick(e) {
     switch (this.currentTool) {
       case 'select':
-        this.selectFeature(e.latlng);
+        this.handleSelectToolClick(e);
         break;
       case 'smart-select':
         this.smartSelect(e.latlng);
@@ -537,28 +586,42 @@ class TerrainEditor {
         break;
     }
   }
-  
-  // 选择工具
-  selectFeature(latlng) {
-    const layers = this.map.layers;
-    let selectedLayer = null;
-    
-    // 检查所有图层
-    for (const layerGroup in this.layers) {
-      if (this.layers[layerGroup]) {
-        for (const layerKey in this.layers[layerGroup]) {
-          const layer = this.layers[layerGroup][layerKey];
-          if (layer && layer.contains && layer.contains(latlng)) {
-            selectedLayer = layer;
-            break;
-          }
+
+  // 选择工具点击处理
+  handleSelectToolClick(e) {
+    if (typeof turf === 'undefined') return;
+    const point = turf.point([e.latlng.lng, e.latlng.lat]);
+
+    // 优先从用户绘制的地块中查找
+    for (let i = this.userPlots.length - 1; i >= 0; i--) {
+      const plot = this.userPlots[i];
+      if (!plot || plot.visible === false || !plot.geojson) continue;
+
+      try {
+        if (turf.booleanPointInPolygon(point, plot.geojson)) {
+          this.selectPlot(plot.id);
+          return;
         }
+      } catch (_) {
+        continue;
       }
     }
+
+    // 如果没点中地块，可以考虑清除选中（可选）
+    // this.selectPlot(null);
+  }
+
+  // 启用选择工具
+  enableSelect() {
+    this.clearToolEvents();
+    this.currentTool = 'select';
+    this.updateEditMode('选择');
     
-    if (selectedLayer) {
-      this.selectLayer(selectedLayer);
-    }
+    // 设置鼠标样式
+    this.map.getContainer().style.cursor = 'default';
+    
+    // 监听地图点击
+    this.map.on('click', this._handlers.mapClick);
   }
   
   // 智能选区工具
@@ -1419,7 +1482,14 @@ class TerrainEditor {
         if (!this.canAutoMergePlot(plot, properties)) return;
         if (!plot.geojson) return;
         try {
-          if (turf.booleanIntersects(mergedFeature, plot.geojson)) {
+          // 如果地块还没有几何图形（刚创建的空图层），且是当前激活地块，强制纳入合并（即填充它）
+          if (!plot.geojson.geometry && plot.id === this.activePlotId) {
+            toMerge.push(plot);
+            return;
+          }
+          
+          // 只有当两者都有几何图形时才计算交集
+          if (plot.geojson.geometry && turf.booleanIntersects(mergedFeature, plot.geojson)) {
             toMerge.push(plot);
           }
         } catch (_) {
@@ -1434,7 +1504,11 @@ class TerrainEditor {
             preservedDbId = plot.db_id;
           }
           
-          mergedFeature = turf.union(mergedFeature, plot.geojson);
+          // 只有当原有地块有几何图形时才执行 union
+          if (plot.geojson && plot.geojson.geometry) {
+            mergedFeature = turf.union(mergedFeature, plot.geojson);
+          }
+          
           // 合并网格数据
           if (plot.gridData && plot.gridData.cells) {
             mergedGridData.cells = [...mergedGridData.cells, ...plot.gridData.cells];
@@ -1543,43 +1617,39 @@ class TerrainEditor {
     this.restoreHistorySnapshot(this.historyIndex);
   }
 
-  // 保存地块数据到后端
+  // 保存地块数据到后端 (重构：统一保存 地形 + 所有地块)
   async save() {
-    if (!this.userPlots.length) {
-      alert('没有需要保存的地块');
+    const terrainName = document.getElementById('terrainName')?.value?.trim();
+    if (!terrainName) {
+      alert('请填写地形名称');
       return;
     }
+    const terrainDesc = document.getElementById('terrainDesc')?.value?.trim() || '';
+    const terrainId = document.getElementById('terrainId')?.value || this.areaId;
 
-    const errors = [];
-    let savedCount = 0;
+    // 构建地形数据
+    const terrainPayload = {
+      terrain: {
+        id: terrainId || null,
+        name: terrainName,
+        description: terrainDesc
+      },
+      plots: [] // 收集所有地块
+    };
 
+    // 收集所有有效图层地块
     for (const plot of this.userPlots) {
       if (!plot.geojson) continue;
 
-      // 提取当前属性
       const properties = plot.properties || this.getCurrentPlotPropertiesFromForm();
-      
-      // 计算中心点 (使用 Turf)
-      let center_lng = 0, center_lat = 0;
-      try {
-        if (typeof turf !== 'undefined' && plot.geojson.geometry) {
-          const center = turf.center(plot.geojson);
-          center_lng = center.geometry.coordinates[0];
-          center_lat = center.geometry.coordinates[1];
-        }
-      } catch (e) {
-        console.error('计算中心点失败', e);
-      }
-
-      // 构建请求负载
       let landType = properties.type || 'farmland';
 
-      const payload = {
+      terrainPayload.plots.push({
         id: plot.db_id || null,
-        area_obj: this.areaId, // 关键：关联到当前区域
+        area_obj: terrainId || null,
         name: properties.name || '未命名地块',
-        category: landType, // 大类
-        type: properties.subType || '', // 子类别名称存入 type 字段
+        category: landType,
+        type: properties.subType || '', // 子类别
         risk_level: properties.riskLevel || 'low',
         area: properties.areaHa || 0,
         description: properties.description || '',
@@ -1597,50 +1667,51 @@ class TerrainEditor {
           editor_mode: 'pixel_brush',
           sub_type: properties.subType || ''
         }
-      };
-
-      try {
-        // 使用地块保存接口
-        const url = '/terrain/api/zones/create/';
-
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.getCookie('csrftoken')
-          },
-          body: JSON.stringify(payload)
-        });
-
-        // 稳健解析 JSON
-        const text = await response.text();
-        let result;
-        try {
-          result = JSON.parse(text);
-        } catch (e) {
-          console.error('解析响应失败:', text);
-          throw new Error(`服务器返回了非 JSON 内容 (状态码: ${response.status})。请检查网络面板查看具体报错。`);
-        }
-
-        if (result.code === 0) {
-          plot.db_id = result.data.id; // 回填 ID
-          savedCount++;
-          // 标记地块数据已变动，通知列表页刷新
-          localStorage.setItem('terrain_plot_changed', '1');
-        } else {
-          const errorMsg = result.msg || result.message || result.detail || JSON.stringify(result) || '未知错误';
-          errors.push(`地块[${payload.name}]保存失败: ${errorMsg}`);
-        }
-      } catch (e) {
-        console.error(`保存地块 ${plot.id} 失败:`, e);
-        errors.push(`地块[${payload.name}]保存异常: ${e.message}`);
-      }
+      });
     }
 
-    if (errors.length > 0) {
-      alert('保存完成，但部分地块失败:\n' + errors.join('\n'));
-    } else {
-      alert(`成功保存 ${savedCount} 个地块！`);
+    try {
+      const response = await fetch('/terrain/api/terrain/save/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': this.getCookie('csrftoken')
+        },
+        body: JSON.stringify(terrainPayload)
+      });
+
+      const result = await response.json();
+      if (result.code === 0) {
+        // 更新 Terrain ID
+        this.areaId = result.data.terrain.id;
+        const terrainIdInput = document.getElementById('terrainId');
+        if (terrainIdInput) terrainIdInput.value = this.areaId;
+
+        // 保存成功后显示删除按钮
+        const deleteBtn = document.getElementById('deleteTerrainBtn');
+        if (deleteBtn) deleteBtn.style.display = 'inline-block';
+
+        // 回填所有地块的 DB ID
+        if (result.data.plots && result.data.plots.length > 0) {
+          result.data.plots.forEach((dbPlot, idx) => {
+            // 注意：这里需要根据某种标识匹配，由于是批量提交，顺序通常一致
+            if (this.userPlots[idx]) {
+              this.userPlots[idx].db_id = dbPlot.id;
+            }
+          });
+        }
+
+        alert(`成功保存地形 "${terrainName}" 及其 ${terrainPayload.plots.length} 个地块！`);
+        localStorage.setItem('terrain_plot_changed', '1');
+        localStorage.setItem('terrain_list_should_refresh', '1');
+        // 保存成功后自动返回列表页
+        window.location.href = '/terrain/';
+      } else {
+        alert('保存失败: ' + result.msg);
+      }
+    } catch (e) {
+      console.error('保存异常:', e);
+      alert('保存过程中发生异常，请检查网络或控制台。');
     }
     
     this.updateSelectedPlotsList();
@@ -1658,6 +1729,14 @@ class TerrainEditor {
       if (result.code === 0 && result.data) {
         const { area, zones } = result.data;
         this.areaData = area;
+
+        // 回填地形信息到表单
+        const terrainNameInput = document.getElementById('terrainName');
+        const terrainDescInput = document.getElementById('terrainDesc');
+        const terrainIdInput = document.getElementById('terrainId');
+        if (terrainNameInput) terrainNameInput.value = area.name || '';
+        if (terrainDescInput) terrainDescInput.value = area.description || '';
+        if (terrainIdInput) terrainIdInput.value = area.id || '';
         
         // 1. 渲染区域边界并更新视口
         if (area.boundary_json) {
@@ -1681,7 +1760,7 @@ class TerrainEditor {
         }
         
         this.updateSelectedPlotsList();
-        console.log(`成功加载区域 "${area.name}", 包含 ${zones.length} 个地块`);
+        console.log(`成功加载地形 "${area.name}", 包含 ${zones.length} 个地块`);
       } else {
         console.warn('加载区域编辑详情失败:', result.msg);
       }
@@ -1977,6 +2056,40 @@ class TerrainEditor {
     this._removePlotInternal(plotId);
     this.updateSelectedPlotsList();
     this.captureHistorySnapshot();
+  }
+
+  // 删除整个地形
+  async deleteTerrain() {
+    if (!this.areaId) {
+      alert('当前地形尚未保存，无法删除。');
+      return;
+    }
+
+    const terrainName = document.getElementById('terrainName')?.value || '当前地形';
+    if (!confirm(`确认要删除整个地形 "${terrainName}" 吗？\n删除后，该地形及其关联的所有地块将不可恢复。`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/terrain/api/areas/${this.areaId}/delete/`, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': this.getCookie('csrftoken')
+        }
+      });
+      const result = await response.json();
+      if (result.code === 0) {
+        alert('地形已成功删除');
+        // 设置刷新标记并跳转
+        localStorage.setItem('terrain_list_should_refresh', '1');
+        window.location.href = '/terrain/';
+      } else {
+        alert('删除失败: ' + result.msg);
+      }
+    } catch (e) {
+      console.error('删除地形异常:', e);
+      alert('删除过程中发生异常，请检查网络。');
+    }
   }
 
   _removePlotInternal(plotId) {
@@ -2502,9 +2615,8 @@ class TerrainEditor {
       this.map.removeLayer(this.activeBaseLayer);
     } else {
       // 兜底：如果 activeBaseLayer 为空，尝试移除所有可能的底图
-      // 这在初次初始化时很有用，因为 initMap 已经添加了一个卫星底图实例
       this.map.eachLayer(layer => {
-        if (layer instanceof L.TileLayer && !layer.options.opacity) { // 简单判断是否为底图
+        if (layer instanceof L.TileLayer && !layer.options.opacity) {
            this.map.removeLayer(layer);
         }
       });
@@ -2531,17 +2643,15 @@ class TerrainEditor {
     };
     
     const basemapName = basemapNames[basemap] || '底图';
-    const currentBasemapElement = document.getElementById('currentBasemapName');
-    if (currentBasemapElement) {
-      currentBasemapElement.textContent = basemapName;
-    }
+    
+    // 更新侧边栏显示
     const currentBasemapSidebarElement = document.getElementById('currentBasemapNameSidebar');
     if (currentBasemapSidebarElement) {
       currentBasemapSidebarElement.textContent = basemapName;
     }
     
-    // 更新下拉菜单active状态
-    document.querySelectorAll('.dropdown-item[data-basemap]').forEach(item => {
+    // 更新侧边栏下拉菜单active状态
+    document.querySelectorAll('#basemapDropdownSidebarContainer .dropdown-item[data-basemap]').forEach(item => {
       if (item.getAttribute('data-basemap') === basemap) {
         item.classList.add('active');
       } else {

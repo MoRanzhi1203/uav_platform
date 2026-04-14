@@ -20,10 +20,10 @@ function initEditor() {
   // 绑定属性面板事件
   bindAttributeEvents();
 
-  // 默认进入像素画笔模式
-  const brushBtn = document.querySelector('[data-tool="brush"]');
-  if (brushBtn) {
-    selectTool('brush', brushBtn);
+  // 默认进入选择模式
+  const selectBtn = document.querySelector('[data-tool="select"]');
+  if (selectBtn) {
+    selectTool('select', selectBtn);
   }
 
   // 加载区域及地块数据
@@ -31,6 +31,12 @@ function initEditor() {
     const urlParams = new URLSearchParams(window.location.search);
     const areaId = urlParams.get('area_id');
     
+    // 初始化时控制删除按钮可见性
+    const deleteBtn = document.getElementById('deleteTerrainBtn');
+    if (deleteBtn) {
+      deleteBtn.style.display = areaId ? 'inline-block' : 'none';
+    }
+
     if (areaId) {
       terrainEditor.loadAreaEditDetail(areaId);
     } else {
@@ -185,6 +191,9 @@ function selectTool(tool, button) {
   
   // 执行工具切换逻辑
   switch (tool) {
+    case 'select':
+      terrainEditor.enableSelect();
+      break;
     case 'brush':
       terrainEditor.enableBrush();
       break;
@@ -225,6 +234,13 @@ function bindActionEvents() {
     terrainEditor.save();
   });
 
+  // 删除地形按钮
+  document.getElementById('deleteTerrainBtn')?.addEventListener('click', function() {
+    if (terrainEditor) {
+      terrainEditor.deleteTerrain();
+    }
+  });
+
   // 图层面板操作按钮
   document.getElementById('mergeZonesBtn')?.addEventListener('click', () => terrainEditor.handleMergeZones());
   document.getElementById('booleanSubtractBtn')?.addEventListener('click', () => terrainEditor.handleBooleanSubtract());
@@ -234,12 +250,14 @@ function bindActionEvents() {
   // 子类别管理按钮
   document.getElementById('addNewSubCatBtn')?.addEventListener('click', () => terrainEditor.handleAddSubCategory());
   
-  // 底图切换
-  document.querySelectorAll('[data-basemap]').forEach(item => {
+  // 底图模式下拉菜单 (侧边栏)
+  document.querySelectorAll('#basemapDropdownSidebarContainer [data-basemap]').forEach(item => {
     item.addEventListener('click', function(e) {
       e.preventDefault();
       const basemap = this.getAttribute('data-basemap');
-      terrainEditor.switchBasemap(basemap);
+      if (terrainEditor) {
+        terrainEditor.switchBasemap(basemap);
+      }
     });
   });
 }

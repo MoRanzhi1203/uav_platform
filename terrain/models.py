@@ -24,6 +24,7 @@ class TerrainArea(models.Model):
     boundary_json = models.JSONField(verbose_name='边界数据', default=dict)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
     
     class Meta:
         verbose_name = '区域'
@@ -55,7 +56,8 @@ class TerrainZone(models.Model):
         ('farmland', '农田'),
         ('water', '水域'),
         ('road', '道路'),
-        ('building', '建筑')
+        ('building', '建筑'),
+        ('bare', '裸地')
     ])
     type = models.CharField(max_length=50, verbose_name="地块类型", null=True, blank=True)
     risk_level = models.CharField(max_length=20, verbose_name="风险等级", choices=[

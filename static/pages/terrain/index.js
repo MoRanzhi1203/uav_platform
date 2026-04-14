@@ -18,6 +18,12 @@ let vueInstances = {};
 
 // 初始化页面
 function initPage() {
+  // 检查是否需要刷新列表 (来自编辑器保存或删除后的跳转)
+  if (localStorage.getItem('terrain_list_should_refresh') === '1') {
+    localStorage.removeItem('terrain_list_should_refresh');
+    // 可以延迟一小会刷新，或者直接执行 loadRealData
+  }
+
   // 初始化Vue实例
   initVue();
 

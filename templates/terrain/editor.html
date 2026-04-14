@@ -81,10 +81,25 @@
     .tool-btn:hover {
       background: #e9ecef;
     }
-    .tool-btn.active {
+    .tool-btn.btn-primary {
       background: #0d6efd;
       color: white;
       border-color: #0d6efd;
+    }
+    .tool-btn.btn-danger {
+      background: white;
+      color: #dc3545;
+      border-color: #dc3545;
+    }
+    .tool-btn.btn-danger:hover {
+      background: #dc3545;
+      color: white;
+    }
+    .tool-btn.btn-danger:disabled {
+      color: #adb5bd;
+      border-color: #dee2e6;
+      background: white;
+      cursor: not-allowed;
     }
     .layer-list {
       padding: 15px;
@@ -148,10 +163,11 @@
       text-shadow: 2px 2px 4px rgba(255,255,255,0.9), -2px -2px 4px rgba(255,255,255,0.9);
       pointer-events: none;
       white-space: nowrap;
+      transition: font-size 0.2s ease-out; /* 平滑缩放 */
     }
     .admin-label { font-size: 12px; }
     .admin-label-large { 
-      font-size: 16px; 
+      font-size: var(--admin-label-font-size, 16px); 
       letter-spacing: 1px;
       color: #1a252f;
     }
@@ -199,24 +215,17 @@
   <div class="editor-header">
     <h4 class="mb-0 mr-4">地块创建与编辑工作台</h4>
     
-    <!-- 底图切换 -->
-    <div class="tool-group">
-      <div class="dropdown">
-        <button class="tool-btn dropdown-toggle" type="button" id="basemapDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-          <i class="bi bi-map"></i> <span id="currentBasemapName">卫星底图</span>
-        </button>
-        <ul class="dropdown-menu" aria-labelledby="basemapDropdown">
-          <li><a class="dropdown-item" href="#" data-basemap="grayscale">标准底图</a></li>
-          <li><a class="dropdown-item active" href="#" data-basemap="satellite">卫星底图</a></li>
-        </ul>
-      </div>
-    </div>
-    
-    <!-- 编辑工具组 -->
-    <div class="tool-group">
+    <!-- 中间：编辑工具组 -->
+    <div class="tool-group d-flex align-items-center">
+      <button class="tool-btn m-0" data-tool="select" title="选择并编辑地块">
+        <i class="bi bi-cursor"></i> 选择
+      </button>
       <button class="tool-btn m-0" data-tool="pan" title="平移地图">
         <i class="bi bi-arrows-move"></i> 平移
       </button>
+      
+      <div class="vr mx-2" style="height: 24px;"></div>
+
       <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
         <button class="tool-btn m-0" data-tool="eraser">
           <i class="bi bi-eraser"></i> 橡皮擦
@@ -246,14 +255,21 @@
       </div>
     </div>
     
-    <!-- 操作工具组 -->
-    <div class="tool-group ml-auto">
-      <button class="tool-btn" data-action="undo">
-        <i class="bi bi-arrow-counterclockwise"></i> 撤销
+    <!-- 右侧：操作工具组 -->
+    <div class="tool-group ml-auto d-flex align-items-center">
+      <button class="tool-btn btn-danger mr-3" data-action="delete-terrain" id="deleteTerrainBtn" title="逻辑删除当前整个地形及其下属地块">
+        <i class="bi bi-trash"></i> 删除地形
       </button>
-      <button class="tool-btn" data-action="redo">
-        <i class="bi bi-arrow-clockwise"></i> 重做
+      
+      <button class="tool-btn" data-action="undo" title="撤销">
+        <i class="bi bi-arrow-counterclockwise"></i>
       </button>
+      <button class="tool-btn" data-action="redo" title="重做">
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
+      
+      <div class="vr mx-2" style="height: 24px;"></div>
+
       <button class="tool-btn btn-outline-secondary" data-action="cancel">
         取消
       </button>
@@ -272,9 +288,21 @@
         
         <!-- 底图模式 -->
         <div class="mb-4">
-          <h6>底图模式</h6>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="m-0">底图模式</h6>
+            <div class="dropdown" id="basemapDropdownSidebarContainer">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="basemapDropdownSidebar" data-bs-toggle="dropdown" aria-expanded="false">
+                切换
+              </button>
+              <ul class="dropdown-menu shadow" aria-labelledby="basemapDropdownSidebar">
+                <li><a class="dropdown-item active" href="#" data-basemap="satellite">卫星底图</a></li>
+                <li><a class="dropdown-item" href="#" data-basemap="grayscale">标准底图</a></li>
+              </ul>
+            </div>
+          </div>
           <div class="layer-item">
-            <span>当前底图：<span id="currentBasemapNameSidebar">卫星底图</span></span>
+            <i class="bi bi-map me-2"></i>
+            <span>当前：<span id="currentBasemapNameSidebar" class="fw-bold">卫星底图</span></span>
           </div>
         </div>
         
@@ -336,21 +364,53 @@
     <!-- 右侧属性编辑面板 -->
     <div class="editor-panel">
       <div class="attribute-form">
-        <h5 class="mb-3">地块属性</h5>
-        
-        <div class="attribute-group">
-          <label for="plotName">地块名称</label>
-          <input type="text" id="plotName" placeholder="请输入地块名称">
+        <!-- 状态信息 (移至顶部，替代原有的四列布局中的状态栏) -->
+        <div class="plot-status-summary mb-3 p-2 bg-light rounded border">
+          <div class="row g-2 small text-muted">
+            <div class="col-12 text-truncate" id="cursorPosition" title="当前光标坐标">坐标: -</div>
+            <div class="col-6" id="selectedArea">面积: -</div>
+            <div class="col-6" id="vertexCount">顶点: -</div>
+            <div class="col-12 border-top pt-1 mt-1 small" id="editMode">编辑模式: 选择</div>
+          </div>
         </div>
-        
-        <div class="attribute-group">
-          <label for="plotType">地块类型</label>
+
+        <!-- 地形信息 (顶层对象) -->
+        <div class="terrain-info-section mb-4 pb-3 border-bottom">
+          <h5 class="mb-3 d-flex align-items-center">
+            <i class="bi bi-geo-alt-fill text-primary me-2"></i>地形信息
+          </h5>
+          <div class="attribute-group">
+            <label for="terrainName" class="fw-bold">地形名称 <span class="text-danger">*</span></label>
+            <input type="text" id="terrainName" class="form-control form-control-sm" placeholder="如：巴南农业核心区">
+          </div>
+          <div class="attribute-group mb-0">
+            <label for="terrainDesc">地形描述</label>
+            <textarea id="terrainDesc" class="form-control form-control-sm" rows="2" placeholder="可选填地形背景描述"></textarea>
+          </div>
+          <!-- 隐藏域存储地形 ID -->
+          <input type="hidden" id="terrainId" value="{{ area_id|default:'' }}">
+        </div>
+
+        <!-- 地块属性 (子对象) -->
+        <div class="plot-info-section">
+          <h5 class="mb-3 d-flex align-items-center">
+            <i class="bi bi-layers-half text-success me-2"></i>当前地块属性
+          </h5>
+          
+          <div class="attribute-group">
+            <label for="plotName">地块名称</label>
+            <input type="text" id="plotName" placeholder="如：1号农田地块">
+          </div>
+          
+          <div class="attribute-group">
+            <label for="plotType">地块类型</label>
           <select id="plotType">
             <option value="forest">林区</option>
             <option value="farmland">农田</option>
             <option value="building">建筑</option>
             <option value="water">水域</option>
             <option value="road">道路</option>
+            <option value="bare">裸地</option>
           </select>
         </div>
         
@@ -411,22 +471,6 @@
           </div>
         </div>
       </div>
-    </div>
-  </div>
-  
-  <!-- 底部状态栏 -->
-  <div class="editor-footer">
-    <div class="mr-4">
-      <span id="cursorPosition">坐标: -</span>
-    </div>
-    <div class="mr-4">
-      <span id="selectedArea">面积: -</span>
-    </div>
-    <div class="mr-4">
-      <span id="vertexCount">顶点: -</span>
-    </div>
-    <div class="ml-auto">
-      <span id="editMode">编辑模式: 选择</span>
     </div>
   </div>
 </div>

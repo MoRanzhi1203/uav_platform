@@ -27,12 +27,31 @@ def terrain_editor(request):
 
 # --- TerrainArea API ---
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def delete_terrain(request, pk):
+    """地形逻辑删除：同步删除关联地块"""
+    try:
+        terrain = get_object_or_404(TerrainArea, id=pk)
+        with transaction.atomic():
+            # 1. 逻辑删除地形
+            terrain.is_deleted = True
+            terrain.save()
+            
+            # 2. 逻辑删除下属所有地块
+            TerrainZone.objects.filter(area_obj=terrain).update(is_deleted=True)
+            
+        return api_response(msg="地形及其关联地块已成功删除", data={"terrain_id": pk})
+    except Exception as e:
+        logger.error(f"删除地形异常: {str(e)}")
+        return api_error(msg=f"删除失败: {str(e)}", status=500)
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_areas(request):
     """区域列表接口"""
     try:
-        queryset = TerrainArea.objects.all().order_by('-created_at')
+        queryset = TerrainArea.objects.filter(is_deleted=False).order_by('-created_at')
         serializer = TerrainAreaSerializer(queryset, many=True)
         return api_response(data=serializer.data)
     except Exception as e:
@@ -44,7 +63,7 @@ def list_areas(request):
 def area_edit_detail(request, area_id):
     """地块编辑页接口: 返回该区域下所有地块和 Element"""
     try:
-        area = get_object_or_404(TerrainArea, id=area_id)
+        area = get_object_or_404(TerrainArea, id=area_id, is_deleted=False)
         # 获取该区域下所有未删除的地块，并预加载 elements
         zones = TerrainZone.objects.filter(area_obj=area, is_deleted=False).prefetch_related('elements')
         
@@ -60,6 +79,69 @@ def area_edit_detail(request, area_id):
         return api_error(msg=str(e), status=500)
 
 # --- TerrainZone API ---
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def unified_save_terrain(request):
+    """
+    统一保存接口：地形 + 多地块 + 子类别
+    支持一次性创建或更新顶层地形，并同步保存所有关联地块
+    """
+    try:
+        data = request.data
+        terrain_data = data.get('terrain', {})
+        plots_data = data.get('plots', []) # 支持批量地块
+
+        if not terrain_data.get('name'):
+            return api_error(msg="地形名称不能为空")
+
+        with transaction.atomic():
+            # 1. 处理地形 (TerrainArea)
+            terrain_id = terrain_data.get('id')
+            if terrain_id:
+                terrain = get_object_or_404(TerrainArea, id=terrain_id)
+                terrain.name = terrain_data.get('name')
+                terrain.description = terrain_data.get('description', '')
+                terrain.save()
+                msg = "地形及地块保存成功"
+            else:
+                terrain = TerrainArea.objects.create(
+                    name=terrain_data.get('name'),
+                    description=terrain_data.get('description', ''),
+                    type='farm' # 默认大类类型
+                )
+                msg = "地形及地块创建成功"
+
+            # 2. 批量处理地块 (TerrainZone)
+            saved_plots = []
+            for plot_item in plots_data:
+                plot_id = plot_item.get('id')
+                plot_item['area_obj'] = terrain.id # 强制关联到当前地形
+                
+                if plot_id:
+                    # 更新已有地块
+                    plot = get_object_or_404(TerrainZone, id=plot_id, is_deleted=False)
+                    serializer = TerrainZoneSerializer(plot, data=plot_item, partial=True)
+                else:
+                    # 创建新地块
+                    serializer = TerrainZoneSerializer(data=plot_item)
+
+                if serializer.is_valid():
+                    plot = serializer.save()
+                    saved_plots.append(TerrainZoneSerializer(plot).data)
+                else:
+                    # 如果任何地块校验失败，回滚整个事务
+                    transaction.set_rollback(True)
+                    return api_error(msg=f"地块[{plot_item.get('name')}]校验失败", data=serializer.errors)
+
+            return api_response(data={
+                "terrain": TerrainAreaSerializer(terrain).data,
+                "plots": saved_plots
+            }, msg=msg)
+
+    except Exception as e:
+        logger.error(f"统一保存异常: {str(e)}\n{traceback.format_exc()}")
+        return api_error(msg=str(e), status=500)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])

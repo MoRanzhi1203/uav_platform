@@ -8,6 +8,8 @@ urlpatterns = [
     # TerrainArea API
     path('api/areas/', views.list_areas, name='list_areas'),
     path('api/areas/<int:area_id>/edit/', views.area_edit_detail, name='area_edit_detail'),
+    path('api/areas/<int:pk>/delete/', views.delete_terrain, name='delete_terrain'),
+    path('api/terrain/save/', views.unified_save_terrain, name='unified_save_terrain'),
     
     # TerrainZone API
     path('api/zones/create/', views.create_or_update_zone, name='create_zone'),

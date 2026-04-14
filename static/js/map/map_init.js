@@ -57,6 +57,9 @@ const overlayLayers = {
   })
 };
 
+// 全局存储所有已初始化的地图实例，用于处理容器大小变化等全局事件
+const activeMaps = [];
+
 // 通用地图初始化函数
 function initMap(mapId, options = {}) {
   const mapOptions = { ...mapConfig, ...options };
@@ -65,8 +68,30 @@ function initMap(mapId, options = {}) {
   // 默认添加卫星底图 (确保是新实例)
   getBaseLayer('satellite').addTo(map);
 
+  // 将新地图实例加入全局追踪
+  activeMaps.push(map);
+
   return map;
 }
+
+// 监听侧边栏切换事件，刷新所有地图的尺寸
+document.addEventListener('DOMContentLoaded', () => {
+  const sidebarBtn = document.querySelector('.toggle-sidebar-btn');
+  if (sidebarBtn) {
+    sidebarBtn.addEventListener('click', () => {
+      // 延时执行以等待侧边栏动画结束
+      setTimeout(() => {
+        activeMaps.forEach(map => {
+          if (map) {
+            // 刷新地图尺寸并尝试保持中心点
+            map.invalidateSize({ pan: true });
+            console.log(`地图 [${map._container.id}] 尺寸已刷新`);
+          }
+        });
+      }, 350);
+    });
+  }
+});
 
 // 通用多边形样式
 const polygonStyles = {
