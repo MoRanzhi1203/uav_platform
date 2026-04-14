@@ -44,7 +44,7 @@
       color: #495057;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       background-color: transparent !important; /* 覆盖 Bootstrap 默认背景 */
     }
     .dropdown-item:hover {
@@ -52,17 +52,22 @@
       color: #212529 !important;
     }
     .dropdown-item.active {
-      color: #2c3e50;
-      font-weight: 600;
+      color: inherit;
+      font-weight: normal;
     }
-    /* 独立出圆点指示器，不再受 hover 影响显示 */
+    .layer-color {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 2px;
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+    }
+    /* 移除之前添加的所有额外指示器 */
     .dropdown-item.active::after {
-      content: '●';
-      font-size: 12px; /* 放大圆点 */
-      color: #2ecc71;
-      margin-left: 8px;
+      display: none;
     }
-    /* 移除 Bootstrap 默认的蓝色背景 */
+    /* 保持基础悬停效果即可 */
     .dropdown-item.active:hover, .dropdown-item:active {
       background-color: #f1f3f5 !important;
       color: #212529 !important;
@@ -412,22 +417,31 @@
           
           <div class="attribute-group">
             <label for="plotType">地块类型</label>
-          <select id="plotType">
-            <option value="forest">林区</option>
-            <option value="farmland">农田</option>
-            <option value="building">建筑</option>
-            <option value="water">水域</option>
-            <option value="road">道路</option>
-            <option value="bare">裸地</option>
-          </select>
-        </div>
+            <div class="dropdown w-100" id="plotTypeDropdownWrapper">
+              <button class="btn btn-sm btn-outline-secondary w-100 text-start dropdown-toggle d-flex align-items-center" type="button" id="plotTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                <span id="selectedPlotTypeName" class="d-flex align-items-center flex-grow-1">
+                  <span class="layer-color me-2" style="background-color: #f39c12;"></span>
+                  <span>农田</span>
+                </span>
+              </button>
+              <ul class="dropdown-menu w-100 shadow-sm" id="plotTypeDropdownMenu">
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="forest"><span class="layer-color me-2" style="background-color: #2ecc71;"></span>林区</a></li>
+                <li><a class="dropdown-item d-flex align-items-center active" href="#" data-value="farmland"><span class="layer-color me-2" style="background-color: #f39c12;"></span>农田</a></li>
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="building"><span class="layer-color me-2" style="background-color: #7f8c8d;"></span>建筑</a></li>
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="water"><span class="layer-color me-2" style="background-color: #3498db;"></span>水域</a></li>
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="road"><span class="layer-color me-2" style="background-color: #95a5a6;"></span>道路</a></li>
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="bare"><span class="layer-color me-2" style="background-color: #e67e22;"></span>裸地</a></li>
+              </ul>
+              <input type="hidden" id="plotType" value="farmland">
+            </div>
+          </div>
         
         <div class="attribute-group" id="subTypeGroup" style="display: none;">
           <label>子类型 / 备注</label>
           <div class="d-flex gap-1 align-items-center">
             <div class="dropdown flex-grow-1" id="subTypeDropdownWrapper">
-              <button class="btn btn-sm btn-outline-secondary w-100 text-start dropdown-toggle d-flex justify-content-between align-items-center" type="button" id="subTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                <span id="selectedSubTypeName" class="text-truncate" style="max-width: 180px;">请选择或新增</span>
+              <button class="btn btn-sm btn-outline-secondary w-100 text-start dropdown-toggle d-flex align-items-center" type="button" id="subTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                <span id="selectedSubTypeName" class="text-truncate flex-grow-1" style="max-width: 180px;">请选择或新增</span>
               </button>
               <ul class="dropdown-menu w-100 shadow-sm" id="subTypeDropdownMenu" style="max-height: 250px; overflow-y: auto;">
                 <!-- 动态渲染子类型项 -->

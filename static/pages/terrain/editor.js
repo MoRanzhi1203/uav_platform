@@ -20,6 +20,9 @@ function initEditor() {
   // 绑定属性面板事件
   bindAttributeEvents();
 
+  // 绑定自定义地块类型下拉菜单事件
+  bindCustomPlotTypeDropdown();
+
   // 默认进入选择模式
   const selectBtn = document.querySelector('[data-tool="select"]');
   if (selectBtn) {
@@ -146,9 +149,10 @@ function bindAttributeEvents() {
   if (plotType) {
     plotType.addEventListener('change', function(e) {
       const type = this.value;
+      const isUserAction = e.isTrusted || (e.detail && e.detail.isUserTriggered);
       // --- 日志4：类型-子类别联动日志 ---
       console.log('[日志4：类型联动]');
-      console.log('- plot_type 变化来源:', e.isTrusted ? '用户主动修改' : '代码初始化/回填');
+      console.log('- plot_type 变化来源:', isUserAction ? '用户主动修改' : '代码初始化/回填');
       console.log('- 新的 plot_type:', type);
       
       // 所有大类都支持显示子类别下拉列表，实现全类型统一
@@ -156,7 +160,7 @@ function bindAttributeEvents() {
         if (subTypeGroup) subTypeGroup.style.display = 'block';
         if (terrainEditor) {
           // 只有用户主动改变时才清空子类别；代码触发时保持现状（或在 load 中回填）
-          if (e.isTrusted) {
+          if (isUserAction) {
             console.log('- 触发原因：用户主动修改，正在清空 subtype');
             terrainEditor.selectSubCategory('');
             terrainEditor.loadSubCategories('');
@@ -165,7 +169,7 @@ function bindAttributeEvents() {
       } else {
         if (subTypeGroup) subTypeGroup.style.display = 'none';
         if (terrainEditor) {
-          if (e.isTrusted) {
+          if (isUserAction) {
             terrainEditor.selectSubCategory('');
           }
         }
@@ -320,6 +324,37 @@ function bindAssistLayerEvents() {
       if (terrainEditor) terrainEditor.toggleHistoryHints(this.checked);
     });
   }
+}
+
+// 绑定自定义地块类型下拉菜单事件
+function bindCustomPlotTypeDropdown() {
+  const dropdownItems = document.querySelectorAll('#plotTypeDropdownMenu .dropdown-item');
+  const plotTypeInput = document.getElementById('plotType');
+  const btnContent = document.getElementById('selectedPlotTypeName');
+
+  if (!dropdownItems.length || !plotTypeInput || !btnContent) return;
+
+  dropdownItems.forEach(item => {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      // 移除所有项的 active 状态
+      dropdownItems.forEach(i => i.classList.remove('active'));
+      // 添加当前项的 active 状态
+      this.classList.add('active');
+      
+      // 更新按钮显示内容 (仅包含色块和文本)
+      btnContent.innerHTML = this.innerHTML;
+      
+      // 更新隐藏输入框的值
+      const value = this.getAttribute('data-value');
+      plotTypeInput.value = value;
+      
+      // 触发 change 事件，以便触发 bindAttributeEvents 中的联动逻辑
+      const event = new CustomEvent('change', { detail: { isUserTriggered: true }, bubbles: true });
+      plotTypeInput.dispatchEvent(event);
+    });
+  });
 }
 
 // 页面加载完成后初始化
