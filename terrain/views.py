@@ -350,14 +350,18 @@ def subcategory_list(request):
         m_map = {item['type']: item['count_db'] for item in total_counts if item['type']}
         
         # 统计 n (当前区域数量 - count_area)
-        current_counts = TerrainZone.objects.filter(category=category, area_obj_id=area_id, is_deleted=False).values('type').annotate(count_area=Count('id'))
-        n_map = {item['type']: item['count_area'] for item in current_counts if item['type']}
+        # 修复: 只有在 area_id 存在且为有效数字时才进行当前区域统计，否则默认为空
+        n_map = {}
+        if area_id and str(area_id).isdigit():
+            current_counts = TerrainZone.objects.filter(category=category, area_obj_id=area_id, is_deleted=False).values('type').annotate(count_area=Count('id'))
+            n_map = {item['type']: item['count_area'] for item in current_counts if item['type']}
         
         subcategories = []
         for sc in subcats:
             subcategories.append({
                 "id": sc.id,
                 "name": sc.name,
+                "is_default": sc.is_default,
                 "count_area": n_map.get(sc.name, 0),
                 "count_db": m_map.get(sc.name, 0)
             })
@@ -392,7 +396,11 @@ def delete_subcategory(request):
         subcat_id = request.data.get('id')
         subcat = get_object_or_404(TerrainSubCategory, id=subcat_id)
         
-        # 业务规则检查：是否有地块正在使用此子类别
+        # 1. 系统默认项不允许删除
+        if getattr(subcat, 'is_default', False):
+            return api_error(msg=f"无法删除：【{subcat.name}】是系统预定义的默认子类别，不允许删除。")
+
+        # 2. 业务规则检查：是否有地块正在使用此子类别
         # 我们在地块中存储的是 sub_type (字符串名称)，而不是外键，所以需要查名称
         usage_count = TerrainZone.objects.filter(category=subcat.category, type=subcat.name, is_deleted=False).count()
         if usage_count > 0:

@@ -68,8 +68,12 @@ class Command(BaseCommand):
             for sub_name in cat_config["default_subcategories"]:
                 obj, created = TerrainSubCategory.objects.get_or_create(
                     category=category,
-                    name=sub_name
+                    name=sub_name,
+                    defaults={'is_default': True}
                 )
+                if not created and not obj.is_default:
+                    obj.is_default = True
+                    obj.save()
                 if created:
                     created_count += 1
 

@@ -42,6 +42,9 @@ htmlcov/
 # Temporary files
 tmp/
 temp/
+all_dbs_check.txt
+all_zone.txt
+check_all_zone.py
 
 # Log files
 logs/

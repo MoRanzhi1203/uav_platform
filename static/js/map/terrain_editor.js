@@ -884,14 +884,10 @@ class TerrainEditor {
     const nameInput = document.getElementById('plotName');
     if (nameInput) nameInput.value = plot.properties?.name || '';
 
-    const typeSelect = document.getElementById('plotType');
-    const subTypeGroup = document.getElementById('subTypeGroup');
-    if (typeSelect) {
-      typeSelect.value = plot.properties?.type || 'farmland';
-      // 统一展示子类型模块
-      if (subTypeGroup) subTypeGroup.style.display = 'block';
-      this.loadSubCategories(plot.properties?.subType);
-    }
+    // 使用统一方法设置地块类型、触发子类型加载并回填
+    const currentCategory = plot.properties?.type || 'farmland';
+    const currentSubtype = plot.properties?.subType || '';
+    this.setPlotCategoryAndLoadSubcategories(currentCategory, currentSubtype);
 
     const riskSelect = document.getElementById('riskLevel');
     if (riskSelect) riskSelect.value = plot.properties?.riskLevel || 'low';
@@ -2803,8 +2799,8 @@ class TerrainEditor {
     alert(`已拆分为 ${polygons.length} 个独立地块。`);
   }
 
-  async loadSubCategories(selectedValue = null) {
-    const category = document.getElementById('plotType')?.value;
+  async loadSubCategories(selectedValue = null, categoryOverride = null) {
+    const category = categoryOverride || document.getElementById('plotType')?.value;
     if (!category) return;
 
     try {
@@ -2818,6 +2814,20 @@ class TerrainEditor {
     }
   }
 
+  // 统一地块类型和子类型联动设置方法
+  async setPlotCategoryAndLoadSubcategories(category, selectedSubcategory = '') {
+    const plotTypeSelect = document.getElementById('plotType');
+    const subTypeGroup = document.getElementById('subTypeGroup');
+    
+    if (plotTypeSelect && category) {
+      plotTypeSelect.value = category;
+      if (subTypeGroup) subTypeGroup.style.display = 'block';
+    }
+    
+    // 等待子类型加载完成并回填
+    await this.loadSubCategories(selectedSubcategory, category);
+  }
+
   renderSubCategoryDropdown(subcategories, selectedValue = null) {
     const dropdownMenu = document.getElementById('subTypeDropdownMenu');
     const selectedNameSpan = document.getElementById('selectedSubTypeName');
@@ -2829,7 +2839,7 @@ class TerrainEditor {
 
     // 1. 添加“清除选择”项
     const clearLi = document.createElement('li');
-    clearLi.innerHTML = `<a class="dropdown-item small text-muted" href="javascript:void(0)" onclick="terrainEditor.selectSubCategory('', ''); return false;">清除选择</a>`;
+    clearLi.innerHTML = `<a class="dropdown-item small text-muted" href="javascript:void(0)" onclick="terrainEditor.selectSubCategory(''); return false;">清除选择</a>`;
     dropdownMenu.appendChild(clearLi);
     dropdownMenu.appendChild(document.createElement('li')).innerHTML = '<hr class="dropdown-divider m-1">';
 
@@ -2839,17 +2849,20 @@ class TerrainEditor {
         const li = document.createElement('li');
         li.className = 'subcat-item-wrapper';
         
-        // 使用 flex 布局实现：名称区域（点击触发选择） + 删除按钮（点击触发删除）
+        // 使用 flex 布局实现：名称区域（点击触发选择） + 删除按钮（点击触发删除，仅限非默认项）
         const isActive = selectedValue === item.name;
+        const deleteBtnHtml = item.is_default ? '' : `
+            <span class="subcat-delete-btn" onclick="event.stopPropagation(); terrainEditor.handleDeleteSubCategory(${item.id}, '${item.name}')">
+              <i class="bi bi-trash small"></i>
+            </span>`;
+            
         li.innerHTML = `
           <div class="subcat-item ${isActive ? 'active' : ''}" onclick="terrainEditor.selectSubCategory('${item.name}')">
             <div class="subcat-name-wrapper">
               <span>${item.name}</span>
               <small class="text-muted ms-1">(${item.count_area}/${item.count_db})</small>
             </div>
-            <span class="subcat-delete-btn" onclick="event.stopPropagation(); terrainEditor.handleDeleteSubCategory(${item.id}, '${item.name}')">
-              <i class="bi bi-trash small"></i>
-            </span>
+            ${deleteBtnHtml}
           </div>
         `;
         dropdownMenu.appendChild(li);

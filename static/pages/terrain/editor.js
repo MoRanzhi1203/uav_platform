@@ -41,6 +41,12 @@ function initEditor() {
       terrainEditor.loadAreaEditDetail(areaId);
     } else {
       console.warn('未指定区域 ID，部分功能可能受限');
+      
+      // 新建地形时，触发默认分类（如农田）的子类型加载联动
+      const defaultPlotType = document.getElementById('plotType')?.value;
+      if (defaultPlotType) {
+        terrainEditor.setPlotCategoryAndLoadSubcategories(defaultPlotType, '');
+      }
     }
   }
 
@@ -135,7 +141,6 @@ function bindToolEvents() {
 function bindAttributeEvents() {
   const plotType = document.getElementById('plotType');
   const subTypeGroup = document.getElementById('subTypeGroup');
-  const remarkGroup = document.getElementById('remarkGroup');
   const plotSubType = document.getElementById('plotSubType');
 
   if (plotType) {
@@ -143,14 +148,17 @@ function bindAttributeEvents() {
       const type = this.value;
       // 所有大类都支持显示子类别下拉列表，实现全类型统一
       if (type) {
-        subTypeGroup.style.display = 'block';
+        if (subTypeGroup) subTypeGroup.style.display = 'block';
         if (terrainEditor) {
           // 切换大类时，统一清除旧子类型并加载新大类的可选列表
           terrainEditor.selectSubCategory('');
-          terrainEditor.loadSubCategories();
+          terrainEditor.loadSubCategories('');
         }
       } else {
-        subTypeGroup.style.display = 'none';
+        if (subTypeGroup) subTypeGroup.style.display = 'none';
+        if (terrainEditor) {
+          terrainEditor.selectSubCategory('');
+        }
       }
       
       // 更新当前激活地块的属性 (如果有)

@@ -37,6 +37,7 @@ class TerrainSubCategory(models.Model):
     """子类别管理 (SubCategory)"""
     category = models.CharField(max_length=50, verbose_name="大类")
     name = models.CharField(max_length=100, verbose_name="子类别名称")
+    is_default = models.BooleanField(default=False, verbose_name="是否为系统默认")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
