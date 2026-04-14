@@ -354,8 +354,7 @@
         <div class="plot-status-summary mb-3 p-2 bg-light rounded border">
           <div class="row g-2 small text-muted">
             <div class="col-12 text-truncate" id="cursorPosition" title="当前光标坐标">坐标: -</div>
-            <div class="col-6" id="selectedArea">面积: -</div>
-            <div class="col-6" id="vertexCount">顶点: -</div>
+            <div class="col-12" id="selectedArea">面积: -</div>
             <div class="col-12 border-top pt-1 mt-1 small" id="editMode">编辑模式: 选择</div>
           </div>
         </div>
@@ -442,16 +441,12 @@
         <div class="attribute-group">
           <label>地理信息</label>
           <div class="row">
-            <div class="col-4">
-              <p class="small mb-1">中心点</p>
-              <p id="centerPoint" class="text-muted" style="font-size: 10px;">-</p>
+            <div class="col-6">
+              <p class="small mb-1">中心坐标</p>
+              <p id="centerPoint" class="text-muted">-</p>
             </div>
-            <div class="col-4">
-              <p class="small mb-1">边界点</p>
-              <p id="boundaryCount" class="text-muted">-</p>
-            </div>
-            <div class="col-4">
-              <p class="small mb-1">要素</p>
+            <div class="col-6">
+              <p class="small mb-1">要素数量</p>
               <p id="elementCount" class="text-muted">-</p>
             </div>
           </div>

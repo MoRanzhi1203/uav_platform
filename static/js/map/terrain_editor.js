@@ -999,17 +999,11 @@ class TerrainEditor {
     }
 
     const centerPointEl = document.getElementById('centerPoint');
-    const boundaryCountEl = document.getElementById('boundaryCount');
 
     if (plot.layer && plot.layer.getBounds) {
       const bounds = plot.layer.getBounds();
       const center = bounds.getCenter();
       if (centerPointEl) centerPointEl.textContent = `${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}`;
-    }
-
-    if (boundaryCountEl) {
-      const rings = this.getLatLngRingsFromLayer(plot.layer);
-      boundaryCountEl.textContent = rings.length ? (rings[0].length || '-') : '-';
     }
   }
   
@@ -1909,7 +1903,7 @@ class TerrainEditor {
       layer = L.geoJSON(data.geom_json, {
         style: this.getPlotStyle(properties.type, false),
         interactive: !(data.style_json?.locked),
-        renderer: this.canvasRenderer
+        // 渲染已保存地块时，为了保证要素点击事件正常，移除 renderer: this.canvasRenderer 限制
       });
     } catch (err) {
       console.error(`渲染地块 [${data.name} (ID: ${data.id})] 失败:`, err, data.geom_json);
