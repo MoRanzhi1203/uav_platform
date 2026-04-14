@@ -144,20 +144,30 @@ function bindAttributeEvents() {
   const plotSubType = document.getElementById('plotSubType');
 
   if (plotType) {
-    plotType.addEventListener('change', function() {
+    plotType.addEventListener('change', function(e) {
       const type = this.value;
+      // --- 日志4：类型-子类别联动日志 ---
+      console.log('[日志4：类型联动]');
+      console.log('- plot_type 变化来源:', e.isTrusted ? '用户主动修改' : '代码初始化/回填');
+      console.log('- 新的 plot_type:', type);
+      
       // 所有大类都支持显示子类别下拉列表，实现全类型统一
       if (type) {
         if (subTypeGroup) subTypeGroup.style.display = 'block';
         if (terrainEditor) {
-          // 切换大类时，统一清除旧子类型并加载新大类的可选列表
-          terrainEditor.selectSubCategory('');
-          terrainEditor.loadSubCategories('');
+          // 只有用户主动改变时才清空子类别；代码触发时保持现状（或在 load 中回填）
+          if (e.isTrusted) {
+            console.log('- 触发原因：用户主动修改，正在清空 subtype');
+            terrainEditor.selectSubCategory('');
+            terrainEditor.loadSubCategories('');
+          }
         }
       } else {
         if (subTypeGroup) subTypeGroup.style.display = 'none';
         if (terrainEditor) {
-          terrainEditor.selectSubCategory('');
+          if (e.isTrusted) {
+            terrainEditor.selectSubCategory('');
+          }
         }
       }
       
@@ -250,6 +260,7 @@ function bindActionEvents() {
   });
 
   // 图层面板操作按钮
+  document.getElementById('toggleMultiSelectBtn')?.addEventListener('click', () => terrainEditor.toggleMultiSelectMode());
   document.getElementById('mergeZonesBtn')?.addEventListener('click', () => terrainEditor.handleMergeZones());
   document.getElementById('booleanSubtractBtn')?.addEventListener('click', () => terrainEditor.handleBooleanSubtract());
   document.getElementById('splitZoneBtn')?.addEventListener('click', () => terrainEditor.handleSplitZone());

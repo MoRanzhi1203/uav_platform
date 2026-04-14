@@ -712,11 +712,34 @@ class TerrainEditor {
     return null;
   }
   
+  // 切换批量选择模式
+  toggleMultiSelectMode() {
+    this.isMultiSelectMode = !this.isMultiSelectMode;
+    if (!this.isMultiSelectMode) {
+      // 退出批量模式时，清空已选项
+      this.multiSelectedPlotIds.clear();
+    }
+    this.updateLayerPanelButtons();
+    this.updateSelectedPlotsList();
+  }
+
   // 更新已选地块列表
   updateSelectedPlotsList() {
     const selectedAreasContainer = document.getElementById('selectedAreas');
     if (!selectedAreasContainer) return;
     selectedAreasContainer.innerHTML = '';
+    
+    // 如果存在多选按钮，动态控制其高亮状态
+    const toggleMultiSelectBtn = document.getElementById('toggleMultiSelectBtn');
+    if (toggleMultiSelectBtn) {
+      if (this.isMultiSelectMode) {
+        toggleMultiSelectBtn.classList.add('btn-primary');
+        toggleMultiSelectBtn.classList.remove('btn-outline-secondary');
+      } else {
+        toggleMultiSelectBtn.classList.remove('btn-primary');
+        toggleMultiSelectBtn.classList.add('btn-outline-secondary');
+      }
+    }
     
     this.userPlots.forEach((plot, index) => {
       const item = document.createElement('div');
@@ -735,38 +758,45 @@ class TerrainEditor {
       const isMultiSelected = this.multiSelectedPlotIds.has(plot.id);
 
       item.innerHTML = `
-        <div class="d-flex align-items-center w-100">
-          <input type="checkbox" class="layer-multi-check me-2" ${isMultiSelected ? 'checked' : ''}>
-          <input type="checkbox" class="layer-checkbox me-2" ${isVisible ? 'checked' : ''} title="显示/隐藏">
+        <div class="d-flex align-items-center w-100 p-1" style="${plot.id === this.activePlotId ? 'background-color: #e9ecef; border-left: 3px solid #0d6efd; border-radius: 3px;' : 'border-left: 3px solid transparent;'}">
+          <input type="checkbox" class="layer-multi-check me-2" ${isMultiSelected ? 'checked' : ''} style="display: ${this.multiSelectedPlotIds.size > 0 || this.isMultiSelectMode ? 'inline-block' : 'none'};" title="批量选择">
+          <i class="bi ${isVisible ? 'bi-eye' : 'bi-eye-slash'} layer-visibility me-2" style="cursor: pointer; font-size: 14px; color: #6c757d;" title="显示/隐藏"></i>
           <span class="layer-color" style="background-color: ${this.getPlotColor(plot.properties?.type)}; width: 12px; height: 12px; display: inline-block; margin-right: 8px; border-radius: 2px;"></span>
-          <span class="layer-name text-truncate" style="flex: 1; font-size: 13px;">${name}</span>
+          <span class="layer-name text-truncate" style="flex: 1; font-size: 13px; cursor: pointer; ${plot.id === this.activePlotId ? 'font-weight: bold;' : ''}" title="${name}">${name}</span>
           <div class="layer-actions ms-2 d-flex gap-2">
-            <i class="bi ${isLocked ? 'bi-lock-fill' : 'bi-unlock'} layer-lock" style="cursor: pointer; font-size: 14px; ${isLocked ? 'color: #dc3545;' : ''}"></i>
-            <i class="bi bi-trash layer-delete" style="cursor: pointer; font-size: 14px; color: #dc3545;"></i>
+            <i class="bi ${isLocked ? 'bi-lock-fill text-danger' : 'bi-unlock text-muted'} layer-lock" style="cursor: pointer; font-size: 14px;" title="${isLocked ? '解锁图层' : '锁定图层'}"></i>
+            <i class="bi bi-trash layer-delete text-danger" style="cursor: pointer; font-size: 14px;" title="删除图层"></i>
           </div>
         </div>
       `;
       
-      // 点击选择（单选）
+      // 点击选择（单选/激活）
       item.querySelector('.layer-name').addEventListener('click', (e) => {
         e.stopPropagation();
         this.selectPlot(plot.id);
       });
 
-      // 多选框
+      // 多选框 (selected)
       const multiCheck = item.querySelector('.layer-multi-check');
-      multiCheck.addEventListener('change', (e) => {
-        e.stopPropagation();
-        if (multiCheck.checked) this.multiSelectedPlotIds.add(plot.id);
-        else this.multiSelectedPlotIds.delete(plot.id);
-        this.updateLayerPanelButtons();
-        this.updateSelectedPlotsList(); // 刷新样式
-      });
+      if (multiCheck) {
+        multiCheck.addEventListener('change', (e) => {
+          e.stopPropagation();
+          if (multiCheck.checked) this.multiSelectedPlotIds.add(plot.id);
+          else this.multiSelectedPlotIds.delete(plot.id);
+          this.updateLayerPanelButtons();
+          this.updateSelectedPlotsList(); // 刷新样式
+        });
+      }
 
-      // 可见性
-      const checkbox = item.querySelector('.layer-checkbox');
-      checkbox.addEventListener('click', (e) => e.stopPropagation());
-      checkbox.addEventListener('change', () => this.togglePlotVisibility(plot.id, checkbox.checked));
+      // 可见性 (visible - 眼睛图标)
+      const visibilityIcon = item.querySelector('.layer-visibility');
+      if (visibilityIcon) {
+        visibilityIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isCurrentlyVisible = visibilityIcon.classList.contains('bi-eye');
+          this.togglePlotVisibility(plot.id, !isCurrentlyVisible);
+        });
+      }
 
       // 锁定
       const lockIcon = item.querySelector('.layer-lock');
@@ -808,9 +838,18 @@ class TerrainEditor {
       this.checkAndSplitDisjointPartsLocally(this.activePlotId);
     }
 
+    // --- 日志3：图层切换日志 ---
+    console.log('[日志3：图层切换]');
+    console.log('- 切换前 activeLayerId:', this.activePlotId);
+    const oldSubtype = document.getElementById('plotSubType')?.value;
+    console.log('- 切换前表单 subtype:', oldSubtype);
+
     this.activePlotId = plotId;
     const plot = this.userPlots.find(p => p.id === plotId);
     if (!plot) return;
+
+    console.log('- 切换后 activeLayerId:', plot.id);
+    console.log('- 切换后准备从 layer 回填的 subtype:', plot.properties?.subType || '');
 
     // 更新 UI 状态
     this.userPlots.forEach(p => {
@@ -828,7 +867,8 @@ class TerrainEditor {
 
     this.updateAttributePanel(plot);
     this.updateSelectedPlotsList();
-    this.loadSubCategories(); // 加载子类别统计
+    // 修复问题4：删除错误的无参数 loadSubCategories 调用，因为它会用 null 覆盖已回填的子类别 UI
+    // this.loadSubCategories(); 
   }
   
   // 移除地块
@@ -1467,7 +1507,12 @@ class TerrainEditor {
     if (combinedFeature) {
       if (this.paintedLayer) this.paintedLayer.clearLayers();
 
-      const properties = this.getCurrentPlotPropertiesFromForm();
+      let properties = this.getCurrentPlotPropertiesFromForm();
+      const activePlot = this.userPlots.find(p => p.id === this.activePlotId);
+      if (activePlot) {
+        // 如果有当前激活图层，则继承其属性进行绘制与合并，而不是表单的临时状态
+        properties = { ...activePlot.properties };
+      }
 
       let mergedFeature = combinedFeature;
       let mergedGridData = { grid_size: 10, cells: cells };
@@ -1478,13 +1523,13 @@ class TerrainEditor {
         if (!this.canAutoMergePlot(plot, properties)) return;
         if (!plot.geojson) return;
         try {
-          // 如果地块还没有几何图形（刚创建的空图层），且是当前激活地块，强制纳入合并（即填充它）
-          if (!plot.geojson.geometry && plot.id === this.activePlotId) {
+          // 修复问题1：如果是当前激活地块，无条件纳入合并，确保同一图层内所有笔划归入同一对象
+          if (plot.id === this.activePlotId) {
             toMerge.push(plot);
             return;
           }
           
-          // 只有当两者都有几何图形时才计算交集
+          // 如果不是当前激活地块，只有当两者都有几何图形且相交时才自动合并
           if (plot.geojson.geometry && turf.booleanIntersects(mergedFeature, plot.geojson)) {
             toMerge.push(plot);
           }
@@ -1493,8 +1538,15 @@ class TerrainEditor {
         }
       });
 
+      // --- 日志2：画笔绘制日志 ---
+      console.log('[日志2：画笔绘制]');
+      console.log('- 当前 activeLayerId:', this.activePlotId);
+      console.log('- 本次新增 cells:', cells.length);
+      console.log('- 是否找到可合并的图层:', toMerge.length > 0);
+
       toMerge.forEach(plot => {
         try {
+          console.log(`- 准备合并图层: ${plot.id} (首次落笔: ${!plot.geojson.geometry})`);
           // 如果被合并的地块有数据库 ID，则保留它（优先保留当前激活地块的 ID，或者第一个遇到的 ID）
           if (plot.db_id && (!preservedDbId || plot.id === this.activePlotId)) {
             preservedDbId = plot.db_id;
@@ -2688,19 +2740,45 @@ class TerrainEditor {
     const name = prompt('请输入新地块名称:', `新地块_${Date.now().toString().slice(-4)}`);
     if (!name) return;
 
+    // 修复问题2：新建图层默认类型优先继承“当前正在编辑图层”的类型
+    let defaultType = 'farmland';
+    let defaultSubtype = '';
+    let defaultRiskLevel = 'low';
+    
+    if (this.activePlotId) {
+      const activePlot = this.userPlots.find(p => p.id === this.activePlotId);
+      if (activePlot && activePlot.properties) {
+        defaultType = activePlot.properties.type || 'farmland';
+        defaultSubtype = activePlot.properties.subType || '';
+        defaultRiskLevel = activePlot.properties.riskLevel || 'low';
+      }
+    } else {
+      // 尝试从当前表单获取作为次优先级
+      defaultType = document.getElementById('plotType')?.value || 'farmland';
+      defaultSubtype = document.getElementById('plotSubType')?.value || '';
+      defaultRiskLevel = document.getElementById('riskLevel')?.value || 'low';
+    }
+
     const properties = {
       name: name,
-      type: 'farmland',
-      riskLevel: 'low',
+      type: defaultType,
+      subType: defaultSubtype,
+      riskLevel: defaultRiskLevel,
       description: '',
       areaHa: 0
     };
 
+    // --- 日志1：新建图层日志 ---
+    console.log('[日志1：新建图层]');
+    console.log('- 新建前 activeLayerId:', this.activePlotId);
+    console.log('- 继承的 plot_type:', defaultType, '继承的 plot_subtype:', defaultSubtype);
+    console.log('- 新图层初始对象属性:', properties);
+
+    // 修复问题3：直接创建空图层对象，不阻塞流程
     const plot = this.createPlotFromGeoJSON({ type: 'Feature', geometry: null, properties: {} }, properties);
     this.userPlots.push(plot);
     this.selectPlot(plot.id);
     this.updateSelectedPlotsList();
-    alert(`地块 "${name}" 已创建，请使用画笔在地图上绘制区域。`);
   }
 
   async handleMergeZones() {

@@ -196,6 +196,59 @@ main {
     border-bottom: 1px solid #e9ecef;
 }
 
+/* ==========================================
+   全局复制策略 (Global Copy Policy)
+   ========================================== */
+
+/* 全局默认禁止复制状态 */
+body.copy-disabled {
+    -webkit-user-select: none !important; /* Safari */
+    -moz-user-select: none !important;    /* Firefox */
+    -ms-user-select: none !important;     /* IE10+/Edge */
+    user-select: none !important;         /* Standard */
+}
+
+/* 局部容器放开机制 (特定类名和属性) */
+body.copy-disabled .copy-enabled,
+body.copy-disabled [data-allow-copy="true"] {
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    user-select: text !important;
+}
+
+/* 豁免表单组件和富文本等需要正常交互的组件 */
+body.copy-disabled input,
+body.copy-disabled textarea,
+body.copy-disabled [contenteditable="true"] {
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    user-select: text !important;
+}
+
+/* 豁免特殊编辑器，使用 auto 避免破坏编辑器自身样式 */
+body.copy-disabled .monaco-editor,
+body.copy-disabled .CodeMirror,
+body.copy-disabled .tox-tinymce,
+body.copy-disabled .ql-editor {
+    -webkit-user-select: auto !important;
+    -moz-user-select: auto !important;
+    -ms-user-select: auto !important;
+    user-select: auto !important;
+}
+
+/* 保证地图/画布容器的原始交互行为 */
+body.copy-disabled canvas,
+body.copy-disabled .mapboxgl-canvas-container,
+body.copy-disabled .cesium-viewer {
+    -webkit-user-select: auto !important;
+    -moz-user-select: auto !important;
+    -ms-user-select: auto !important;
+    user-select: auto !important;
+}
+
+/* 模态框底部 */
 .modal-footer {
     border-top: 1px solid #e9ecef;
 }
