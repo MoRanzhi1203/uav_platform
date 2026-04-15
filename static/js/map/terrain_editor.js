@@ -111,6 +111,13 @@ class TerrainEditor {
       marqueeStart: this.startMarqueeSelection.bind(this),
       marqueeMove: this.handleMarqueeSelection.bind(this),
       marqueeEnd: this.endMarqueeSelection.bind(this),
+      
+      // 统一 Pointer 事件处理
+      pointerDown: this.handlePointerDown.bind(this),
+      pointerMove: this.handlePointerMove.bind(this),
+      pointerUp: this.handlePointerUp.bind(this),
+      
+      // 保持原有兼容（如果需要）
       brushStart: this.startBrush.bind(this),
       brushMove: this.handleBrush.bind(this),
       brushEnd: this.endBrush.bind(this),
@@ -126,6 +133,12 @@ class TerrainEditor {
   
   // 初始化
   init() {
+    // 设置地图容器的 Pointer 事件支持
+    const container = this.map.getContainer();
+    container.style.touchAction = 'none';
+    container.style.userSelect = 'none';
+    container.style.webkitUserSelect = 'none';
+    
     this.addLayerGroups();
     this.initReferenceGrid();
     this.bindEvents();
@@ -655,6 +668,14 @@ class TerrainEditor {
     this.map.getContainer().style.cursor = 'grab';
     this.map.dragging.enable();
     this.refreshPlotInteractivity();
+    
+    // 使用 Pointer Events
+    const container = this.map.getContainer();
+    container.addEventListener('pointermove', this._handlers.pointerMove);
+    container.addEventListener('pointerup', this._handlers.pointerUp);
+    container.addEventListener('pointercancel', this._handlers.pointerUp);
+    
+    // 兼容旧逻辑
     this.map.on('mousemove', this._handlers.plotMove);
     this.map.on('mouseup', this._handlers.plotMoveEnd);
   }
@@ -861,9 +882,13 @@ class TerrainEditor {
     this.map.getContainer().style.cursor = 'crosshair';
     this.map.dragging.disable();
     this.refreshPlotInteractivity();
-    this.map.on('mousedown', this._handlers.marqueeStart);
-    this.map.on('mousemove', this._handlers.marqueeMove);
-    this.map.on('mouseup', this._handlers.marqueeEnd);
+    
+    // 使用 Pointer Events
+    const container = this.map.getContainer();
+    container.addEventListener('pointerdown', this._handlers.pointerDown);
+    container.addEventListener('pointermove', this._handlers.pointerMove);
+    container.addEventListener('pointerup', this._handlers.pointerUp);
+    container.addEventListener('pointercancel', this._handlers.pointerUp);
   }
 
   startMarqueeSelection(e) {
@@ -1557,10 +1582,12 @@ class TerrainEditor {
       this.isPainting = false;
       this.map.dragging.disable();
       
-      this.map.on('mousedown', this._handlers.eraserStart);
-      this.map.on('mousemove', this._handlers.eraserMove);
-      this.map.on('mouseup', this._handlers.eraserEnd);
-      this.map.on('mouseout', this._handlers.eraserEnd);
+      // 使用 Pointer Events 适配数位笔和鼠标
+      const container = this.map.getContainer();
+      container.addEventListener('pointerdown', this._handlers.pointerDown);
+      container.addEventListener('pointermove', this._handlers.pointerMove);
+      container.addEventListener('pointerup', this._handlers.pointerUp);
+      container.addEventListener('pointercancel', this._handlers.pointerUp);
     }
   }
   
@@ -1732,6 +1759,108 @@ class TerrainEditor {
     this.brushShape = shape;
   }
 
+  // === Pointer 事件统一处理逻辑 ===
+  
+  handlePointerDown(e) {
+    // 适配 Leaflet 事件和原生事件
+    const originalEvent = e.originalEvent || e;
+    const pointerType = originalEvent.pointerType || 'mouse';
+    
+    // 仅在特定模式下处理
+    const drawableTools = ['brush', 'eraser', 'marquee-select'];
+    if (!drawableTools.includes(this.currentTool)) return;
+    
+    // 压力保护：如果是笔且支持压力，压力必须大于 0
+    if (pointerType === 'pen' && originalEvent.pressure !== undefined && originalEvent.pressure === 0) {
+      return;
+    }
+
+    // 鼠标必须是左键按下 (buttons & 1)
+    if (pointerType === 'mouse' && !(originalEvent.buttons & 1)) {
+      return;
+    }
+
+    // 获取坐标
+    const latlng = e.latlng || this.map.mouseEventToLatLng(originalEvent);
+    
+    // 捕获指针，确保移动到画布外也能接收事件
+    try {
+      this.map.getContainer().setPointerCapture(originalEvent.pointerId);
+    } catch (err) {}
+
+    if (this.currentTool === 'brush') {
+      this.startBrush({ latlng });
+    } else if (this.currentTool === 'eraser' && this.eraserMode === 'brush') {
+      this.startEraserBrush({ latlng });
+    } else if (this.currentTool === 'marquee-select') {
+      this.startMarqueeSelection({ latlng });
+    }
+    
+    // 阻止默认行为（如滚动、缩放）
+    if (originalEvent.cancelable) {
+      originalEvent.preventDefault();
+    }
+  }
+
+  handlePointerMove(e) {
+    const originalEvent = e.originalEvent || e;
+    const pointerType = originalEvent.pointerType || 'mouse';
+    const latlng = e.latlng || this.map.mouseEventToLatLng(originalEvent);
+
+    // 更新预览（无论是否在绘制）
+    if (this.currentTool === 'brush' || (this.currentTool === 'eraser' && this.eraserMode === 'brush')) {
+      this.updateBrushPreview(latlng);
+    }
+
+    // 处理框选预览
+    if (this.currentTool === 'marquee-select') {
+      this.handleMarqueeSelection({ latlng });
+    }
+
+    if (!this.isPainting && this.currentTool !== 'marquee-select') return;
+    if (this.currentTool === 'marquee-select' && !this._marqueeSelectionState) return;
+
+    // 绘制过程中的持续判断
+    if (pointerType === 'mouse' && !(originalEvent.buttons & 1)) {
+      // 鼠标左键松开，结束绘制
+      this.handlePointerUp(e);
+      return;
+    }
+
+    if (this.currentTool === 'brush') {
+      this.handleBrush({ latlng });
+    } else if (this.currentTool === 'eraser' && this.eraserMode === 'brush') {
+      this.handleEraserBrush({ latlng });
+    }
+
+    if (originalEvent.cancelable) {
+      originalEvent.preventDefault();
+    }
+  }
+
+  handlePointerUp(e) {
+    const originalEvent = e.originalEvent || e;
+    const latlng = e.latlng || this.map.mouseEventToLatLng(originalEvent);
+
+    const wasPainting = this.isPainting;
+    const wasMarquee = this._marqueeSelectionState;
+
+    if (!wasPainting && !wasMarquee) return;
+
+    // 释放指针捕获
+    try {
+      this.map.getContainer().releasePointerCapture(originalEvent.pointerId);
+    } catch (err) {}
+
+    if (this.currentTool === 'brush') {
+      this.endBrush({ latlng });
+    } else if (this.currentTool === 'eraser' && this.eraserMode === 'brush') {
+      this.endEraserBrush({ latlng });
+    } else if (this.currentTool === 'marquee-select') {
+      this.endMarqueeSelection({ latlng });
+    }
+  }
+
   // 像素画笔工具
   enableBrush() {
     this.clearToolEvents();
@@ -1750,14 +1879,23 @@ class TerrainEditor {
     this.brushPreviewLayer = null;
     this.map.dragging.disable();
     
-    this.map.on('mousedown', this._handlers.brushStart);
-    this.map.on('mousemove', this._handlers.brushMove);
-    this.map.on('mouseup', this._handlers.brushEnd);
-    this.map.on('mouseout', this._handlers.brushEnd);
+    // 使用 Pointer Events 适配数位笔和鼠标
+    const container = this.map.getContainer();
+    container.addEventListener('pointerdown', this._handlers.pointerDown);
+    container.addEventListener('pointermove', this._handlers.pointerMove);
+    container.addEventListener('pointerup', this._handlers.pointerUp);
+    container.addEventListener('pointercancel', this._handlers.pointerUp);
   }
   
   // 清除所有工具事件
   clearToolEvents() {
+    // 移除 Pointer Events
+    const container = this.map.getContainer();
+    container.removeEventListener('pointerdown', this._handlers.pointerDown);
+    container.removeEventListener('pointermove', this._handlers.pointerMove);
+    container.removeEventListener('pointerup', this._handlers.pointerUp);
+    container.removeEventListener('pointercancel', this._handlers.pointerUp);
+
     this.map.off('mousedown', this._handlers.brushStart);
     this.map.off('mousemove', this._handlers.brushMove);
     this.map.off('mouseup', this._handlers.brushEnd);
@@ -3937,7 +4075,6 @@ class TerrainEditor {
       await this.populateCreateZoneSubtypeOptions(categorySelect.value, '');
       this.updateCreateZoneNameSuggestion();
     });
-    subtypeSelect.addEventListener('change', () => this.updateCreateZoneNameSuggestion());
     nameInput.addEventListener('input', () => {
       const currentName = nameInput.value.trim();
       this._createZoneNameManuallyEdited = currentName !== '' && currentName !== this._lastCreateZoneAutoName;
@@ -3950,8 +4087,18 @@ class TerrainEditor {
     modalEl.addEventListener('hidden.bs.modal', () => {
       formEl.reset();
       formEl.classList.remove('was-validated');
-      subtypeSelect.innerHTML = '<option value="">请选择子类型</option>';
-      subtypeSelect.disabled = false;
+      
+      const subtypeMenu = document.getElementById('createZoneSubtypeDropdownMenu');
+      const subtypeBtn = document.getElementById('createZoneSubtypeDropdownBtn');
+      const selectedNameSpan = document.getElementById('createZoneSubtypeSelectedName');
+      const subtypeHiddenInput = document.getElementById('createZoneSubtypeSelect');
+      
+      if (subtypeMenu) subtypeMenu.innerHTML = '<li><span class="dropdown-item-text small text-muted text-center">请选择子类型</span></li>';
+      if (selectedNameSpan) selectedNameSpan.textContent = '请选择子类型';
+      if (subtypeHiddenInput) subtypeHiddenInput.value = '';
+      if (subtypeBtn) subtypeBtn.disabled = false;
+      
+      this.hideSubCategoryDescription();
       confirmBtn.disabled = false;
       this._createZoneDefaultRiskLevel = 'low';
       this._createZoneNameManuallyEdited = false;
@@ -3963,32 +4110,93 @@ class TerrainEditor {
   }
 
   async populateCreateZoneSubtypeOptions(category, preferredSubtype = '') {
-    const subtypeSelect = document.getElementById('createZoneSubtypeSelect');
-    if (!subtypeSelect) return '';
+    const subtypeMenu = document.getElementById('createZoneSubtypeDropdownMenu');
+    const subtypeBtn = document.getElementById('createZoneSubtypeDropdownBtn');
+    const selectedNameSpan = document.getElementById('createZoneSubtypeSelectedName');
+    const subtypeHiddenInput = document.getElementById('createZoneSubtypeSelect');
+    
+    if (!subtypeMenu || !subtypeBtn || !selectedNameSpan || !subtypeHiddenInput) return '';
 
     const subcategories = await this.fetchSubCategories(category);
-    subtypeSelect.innerHTML = '';
+    subtypeMenu.innerHTML = '';
+    
+    // 绑定隐藏提示的逻辑
+    if (!subtypeBtn.dataset.descPreviewBound) {
+      subtypeBtn.addEventListener('hide.bs.dropdown', () => this.hideSubCategoryDescription());
+      subtypeBtn.dataset.descPreviewBound = 'true';
+    }
+    subtypeMenu.onmouseleave = () => this.hideSubCategoryDescription();
 
     if (subcategories.length > 0) {
       subcategories.forEach(item => {
-        const option = document.createElement('option');
-        option.value = item.name;
-        option.textContent = item.name;
-        subtypeSelect.appendChild(option);
+        const li = document.createElement('li');
+        li.className = 'subcat-item-wrapper';
+
+        const itemRow = document.createElement('div');
+        itemRow.className = `subcat-item ${preferredSubtype === item.name ? 'active' : ''}`;
+        itemRow.style.padding = '8px 12px';
+        itemRow.style.cursor = 'pointer';
+        
+        itemRow.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.selectCreateZoneSubCategory(item.name);
+        });
+        
+        itemRow.addEventListener('mouseenter', () => {
+          this.showSubCategoryDescription(item.name, item.description || '', itemRow);
+        });
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = item.name;
+        itemRow.appendChild(nameSpan);
+        
+        li.appendChild(itemRow);
+        subtypeMenu.appendChild(li);
       });
-      subtypeSelect.disabled = false;
+      subtypeBtn.disabled = false;
     } else {
-      const option = document.createElement('option');
-      option.value = '';
-      option.textContent = '暂不设置子类型';
-      subtypeSelect.appendChild(option);
-      subtypeSelect.disabled = true;
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="dropdown-item-text small text-muted text-center">暂不设置子类型</span>';
+      subtypeMenu.appendChild(li);
+      subtypeBtn.disabled = true;
     }
 
     const hasPreferred = subcategories.some(item => item.name === preferredSubtype);
     const selectedSubtype = hasPreferred ? preferredSubtype : (subcategories[0]?.name || '');
-    subtypeSelect.value = selectedSubtype;
+    
+    this.selectCreateZoneSubCategory(selectedSubtype, false); // 不触发名称更新建议，避免循环
     return selectedSubtype;
+  }
+
+  // 新增：处理新建图层弹窗中的子类别选择
+  selectCreateZoneSubCategory(name, triggerUpdate = true) {
+    const selectedNameSpan = document.getElementById('createZoneSubtypeSelectedName');
+    const subtypeHiddenInput = document.getElementById('createZoneSubtypeSelect');
+    const subtypeMenu = document.getElementById('createZoneSubtypeDropdownMenu');
+    
+    if (selectedNameSpan) selectedNameSpan.textContent = name || '暂不设置子类型';
+    if (subtypeHiddenInput) {
+      const oldVal = subtypeHiddenInput.value;
+      subtypeHiddenInput.value = name;
+      if (triggerUpdate && oldVal !== name) {
+        this.updateCreateZoneNameSuggestion();
+      }
+    }
+
+    // 更新菜单中的 active 状态
+    if (subtypeMenu) {
+      const items = subtypeMenu.querySelectorAll('.subcat-item');
+      items.forEach(item => {
+        const itemText = item.querySelector('span')?.textContent || '';
+        if (name && itemText === name) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+    }
+    
+    this.hideSubCategoryDescription();
   }
 
   buildDefaultPlotName(category, subtype = '') {

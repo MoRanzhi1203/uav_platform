@@ -1118,6 +1118,25 @@
       gap: 8px;
       align-items: center;
     }
+    .subcat-item-wrapper {
+      list-style: none;
+    }
+    .subcat-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.2s;
+    }
+    .subcat-item:hover {
+      background: #f1f5f9;
+    }
+    .subcat-item.active {
+      background: #eff6ff;
+      color: #2563eb;
+      font-weight: 600;
+    }
     .subcat-add-btn {
       height: 44px;
       min-width: 44px;
@@ -1709,10 +1728,16 @@
             </select>
           </div>
           <div class="mb-3">
-            <label for="createZoneSubtypeSelect" class="form-label">子类型</label>
-            <select class="form-select" id="createZoneSubtypeSelect">
-              <option value="">请选择子类型</option>
-            </select>
+            <label for="createZoneSubtypeDropdownBtn" class="form-label">子类型</label>
+            <div class="dropdown editor-select-dropdown" id="createZoneSubtypeDropdownWrapper">
+              <button class="btn btn-sm text-start dropdown-toggle d-flex align-items-center w-100" type="button" id="createZoneSubtypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false" style="height: 38px; border: 1px solid #dee2e6; border-radius: 0.375rem;">
+                <span id="createZoneSubtypeSelectedName" class="flex-grow-1 editor-select-label">请选择子类型</span>
+              </button>
+              <ul class="dropdown-menu w-100 shadow-sm" id="createZoneSubtypeDropdownMenu" style="max-height: 250px; overflow-y: auto;">
+                <!-- 动态渲染子类型项 -->
+              </ul>
+              <input type="hidden" id="createZoneSubtypeSelect" value="">
+            </div>
           </div>
           <div class="mb-0">
             <label for="createZoneNameInput" class="form-label">地块名称</label>
