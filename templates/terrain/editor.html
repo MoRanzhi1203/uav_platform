@@ -9,29 +9,76 @@
   <link href="{% static 'css/terrain.css' %}" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <style>
+    /* 覆盖 base.html 默认的 main 样式，使工作台全屏无滚动 */
+    #main {
+      margin-top: 60px;
+      padding: 0 !important;
+      height: calc(100vh - 60px);
+      overflow: hidden;
+    }
+    body {
+      overflow: hidden;
+    }
     .editor-container {
-      height: calc(100vh - 56px);
+      height: 100%;
       display: flex;
       flex-direction: column;
+      --left-panel-width: 320px;
+      --right-panel-width: 360px;
     }
     .editor-header {
-      height: 60px;
-      background: #f8f9fa;
-      border-bottom: 1px solid #dee2e6;
+      height: 64px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
       display: flex;
       align-items: center;
-      padding: 0 20px;
+      padding: 0;
       z-index: 1000;
       position: relative;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
+    }
+    .editor-header-left {
+      width: var(--left-panel-width);
+      flex: 0 0 var(--left-panel-width);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      border-right: 1px solid transparent; /* 保持间距感 */
+    }
+    .editor-header h4 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin: 0 !important;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .editor-header-center {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      padding-left: 10px;
+      overflow: visible;
+      container-type: inline-size;
+    }
+    .editor-header-right {
+      width: auto;
+      flex: 0 0 auto;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      margin-right: calc(var(--right-panel-width) + 18px);
     }
     .editor-body {
       flex: 1;
       display: flex;
       overflow: hidden;
       z-index: 1;
-      background: #eef3f8;
-      --left-panel-width: 320px;
-      --right-panel-width: 360px;
+      background: #f8fafc;
     }
     .dropdown-menu {
       z-index: 3000 !important;
@@ -127,15 +174,15 @@
       transform: scaleX(1.2);
       background: linear-gradient(180deg, rgba(37, 99, 235, 0.25), rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.25));
     }
-    .editor-body.is-resizing,
-    .editor-body.is-resizing * {
+    .editor-container.is-resizing,
+    .editor-container.is-resizing * {
       cursor: col-resize !important;
       user-select: none !important;
     }
-    .editor-body.is-resizing .editor-sidebar,
-    .editor-body.is-resizing .editor-panel,
-    .editor-body.is-resizing .editor-map,
-    .editor-body.is-resizing .panel-resizer {
+    .editor-container.is-resizing .editor-sidebar,
+    .editor-container.is-resizing .editor-panel,
+    .editor-container.is-resizing .editor-map,
+    .editor-container.is-resizing .panel-resizer {
       transition: none !important;
     }
     .editor-footer {
@@ -151,51 +198,318 @@
     .tool-group {
       display: flex;
       align-items: center;
-      margin-right: 20px;
+      flex-wrap: nowrap;
+      gap: 6px;
+      padding: 0;
+      border-radius: 0;
+      margin-right: 8px;
+      white-space: nowrap;
+      overflow: visible;
+      background: transparent;
+      border: none;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .editor-header-center .tool-group {
+      gap: 0;
+      padding: 4px;
+      border-radius: 12px;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+      flex: 0 1 auto;
+      width: fit-content;
+      max-width: 100%;
+    }
+    .tool-group.actions {
+      background: transparent;
+      border: none;
+      padding: 0;
+      gap: 6px;
+      flex: 0 0 auto;
+      margin-right: 0;
+    }
+    .tool-group.actions .tool-btn {
+      flex: 0 0 auto;
+      min-width: auto;
+      height: 34px;
+      padding: 0 11px;
+      border: 1px solid #dbe3ec;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #475569;
+    }
+    .tool-group.actions .tool-btn[data-action="undo"],
+    .tool-group.actions .tool-btn[data-action="redo"] {
+      width: 34px;
+      padding: 0;
+      justify-content: center;
+    }
+    .tool-group.actions .tool-btn[data-action="cancel"] {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+      color: #475569;
+    }
+    .tool-group.actions .tool-btn[data-action="save"] {
+      border-color: #2563eb;
+      background: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.24);
+    }
+    .tool-group.actions .tool-btn:hover {
+      border-color: #cbd5e1;
+      background: #ffffff;
+      color: #0f172a;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+    }
+    .tool-group.actions .tool-btn[data-action="cancel"]:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #334155;
+    }
+    .tool-group.actions .tool-btn[data-action="save"]:hover {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+      color: #ffffff;
+      box-shadow: 0 6px 14px rgba(29, 78, 216, 0.28);
+    }
+    .tool-divider {
+      width: 1px;
+      height: 28px;
+      background-color: rgba(148, 163, 184, 0.55);
+      margin: 0 2px;
+      flex: 0 0 auto;
+    }
+    .tool-group.actions .tool-divider {
+      height: 24px;
+      margin: 0 3px;
+      background-color: #dbe3ec;
+    }
+    .editor-header-center .tool-divider {
+      margin: 0 4px;
+      height: 24px;
+      background-color: #cbd5e1;
     }
     .tool-btn {
-      margin-right: 5px;
+      margin: 0;
       padding: 6px 12px;
-      border: 1px solid #dee2e6;
-      background: white;
-      border-radius: 4px;
+      border: 1px solid #dbe3ec;
+      background: rgba(248, 250, 252, 0.96);
+      border-radius: 10px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.2s ease;
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      color: #475569;
+      font-size: 0.9rem;
+      font-weight: 500;
+      flex: 0 0 auto;
+      min-width: 36px;
+      white-space: nowrap;
+      line-height: 1;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+    }
+    .editor-header-center .tool-btn {
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      box-shadow: none;
+    }
+    .tool-btn i {
+      flex: 0 0 auto;
+      font-size: 0.95rem;
+      width: 1.1em;
+      height: 1.1em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .editor-header-center .tool-btn.dropdown-toggle::after {
+      flex: 0 0 auto;
+      align-self: center;
+      margin-top: 0;
+    }
+    .tool-btn-label {
+      display: inline-block;
+      transition: opacity 0.18s ease, max-width 0.18s ease;
+    }
+    .tool-btn-value {
+      display: inline-block;
+      line-height: 1;
+      transition: opacity 0.18s ease, max-width 0.18s ease;
+    }
+    #currentBrushShapeText,
+    #currentEraserMode {
+      transition: opacity 0.18s ease, max-width 0.18s ease;
+    }
+    .editor-header-center .tool-btn-label,
+    .editor-header-center .tool-btn-value,
+    .editor-header-center #currentBrushShapeText,
+    .editor-header-center #currentEraserMode {
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+    }
+    .tool-btn-group,
+    .tool-group > .dropdown {
+      flex: 0 1 auto;
+      min-width: 0;
     }
     .tool-btn:hover {
-      background: #e9ecef;
+      background: #ffffff;
+      border-color: #bfdbfe;
+      color: #0f172a;
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.12);
+    }
+    .editor-header-center .tool-btn:hover {
+      background: #e2e8f0;
+      border-color: transparent;
+      box-shadow: none;
+    }
+    .tool-btn.active {
+      background: #eff6ff !important;
+      border-color: #93c5fd !important;
+      color: #2563eb !important;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+    }
+    .editor-header-center .tool-btn.active {
+      background: #ffffff !important;
+      border-color: transparent !important;
+      color: #2563eb !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    @container (max-width: 760px) {
+      .tool-group {
+        gap: 4px;
+      }
+      .editor-header-center .tool-group {
+        gap: 0;
+      }
+      .editor-header-center .tool-btn {
+        flex: 0 1 auto;
+        padding: 6px 9px;
+        font-size: 0.82rem;
+        gap: 4px;
+        max-width: 112px;
+        overflow: hidden;
+      }
+      .editor-header-center .tool-btn-label,
+      .editor-header-center #currentBrushShapeText,
+      .editor-header-center #currentEraserMode,
+      .editor-header-center .tool-btn-value {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .editor-header-center .tool-btn-label,
+      .editor-header-center #currentBrushShapeText,
+      .editor-header-center #currentEraserMode {
+        max-width: 3.8em;
+      }
+      .editor-header-center .tool-btn-value {
+        max-width: 2.8em;
+      }
+      .editor-header-center .tool-divider {
+        margin: 0 4px;
+      }
+    }
+    @container (max-width: 660px) {
+      .editor-header-center .tool-btn {
+        padding: 6px 8px;
+        font-size: 0.76rem;
+        gap: 3px;
+        max-width: 72px;
+      }
+      .editor-header-center .tool-btn-label,
+      .editor-header-center #currentBrushShapeText,
+      .editor-header-center #currentEraserMode {
+        max-width: 1.2em;
+      }
+      .editor-header-center .tool-btn-value {
+        max-width: 1.8em;
+      }
+      .editor-header-center .tool-divider {
+        margin: 0 3px;
+      }
+    }
+    @container (max-width: 560px) {
+      .tool-group {
+        gap: 3px;
+      }
+      .editor-header-center .tool-btn {
+        padding: 6px 7px;
+        max-width: 40px;
+      }
+      .editor-header-center .tool-btn-label,
+      .editor-header-center #currentBrushShapeText,
+      .editor-header-center #currentEraserMode,
+      .editor-header-center .tool-btn-value {
+        max-width: 0;
+        opacity: 0;
+      }
+      .editor-header-center .tool-btn.dropdown-toggle::after {
+        margin-left: 0;
+      }
+      .editor-header-center .tool-divider {
+        display: none;
+      }
     }
     .tool-btn i {
       font-size: 1.1rem;
       display: inline-block;
       line-height: 1;
     }
-    .tool-btn.active {
-      background: #e9ecef !important; /* 强制显示背景色 */
-      border-color: #ced4da !important;
-    }
     .tool-btn.btn-primary {
-      background: #0d6efd;
+      background: #2563eb;
       color: white;
-      border-color: #0d6efd;
+      box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+    }
+    .tool-btn.btn-primary:hover {
+      background: #1d4ed8;
+      color: white;
+      box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
     }
     .tool-btn.btn-danger {
-      background: white;
-      color: #dc3545;
-      border-color: #dc3545;
+      background: #fee2e2;
+      color: #ef4444;
     }
     .tool-btn.btn-danger:hover {
-      background: #dc3545;
-      color: white;
+      background: #fecaca;
+      color: #dc2626;
     }
     .tool-btn.btn-danger:disabled {
-      color: #adb5bd;
-      border-color: #dee2e6;
-      background: white;
+      color: #94a3b8;
+      background: transparent;
       cursor: not-allowed;
+    }
+    .tool-btn-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin: 0;
+      min-width: 0;
+    }
+    .tool-btn-group .tool-btn {
+      margin: 0;
+    }
+    .tool-btn-group .tool-btn:first-child {
+      border-top-right-radius: 10px;
+      border-bottom-right-radius: 10px;
+    }
+    .tool-btn-group .dropdown-toggle {
+      border-top-left-radius: 10px;
+      border-bottom-left-radius: 10px;
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+    .tool-btn-group .dropdown-toggle::after {
+      margin-left: 4px;
     }
     .layer-list,
     .attribute-form {
@@ -1012,79 +1326,95 @@
 <div class="editor-container">
   <!-- 顶部工具栏 -->
   <div class="editor-header">
-    <h4 class="mb-0 mr-4">地块创建与编辑工作台</h4>
+    <div class="editor-header-left">
+      <h4 class="mb-0">地块创建与编辑工作台</h4>
+    </div>
     
     <!-- 中间：编辑工具组 -->
-    <div class="tool-group d-flex align-items-center">
-      <button class="tool-btn m-0" data-tool="move-layer" title="移动图层">
-        <i class="bi bi-arrows-move"></i> 移动
-      </button>
-      <button class="tool-btn m-0" data-tool="marquee-select" title="框选多个地块图层">
-        <i class="bi bi-bounding-box"></i> 框选
-      </button>
-      
-      <div class="vr mx-2" style="height: 24px;"></div>
+    <div class="editor-header-center">
+      <div class="tool-group d-flex align-items-center">
+        <button class="tool-btn m-0" data-tool="move-layer" title="移动图层">
+          <i class="bi bi-arrows-move"></i><span class="tool-btn-label">移动</span>
+        </button>
+        <button class="tool-btn m-0" data-tool="marquee-select" title="框选多个地块图层">
+          <i class="bi bi-bounding-box"></i><span class="tool-btn-label">框选</span>
+        </button>
+        
+        <div class="tool-divider"></div>
 
-      <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
-        <button class="tool-btn dropdown-toggle m-0" type="button" id="brushShapeDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="设置画笔和橡皮擦的形状">
-          <i id="currentBrushShapeIcon" class="bi bi-square"></i> <span id="currentBrushShapeText">方形</span>
-        </button>
-        <ul class="dropdown-menu" aria-labelledby="brushShapeDropdown" style="min-width: 80px;">
-          <li><a class="dropdown-item active" href="#" data-brush-shape="square"><i class="bi bi-square me-2"></i>方形</a></li>
-          <li><a class="dropdown-item" href="#" data-brush-shape="circle"><i class="bi bi-circle me-2"></i>圆形</a></li>
-        </ul>
-      </div>
+        <div class="dropdown tool-btn-group">
+          <button class="tool-btn dropdown-toggle m-0" type="button" id="brushShapeDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="设置画笔和橡皮擦的形状">
+            <i id="currentBrushShapeIcon" class="bi bi-square"></i><span id="currentBrushShapeText" class="tool-btn-label">方形</span>
+          </button>
+          <ul class="dropdown-menu" aria-labelledby="brushShapeDropdown" style="min-width: 80px;">
+            <li><a class="dropdown-item active" href="#" data-brush-shape="square"><i class="bi bi-square me-2"></i>方形</a></li>
+            <li><a class="dropdown-item" href="#" data-brush-shape="circle"><i class="bi bi-circle me-2"></i>圆形</a></li>
+          </ul>
+        </div>
 
-      <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
-        <button class="tool-btn m-0" data-tool="eraser">
-          <i class="bi bi-eraser"></i> 橡皮擦
-        </button>
-        <button class="tool-btn dropdown-toggle m-0 border-left-0" type="button" id="eraserModeDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="padding-left: 5px; padding-right: 5px;">
-          <span id="currentEraserMode">整块</span>
-        </button>
-        <ul class="dropdown-menu" aria-labelledby="eraserModeDropdown" style="min-width: 80px;">
-          <li><a class="dropdown-item active" href="#" data-eraser-mode="block">整块擦除</a></li>
-          <li><a class="dropdown-item" href="#" data-eraser-mode="brush">画笔擦除</a></li>
-        </ul>
-      </div>
-      <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
-        <button class="tool-btn m-0" data-tool="brush">
-          <i class="bi bi-brush"></i> 像素画笔
-        </button>
-        <button class="tool-btn dropdown-toggle m-0 border-left-0" type="button" id="brushSizeDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="padding-left: 5px; padding-right: 5px;">
-          <span id="currentBrushSize">1x1</span>
-        </button>
-        <ul class="dropdown-menu" aria-labelledby="brushSizeDropdown" style="min-width: 80px;">
-          <li><a class="dropdown-item active" href="#" data-brush-size="1">1x1 网格</a></li>
-          <li><a class="dropdown-item" href="#" data-brush-size="2">2x2 网格</a></li>
-          <li><a class="dropdown-item" href="#" data-brush-size="3">3x3 网格</a></li>
-          <li><a class="dropdown-item" href="#" data-brush-size="5">5x5 网格</a></li>
-          <li><a class="dropdown-item" href="#" data-brush-size="custom">自定义…</a></li>
-        </ul>
+        <div class="tool-divider"></div>
+
+        <div class="dropdown tool-btn-group">
+          <button class="tool-btn m-0" data-tool="eraser">
+            <i class="bi bi-eraser"></i><span class="tool-btn-label">橡皮擦</span>
+          </button>
+          <button class="tool-btn dropdown-toggle m-0 border-left-0" type="button" id="eraserModeDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="设置橡皮擦模式">
+            <i class="bi bi-grid-3x3-gap"></i>
+            <span id="currentEraserMode">整块</span>
+          </button>
+          <ul class="dropdown-menu" aria-labelledby="eraserModeDropdown" style="min-width: 80px;">
+            <li><a class="dropdown-item active" href="#" data-eraser-mode="block">整块擦除</a></li>
+            <li><a class="dropdown-item" href="#" data-eraser-mode="brush">画笔擦除</a></li>
+          </ul>
+        </div>
+
+        <div class="tool-divider"></div>
+
+        <div class="dropdown tool-btn-group d-flex align-items-center">
+          <button class="tool-btn m-0" data-tool="brush" title="画笔">
+            <i class="bi bi-brush"></i><span class="tool-btn-label">画笔</span>
+          </button>
+          <button class="tool-btn dropdown-toggle m-0 border-left-0" type="button" id="brushSizeDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="设置画笔大小">
+            <i class="bi bi-grid-3x3"></i>
+            <span class="fw-bold text-primary tool-btn-value" id="currentBrushSize" style="font-size: 0.85rem;">1x1</span>
+          </button>
+          <div class="dropdown-menu p-3 shadow-sm" aria-labelledby="brushSizeDropdown" style="min-width: 200px;">
+            <div class="d-flex flex-column gap-2">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="text-muted small">画笔大小</span>
+                <span class="badge bg-primary rounded-pill" id="brushSizeBadge">1x1</span>
+              </div>
+              <input type="range" class="form-range" id="brushSizeSlider" min="1" max="100" step="1" value="1">
+              <div class="d-flex justify-content-between text-muted" style="font-size: 0.7rem;">
+                <span>1</span>
+                <span>50</span>
+                <span>100</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     
     <!-- 右侧：操作工具组 -->
-    <div class="tool-group ml-auto d-flex align-items-center">
-      <button class="tool-btn btn-danger mr-3" data-action="delete-terrain" id="deleteTerrainBtn" title="逻辑删除当前整个地形及其下属地块">
-        <i class="bi bi-trash"></i> 删除地形
-      </button>
-      
-      <button class="tool-btn" data-action="undo" title="撤销">
-        <i class="bi bi-arrow-counterclockwise"></i>
-      </button>
-      <button class="tool-btn" data-action="redo" title="重做">
-        <i class="bi bi-arrow-clockwise"></i>
-      </button>
-      
-      <div class="vr mx-2" style="height: 24px;"></div>
+    <div class="editor-header-right">
+      <div class="tool-group actions d-flex align-items-center">
+        <button class="tool-btn" data-action="undo" title="撤销">
+          <i class="bi bi-arrow-counterclockwise"></i>
+        </button>
+        <button class="tool-btn" data-action="redo" title="重做">
+          <i class="bi bi-arrow-clockwise"></i>
+        </button>
+        
+        <div class="tool-divider"></div>
 
-      <button class="tool-btn btn-outline-secondary" data-action="cancel">
-        取消
-      </button>
-      <button class="tool-btn btn-primary" data-action="save">
-        保存
-      </button>
+        <button class="tool-btn" style="background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569;" data-action="cancel">
+          <span class="tool-btn-label">取消</span>
+        </button>
+        <button class="tool-btn btn-primary" data-action="save">
+          <span class="tool-btn-label">保存</span>
+        </button>
+      </div>
     </div>
   </div>
   
@@ -1290,6 +1620,27 @@
               <p id="centerPoint" class="text-muted">-</p>
             </div>
           </div>
+        </div>
+
+        <hr class="my-4" style="border-color: #cbd5e1; opacity: 0.5;">
+        
+        <div class="d-grid mt-4">
+          <style>
+            #deleteTerrainBtn:disabled {
+              background-color: #f1f5f9;
+              border-color: #cbd5e1;
+              color: #94a3b8;
+              cursor: not-allowed;
+              box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+            }
+            #deleteTerrainBtn:disabled i {
+              color: #94a3b8;
+            }
+          </style>
+          <button class="btn btn-outline-danger d-flex align-items-center justify-content-center py-2" data-action="delete-terrain" id="deleteTerrainBtn" title="逻辑删除当前整个地形及其下属地块">
+            <i class="bi bi-trash me-2"></i> 删除当前地形
+          </button>
+          <small class="text-muted text-center mt-2" style="font-size: 0.75rem;">注意：删除地形将移除其下属的所有地块图层数据，且不可恢复。</small>
         </div>
       </div>
     </div>

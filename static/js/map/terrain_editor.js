@@ -980,7 +980,7 @@ class TerrainEditor {
     } else {
       console.log('=== 未命中任何地块 ===');
       // 没有命中地块，提示用户
-      alert('未识别到地块，请点击已有业务区域');
+      this.alertAction('未识别到地块，请点击已有业务区域');
     }
   }
   
@@ -1330,31 +1330,37 @@ class TerrainEditor {
     if (!plot) return;
 
     if (plot.db_id) {
-      if (!confirm(`确定要从数据库中永久删除地块 "${plot.properties.name || '未命名'}" 吗？`)) {
-        return;
-      }
-      try {
-        const response = await fetch(`/terrain/api/zones/${plot.db_id}/delete/`, {
-          method: 'DELETE',
-          headers: {
-            'X-CSRFToken': this.getCookie('csrftoken')
+      this.confirmAction(`确定要从数据库中永久删除地块 "${plot.properties.name || '未命名'}" 吗？`, async () => {
+        try {
+          const response = await fetch(`/terrain/api/zones/${plot.db_id}/delete/`, {
+            method: 'DELETE',
+            headers: {
+              'X-CSRFToken': this.getCookie('csrftoken')
+            }
+          });
+          const result = await response.json();
+          if (result.code === 0) {
+            // 标记地块数据已变动，通知列表页刷新
+            localStorage.setItem('terrain_plot_changed', '1');
+            
+            // 成功后继续执行本地移除逻辑
+            this.executeRemovePlotLocal(plotId, plot);
+          } else {
+            this.alertAction('删除失败: ' + result.msg);
           }
-        });
-        const result = await response.json();
-        if (result.code === 0) {
-          // 标记地块数据已变动，通知列表页刷新
-          localStorage.setItem('terrain_plot_changed', '1');
-        } else {
-          alert('删除失败: ' + result.msg);
-          return;
+        } catch (e) {
+          console.error('删除请求异常:', e);
+          this.alertAction('删除请求失败');
         }
-      } catch (e) {
-        console.error('删除请求异常:', e);
-        alert('删除请求失败');
-        return;
-      }
+      }, null, 'danger');
+      return;
     }
 
+    // 本地未保存的地块直接移除
+    this.executeRemovePlotLocal(plotId, plot);
+  }
+  
+  executeRemovePlotLocal(plotId, plot) {
     if (plot.layer) {
       this.layerManager.layerGroups.working.removeLayer(plot.layer);
     }
@@ -2136,11 +2142,30 @@ class TerrainEditor {
   async save() {
     const terrainName = document.getElementById('terrainName')?.value?.trim();
     if (!terrainName) {
-      alert('请填写地形名称');
+      this.showAlert('请填写地形名称', '保存校验', 'warning');
       return;
     }
     const terrainDesc = document.getElementById('terrainDesc')?.value?.trim() || '';
     const terrainId = document.getElementById('terrainId')?.value || this.areaId;
+
+    // 1. 校验是否至少有一个地块 (仅针对新建地形或必须有内容的要求)
+    const validPlots = this.userPlots.filter(plot => plot.geojson);
+    if (validPlots.length === 0) {
+      this.showAlert('当前地形中没有任何地块内容，请先在地图上绘制地块后再保存。', '保存校验', 'warning');
+      return;
+    }
+
+    // 2. 校验地块重叠问题
+    const overlapIssues = this.checkPlotOverlaps(validPlots);
+    if (overlapIssues.length > 0) {
+      let message = '检测到地块之间存在重叠，请修正后再保存：<br><br>';
+      overlapIssues.forEach((issue, index) => {
+        message += `${index + 1}. <b>${issue.plot1Name}</b> 与 <b>${issue.plot2Name}</b> 存在重叠区域。<br>`;
+      });
+      message += '<br><i>提示：您可以使用“移动”工具或重新绘制来避免重叠。</i>';
+      this.showAlert(message, '地块重叠检测', 'danger');
+      return;
+    }
 
     // 构建地形数据
     const terrainPayload = {
@@ -2153,9 +2178,7 @@ class TerrainEditor {
     };
 
     // 收集所有有效图层地块
-    for (const plot of this.userPlots) {
-      if (!plot.geojson) continue;
-
+    for (const plot of validPlots) {
       const properties = plot.properties || this.getCurrentPlotPropertiesFromForm();
       let landType = properties.type || 'forest';
 
@@ -2204,35 +2227,75 @@ class TerrainEditor {
         const terrainIdInput = document.getElementById('terrainId');
         if (terrainIdInput) terrainIdInput.value = this.areaId;
 
-        // 保存成功后显示删除按钮
+        // 保存成功后启用删除按钮
         const deleteBtn = document.getElementById('deleteTerrainBtn');
-        if (deleteBtn) deleteBtn.style.display = 'inline-block';
+        if (deleteBtn) deleteBtn.disabled = false;
 
         // 回填所有地块的 DB ID
         if (result.data.plots && result.data.plots.length > 0) {
           result.data.plots.forEach((dbPlot, idx) => {
             // 注意：这里需要根据某种标识匹配，由于是批量提交，顺序通常一致
-            if (this.userPlots[idx]) {
-              this.userPlots[idx].db_id = dbPlot.id;
+            if (validPlots[idx]) {
+              validPlots[idx].db_id = dbPlot.id;
             }
           });
         }
 
-        alert(`成功保存地形 "${terrainName}" 及其 ${terrainPayload.plots.length} 个地块！`);
+        this.alertAction(`成功保存地形 "${terrainName}" 及其 ${terrainPayload.plots.length} 个地块！`);
         localStorage.setItem('terrain_plot_changed', '1');
         localStorage.setItem('terrain_list_should_refresh', '1');
         // 保存成功后自动返回列表页
         window.location.href = '/terrain/';
       } else {
-        alert('保存失败: ' + result.msg);
+        this.alertAction('保存失败: ' + result.msg);
       }
     } catch (e) {
       console.error('保存异常:', e);
-      alert('保存过程中发生异常，请检查网络或控制台。');
+      this.alertAction('保存过程中发生异常，请检查网络或控制台。');
     }
     
     this.updateSelectedPlotsList();
   }
+
+  /**
+   * 检查地块之间是否存在重叠
+   * @param {Array} plots 
+   * @returns {Array} 重叠问题列表
+   */
+  checkPlotOverlaps(plots) {
+    if (!plots || plots.length < 2 || typeof turf === 'undefined') return [];
+    
+    const issues = [];
+    for (let i = 0; i < plots.length; i++) {
+      for (let j = i + 1; j < plots.length; j++) {
+        const plot1 = plots[i];
+        const plot2 = plots[j];
+        
+        try {
+          // 使用 turf.intersect 检测重叠
+          const intersection = turf.intersect(plot1.geojson, plot2.geojson);
+          
+          if (intersection) {
+            // 如果存在交集且面积大于一定阈值 (比如 0.1 平方米，防止浮点数计算误差)
+            const area = turf.area(intersection);
+            if (area > 0.01) {
+              issues.push({
+                plot1Id: plot1.id,
+                plot1Name: plot1.properties?.name || `地块 ${i + 1}`,
+                plot2Id: plot2.id,
+                plot2Name: plot2.properties?.name || `地块 ${j + 1}`,
+                overlapArea: area
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('地块重叠检测出错:', e);
+        }
+      }
+    }
+    return issues;
+  }
+
 
   // 加载区域编辑详情 (包括区域边界、地块及其附加记录)
   async loadAreaEditDetail(areaId) {
@@ -2579,26 +2642,30 @@ class TerrainEditor {
     if (!plot) return;
 
     if (plot.db_id) {
-      if (!confirm(`确定要永久删除地块 "${plot.properties.name || '未命名'}" 吗？`)) return;
-      
-      try {
-        const response = await fetch(`/terrain/api/zones/${plot.db_id}/delete/`, {
-          method: 'DELETE',
-          headers: {
-            'X-CSRFToken': this.getCookie('csrftoken')
+      this.confirmAction(`确定要永久删除地块 "${plot.properties.name || '未命名'}" 吗？`, async () => {
+        try {
+          const response = await fetch(`/terrain/api/zones/${plot.db_id}/delete/`, {
+            method: 'DELETE',
+            headers: {
+              'X-CSRFToken': this.getCookie('csrftoken')
+            }
+          });
+          const result = await response.json();
+          if (result.code !== 0) {
+            this.alertAction('删除失败: ' + result.msg);
+            return;
           }
-        });
-        const result = await response.json();
-        if (result.code !== 0) {
-          alert('删除失败: ' + result.msg);
-          return;
+          localStorage.setItem('terrain_plot_changed', '1');
+          
+          this._removePlotInternal(plotId);
+          this.updateSelectedPlotsList();
+          this.captureHistorySnapshot();
+        } catch (e) {
+          console.error('删除请求异常:', e);
+          this.alertAction('删除异常: ' + e.message);
         }
-        localStorage.setItem('terrain_plot_changed', '1');
-      } catch (e) {
-        console.error('删除请求异常:', e);
-        alert('删除异常: ' + e.message);
-        return;
-      }
+      }, null, 'danger');
+      return;
     }
 
     this._removePlotInternal(plotId);
@@ -2609,35 +2676,33 @@ class TerrainEditor {
   // 删除整个地形
   async deleteTerrain() {
     if (!this.areaId) {
-      alert('当前地形尚未保存，无法删除。');
+      this.alertAction('当前地形尚未保存，无法删除。');
       return;
     }
 
     const terrainName = document.getElementById('terrainName')?.value || '当前地形';
-    if (!confirm(`确认要删除整个地形 "${terrainName}" 吗？\n删除后，该地形及其关联的所有地块将不可恢复。`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/terrain/api/areas/${this.areaId}/delete/`, {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': this.getCookie('csrftoken')
+    this.confirmAction(`确认要删除整个地形 "${terrainName}" 吗？\n删除后，该地形及其关联的所有地块将不可恢复。`, async () => {
+      try {
+        const response = await fetch(`/terrain/api/areas/${this.areaId}/delete/`, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': this.getCookie('csrftoken')
+          }
+        });
+        const result = await response.json();
+        if (result.code === 0) {
+          this.alertAction('地形已成功删除');
+          // 设置刷新标记并跳转
+          localStorage.setItem('terrain_list_should_refresh', '1');
+          window.location.href = '/terrain/';
+        } else {
+          this.alertAction('删除失败: ' + result.msg);
         }
-      });
-      const result = await response.json();
-      if (result.code === 0) {
-        alert('地形已成功删除');
-        // 设置刷新标记并跳转
-        localStorage.setItem('terrain_list_should_refresh', '1');
-        window.location.href = '/terrain/';
-      } else {
-        alert('删除失败: ' + result.msg);
+      } catch (e) {
+        console.error('删除地形异常:', e);
+        this.alertAction('删除过程中发生异常，请检查网络。');
       }
-    } catch (e) {
-      console.error('删除地形异常:', e);
-      alert('删除过程中发生异常，请检查网络。');
-    }
+    }, null, 'danger');
   }
 
   _removePlotInternal(plotId) {
@@ -3299,65 +3364,140 @@ class TerrainEditor {
 
   async handleMergeZones() {
     const ids = Array.from(this.multiSelectedPlotIds);
-    const zones = this.userPlots.filter(p => ids.includes(p.id) && p.db_id);
+    if (ids.length < 2) return;
+
+    const plotsToMerge = this.userPlots.filter(p => ids.includes(p.id));
     
-    if (zones.length < ids.length) {
-      alert('请先保存所有选中的地块。');
+    // 校验：锁定的地块不能合并
+    if (plotsToMerge.some(p => p.locked)) {
+      this.showAlert('选中的地块中有被锁定的项，无法合并。', '操作受限', 'warning');
       return;
     }
 
-    if (!confirm(`确定要合并选中的 ${ids.length} 个地块吗？标记项不一致将导致合并失败。`)) return;
+    if (!confirm(`确定要合并选中的 ${ids.length} 个地块吗？`)) return;
 
     try {
-      const dbIds = zones.map(z => z.db_id);
-      const response = await fetch('/terrain/api/zones/merge/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') },
-        body: JSON.stringify({ ids: dbIds })
+      let mergedGeoJSON = JSON.parse(JSON.stringify(plotsToMerge[0].geojson));
+      let mergedCells = [];
+      const cellMap = new Map();
+
+      plotsToMerge.forEach((plot, index) => {
+        // 合并几何 (GeoJSON)
+        if (index > 0) {
+          const unionResult = turf.union(mergedGeoJSON, plot.geojson);
+          if (unionResult) {
+            mergedGeoJSON = unionResult;
+          }
+        }
+
+        // 合并网格数据 (Pixel Cells)
+        if (plot.gridData && plot.gridData.cells) {
+          plot.gridData.cells.forEach(cell => {
+            const key = `${cell.x},${cell.y}`;
+            if (!cellMap.has(key)) {
+              cellMap.set(key, { ...cell });
+            }
+          });
+        }
       });
-      const result = await response.json();
-      if (result.code === 0) {
-        alert('合并成功');
-        this.multiSelectedPlotIds.clear();
-        await this.loadAreaEditDetail(this.areaId);
-      } else {
-        alert('合并失败: ' + result.msg);
+
+      mergedCells = Array.from(cellMap.values());
+
+      // 获取第一个地块的属性作为基准
+      const firstPlot = plotsToMerge[0];
+      const newProperties = {
+        ...firstPlot.properties,
+        name: `${firstPlot.properties.name}_合并`,
+        areaHa: 0 // 稍后重新计算
+      };
+      
+      const newGridData = {
+        grid_size: 10,
+        cells: mergedCells
+      };
+
+      // 移除旧地块
+      plotsToMerge.forEach(p => {
+        if (p.layer) this.layerManager.layerGroups.working.removeLayer(p.layer);
+      });
+      this.userPlots = this.userPlots.filter(p => !ids.includes(p.id));
+
+      // 创建并添加合并后的新地块
+      const newPlot = this.createPlotFromGeoJSON(mergedGeoJSON, newProperties, newGridData);
+      
+      // 重新计算面积
+      const rings = this.getLatLngRingsFromLayer(newPlot.layer);
+      if (rings && rings.length > 0) {
+        newPlot.properties.areaHa = this.calculateArea(rings[0]);
       }
+
+      this.userPlots.push(newPlot);
+      
+      this.multiSelectedPlotIds.clear();
+      this.selectPlot(newPlot.id);
+      this.captureHistorySnapshot();
+      this.updateSelectedArea();
+      this.updateSelectedPlotsList();
+      
+      this.showAlert('地块合并成功。', '操作成功', 'success');
     } catch (e) {
-      console.error('合并异常:', e);
+      console.error('本地合并异常:', e);
+      this.showAlert('合并操作失败，请检查控制台。', '操作失败', 'danger');
     }
   }
 
   async handleBooleanSubtract() {
     const ids = Array.from(this.multiSelectedPlotIds);
-    if (ids.length !== 2) return;
+    if (ids.length !== 2) {
+      this.showAlert('请选择恰好两个地块进行布尔减法操作（第一个选中的减去第二个）。', '提示', 'info');
+      return;
+    }
 
     const plotA = this.userPlots.find(p => p.id === ids[0]);
     const plotB = this.userPlots.find(p => p.id === ids[1]);
 
-    if (!plotA.db_id || !plotB.db_id) {
-      alert('请先保存涉及的地块。');
+    if (plotA.locked || plotB.locked) {
+      this.showAlert('涉及的地块已被锁定，无法执行布尔运算。', '操作受限', 'warning');
       return;
     }
 
     if (!confirm(`将执行：${plotA.properties.name} 减去 ${plotB.properties.name}。确定吗？`)) return;
 
     try {
-      const response = await fetch('/terrain/api/zones/boolean/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') },
-        body: JSON.stringify({ zone_a_id: plotA.db_id, zone_b_id: plotB.db_id, operation: 'subtract' })
-      });
-      const result = await response.json();
-      if (result.code === 0) {
-        alert('布尔运算成功');
-        this.multiSelectedPlotIds.clear();
-        await this.loadAreaEditDetail(this.areaId);
-      } else {
-        alert('运算失败: ' + result.msg);
+      // 1. 几何减法
+      const diffResult = turf.difference(plotA.geojson, plotB.geojson);
+      
+      if (!diffResult) {
+        this.showAlert('布尔减法结果为空，操作已取消。', '提示', 'warning');
+        return;
       }
+
+      // 2. 网格减法 (Pixel Cells)
+      if (plotA.gridData && plotA.gridData.cells && plotB.gridData && plotB.gridData.cells) {
+        const bCellKeys = new Set(plotB.gridData.cells.map(c => `${c.x},${c.y}`));
+        plotA.gridData.cells = plotA.gridData.cells.filter(c => !bCellKeys.has(`${c.x},${c.y}`));
+      }
+
+      // 3. 更新 A 地块
+      plotA.geojson = diffResult;
+      
+      // 重新构建图层并计算面积
+      this.rebuildPlotLayer(plotA);
+      const rings = this.getLatLngRingsFromLayer(plotA.layer);
+      if (rings && rings.length > 0) {
+        plotA.properties.areaHa = this.calculateArea(rings[0]);
+      }
+
+      this.multiSelectedPlotIds.clear();
+      this.selectPlot(plotA.id);
+      this.captureHistorySnapshot();
+      this.updateSelectedArea();
+      this.updateSelectedPlotsList();
+      
+      this.showAlert('布尔减法执行成功。', '操作成功', 'success');
     } catch (e) {
-      console.error('布尔运算异常:', e);
+      console.error('本地布尔运算异常:', e);
+      this.showAlert('布尔运算失败，请检查控制台。', '操作失败', 'danger');
     }
   }
 
@@ -4158,6 +4298,47 @@ class TerrainEditor {
       }
     } catch (e) {
       console.error('删除子类别异常:', e);
+    }
+  }
+
+  // ==========================================
+  // 通用交互提示方法 (基于 NiceAdmin 风格)
+  // ==========================================
+  
+  // 替代 alert
+  showAlert(message, title = '提示', type = 'info') {
+    if (typeof window.showAlert === 'function') {
+      window.showAlert(message, title, type);
+    } else {
+      alert(message);
+    }
+  }
+
+  // 兼容旧方法
+  alertAction(message) {
+    this.showAlert(message);
+  }
+
+  // 替代 confirm
+  confirmAction(message, onConfirm, onCancel, type = 'info') {
+    if (typeof window.showConfirm === 'function') {
+      window.showConfirm(message, onConfirm, onCancel, '确认操作', type);
+    } else {
+      if (confirm(message)) {
+        if (onConfirm) onConfirm();
+      } else {
+        if (onCancel) onCancel();
+      }
+    }
+  }
+
+  // 替代 prompt
+  promptAction(message, defaultValue, onConfirm) {
+    if (typeof window.showPrompt === 'function') {
+      window.showPrompt(message, defaultValue, onConfirm);
+    } else {
+      const result = prompt(message, defaultValue);
+      if (onConfirm) onConfirm(result);
     }
   }
 

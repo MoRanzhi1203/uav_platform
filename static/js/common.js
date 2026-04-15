@@ -37,6 +37,193 @@ $(document).ready(function() {
     }
 });
 
+// ==========================================
+// 全局 Bootstrap 模态框封装 (NiceAdmin 风格)
+// ==========================================
+
+/**
+ * 替代原生 alert
+ * @param {string} message 提示信息
+ * @param {string} title 标题，默认为"提示"
+ * @param {string} type 类型: 'info', 'success', 'warning', 'danger'
+ */
+window.showAlert = function(message, title = '提示', type = 'info') {
+    const modalEl = document.getElementById('globalAlertModal');
+    if (!modalEl) {
+        alert(message);
+        return;
+    }
+    
+    document.getElementById('globalAlertTitle').textContent = title;
+    document.getElementById('globalAlertMessage').innerHTML = message.replace(/\n/g, '<br>');
+    
+    // 设置图标和颜色
+    const iconContainer = document.getElementById('globalAlertIconContainer');
+    const iconEl = document.getElementById('globalAlertIcon');
+    const okBtn = document.getElementById('globalAlertOkBtn');
+    
+    const typeConfig = {
+        info: { icon: 'bi-info-circle', color: 'text-primary', btn: 'btn-primary' },
+        success: { icon: 'bi-check-circle', color: 'text-success', btn: 'btn-success' },
+        warning: { icon: 'bi-exclamation-triangle', color: 'text-warning', btn: 'btn-warning' },
+        danger: { icon: 'bi-exclamation-octagon', color: 'text-danger', btn: 'btn-danger' }
+    };
+    
+    const config = typeConfig[type] || typeConfig.info;
+    
+    if (iconContainer && iconEl) {
+        iconContainer.classList.remove('d-none');
+        iconEl.className = 'bi ' + config.icon + ' ' + config.color;
+    }
+    
+    if (okBtn) {
+        okBtn.className = 'btn px-4 ' + config.btn;
+    }
+    
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+};
+
+/**
+ * 替代原生 confirm
+ * @param {string} message 提示信息
+ * @param {function} onConfirm 点击确定的回调
+ * @param {function} onCancel 点击取消的回调 (可选)
+ * @param {string} title 标题，默认为"确认操作"
+ * @param {string} type 类型: 'info', 'warning', 'danger'
+ */
+window.showConfirm = function(message, onConfirm, onCancel = null, title = '确认操作', type = 'info') {
+    const modalEl = document.getElementById('globalConfirmModal');
+    if (!modalEl) {
+        if (confirm(message)) {
+            if (onConfirm) onConfirm();
+        } else {
+            if (onCancel) onCancel();
+        }
+        return;
+    }
+
+    document.getElementById('globalConfirmTitle').textContent = title;
+    document.getElementById('globalConfirmMessage').innerHTML = message.replace(/\n/g, '<br>');
+
+    // 设置图标和颜色
+    const iconContainer = document.getElementById('globalConfirmIconContainer');
+    const iconEl = document.getElementById('globalConfirmIcon');
+    const okBtn = document.getElementById('globalConfirmOkBtn');
+    
+    const typeConfig = {
+        info: { icon: 'bi-question-circle', color: 'text-primary', btn: 'btn-primary' },
+        warning: { icon: 'bi-exclamation-triangle', color: 'text-warning', btn: 'btn-warning' },
+        danger: { icon: 'bi-exclamation-octagon', color: 'text-danger', btn: 'btn-danger' }
+    };
+    
+    const config = typeConfig[type] || typeConfig.info;
+    
+    if (iconContainer && iconEl) {
+        iconContainer.classList.remove('d-none');
+        iconEl.className = 'bi ' + config.icon + ' ' + config.color;
+    }
+    
+    if (okBtn) {
+        okBtn.className = 'btn px-3 ' + config.btn;
+    }
+
+    const cancelBtn = document.getElementById('globalConfirmCancelBtn');
+    
+    // 清理旧事件绑定
+    const newOkBtn = okBtn.cloneNode(true);
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+    const modal = new bootstrap.Modal(modalEl);
+
+    newOkBtn.addEventListener('click', () => {
+        modal.hide();
+        if (onConfirm) onConfirm();
+    });
+
+    newCancelBtn.addEventListener('click', () => {
+        modal.hide(); // 明确关闭
+        if (onCancel) onCancel();
+    });
+
+    // 监听关闭事件（点 X 或遮罩层关闭），视作取消
+    modalEl.addEventListener('hidden.bs.modal', function handler() {
+        if (onCancel) onCancel();
+        modalEl.removeEventListener('hidden.bs.modal', handler);
+        // 重置图标容器
+        if (iconContainer) iconContainer.classList.add('d-none');
+    }, { once: true });
+
+    modal.show();
+};
+
+/**
+ * 替代原生 prompt
+ * @param {string} message 提示信息
+ * @param {string} defaultValue 默认值
+ * @param {function} onConfirm 确定回调，参数为输入的值。如果点击取消，则传 null。
+ * @param {string} title 标题，默认为"请输入"
+ */
+window.showPrompt = function(message, defaultValue = '', onConfirm, title = '请输入') {
+    const modalEl = document.getElementById('globalPromptModal');
+    if (!modalEl) {
+        const val = prompt(message, defaultValue);
+        if (onConfirm) onConfirm(val);
+        return;
+    }
+
+    document.getElementById('globalPromptTitle').textContent = title;
+    document.getElementById('globalPromptMessage').textContent = message;
+    const inputEl = document.getElementById('globalPromptInput');
+    inputEl.value = defaultValue;
+
+    const okBtn = document.getElementById('globalPromptOkBtn');
+    const cancelBtn = document.getElementById('globalPromptCancelBtn');
+    
+    // 清理旧事件绑定
+    const newOkBtn = okBtn.cloneNode(true);
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+    const modal = new bootstrap.Modal(modalEl);
+
+    // 确定
+    newOkBtn.addEventListener('click', () => {
+        const val = inputEl.value;
+        modal.hide();
+        if (onConfirm) onConfirm(val);
+    });
+
+    // 回车确认
+    inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            newOkBtn.click();
+        }
+    });
+
+    // 模态框显示后自动聚焦
+    modalEl.addEventListener('shown.bs.modal', function focusHandler() {
+        inputEl.focus();
+        inputEl.select();
+        modalEl.removeEventListener('shown.bs.modal', focusHandler);
+    });
+
+    // 监听关闭事件处理取消
+    let isConfirmed = false;
+    newOkBtn.addEventListener('click', () => { isConfirmed = true; });
+    
+    modalEl.addEventListener('hidden.bs.modal', function handler() {
+        if (!isConfirmed && onConfirm) onConfirm(null);
+        modalEl.removeEventListener('hidden.bs.modal', handler);
+    }, { once: true });
+
+    modal.show();
+};
+
 // 显示消息提示
 function showMessage(message, type = 'success', duration = 3000) {
     const alertClasses = {

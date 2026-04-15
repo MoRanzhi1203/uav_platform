@@ -5,67 +5,67 @@
 __pycache__/
 local_settings.py
 .env
+db.sqlite3
+db.sqlite3-journal
 
 # Python artifacts
 *.pyo
 *.pyd
-*.db
 venv/
 env/
 .venv/
 .python-version
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.tox/
 
 # IDE & Editor
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
 
 # OS
 Thumbs.db
 .DS_Store
+ehthumbs.db
+Icon?
 
-# Static files
-# static/
-
-# Media files
+# Media & Static files
 media/
+staticfiles/
 
-# Database
-*.sqlite3
-
-# Test coverage
-coverage/
-.coverage
-htmlcov/
-
-# Temporary files
-tmp/
-temp/
+# Test & Debug
 all_dbs_check.txt
 all_zone.txt
 check_all_zone.py
-
-# Log files
-logs/
-*.log
-
-# Project Documentation
-# FINAL_RECOMMENDATION.md
-# IMPLEMENTATION_PLAN.md
-# project_fix_report.md
-# project_full_fix_report.md
-# shp_cleanup_report.md
-# instructions/
-
-# Scripts & Debug
 check_session.py
 debug_error.py
-import_terrain_data.py
-# init_admin.py  # 保留作为初始化参考
 error_page.html
+import_terrain_data.py
 
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Data files (Exclude large raw data if necessary, keep essential ones)
+data/shp/*.shp
+data/shp/*.dbf
+data/shp/*.shx
+data/shp/*.prj
+# data/geojson/ # Optional: exclude if very large
+
+# Documentation artifacts
+# instructions/ # Keep as it contains dev info
+# *.md # Usually keep MD files
+
+# Other
+node_modules/
+dist/
+build/
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+

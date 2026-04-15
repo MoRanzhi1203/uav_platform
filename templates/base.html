@@ -58,6 +58,70 @@
     </div>
   {% endif %}
 
+  <!-- Global Modals (NiceAdmin Style) -->
+  <!-- Alert Modal -->
+  <div class="modal fade" id="globalAlertModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title" id="globalAlertTitle">提示</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center pt-2 pb-4">
+          <div id="globalAlertIconContainer" class="mb-3 d-none">
+            <i id="globalAlertIcon" class="bi" style="font-size: 3rem;"></i>
+          </div>
+          <div id="globalAlertMessage" class="px-3"></div>
+        </div>
+        <div class="modal-footer border-0 pt-0 justify-content-center">
+          <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal" id="globalAlertOkBtn">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div class="modal fade" id="globalConfirmModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title" id="globalConfirmTitle">确认操作</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center pt-2 pb-4">
+          <div id="globalConfirmIconContainer" class="mb-3 d-none">
+            <i id="globalConfirmIcon" class="bi" style="font-size: 3rem;"></i>
+          </div>
+          <div id="globalConfirmMessage" class="px-3"></div>
+        </div>
+        <div class="modal-footer border-0 pt-0 justify-content-center">
+          <button type="button" class="btn btn-secondary px-3" data-bs-dismiss="modal" id="globalConfirmCancelBtn">取消</button>
+          <button type="button" class="btn btn-primary px-3" id="globalConfirmOkBtn">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prompt Modal -->
+  <div class="modal fade" id="globalPromptModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title" id="globalPromptTitle">请输入</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body pt-2 pb-4">
+          <label for="globalPromptInput" class="form-label" id="globalPromptMessage">输入内容:</label>
+          <input type="text" class="form-control" id="globalPromptInput">
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="globalPromptCancelBtn">取消</button>
+          <button type="button" class="btn btn-primary" id="globalPromptOkBtn">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Vendor JS Files -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>

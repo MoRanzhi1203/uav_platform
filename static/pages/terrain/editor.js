@@ -47,10 +47,10 @@ function initEditor() {
     const urlParams = new URLSearchParams(window.location.search);
     const areaId = urlParams.get('area_id');
     
-    // 初始化时控制删除按钮可见性
+    // 初始化时控制删除按钮可用状态（如果是新建地形，则禁用删除按钮）
     const deleteBtn = document.getElementById('deleteTerrainBtn');
     if (deleteBtn) {
-      deleteBtn.style.display = areaId ? 'inline-block' : 'none';
+      deleteBtn.disabled = !areaId;
     }
 
     if (areaId) {
@@ -66,37 +66,30 @@ function initEditor() {
     }
   }
 
-  // 画笔大小下拉菜单
-  document.querySelectorAll('[data-brush-size]').forEach(item => {
-    item.addEventListener('click', function(e) {
-      e.preventDefault();
-      const raw = this.getAttribute('data-brush-size');
-      let size = parseInt(raw);
-      if (Number.isNaN(size)) {
-        const input = prompt('请输入笔刷大小（1~99，表示 NxN 网格）', '1');
-        size = parseInt(input, 10);
-      }
-      if (!Number.isFinite(size) || size < 1) return;
-      size = Math.min(size, 99);
-      
-      // 更新按钮文本
-      document.getElementById('currentBrushSize').textContent = `${size}x${size}`;
-      
-      // 更新激活状态
-      document.querySelectorAll('[data-brush-size]').forEach(i => i.classList.remove('active'));
-      this.classList.add('active');
-      
-      // 传递给编辑器
-      if (terrainEditor) {
-        terrainEditor.setBrushSize(size);
-        
-        // 如果当前不是画笔或橡皮擦模式，切换到画笔模式
-        if (terrainEditor.currentTool !== 'brush' && terrainEditor.currentTool !== 'eraser') {
-          selectTool('brush', document.querySelector('[data-tool="brush"]'));
-        }
-      }
-    });
-  });
+  // 画笔大小滑动条
+   const brushSizeSlider = document.getElementById('brushSizeSlider');
+   if (brushSizeSlider) {
+     brushSizeSlider.addEventListener('input', function() {
+       const size = parseInt(this.value, 10);
+       if (!Number.isFinite(size) || size < 1) return;
+       
+       // 更新显示文本 (按钮和下拉菜单内部)
+       const sizeText = `${size}x${size}`;
+       document.getElementById('currentBrushSize').textContent = sizeText;
+       const badge = document.getElementById('brushSizeBadge');
+       if (badge) badge.textContent = sizeText;
+       
+       // 传递给编辑器
+       if (terrainEditor) {
+         terrainEditor.setBrushSize(size);
+         
+         // 如果当前不是画笔或橡皮擦模式，且用户正在调整大小，切换到画笔模式
+         if (terrainEditor.currentTool !== 'brush' && terrainEditor.currentTool !== 'eraser') {
+           selectTool('brush', document.querySelector('[data-tool="brush"]'));
+         }
+       }
+     });
+   }
 
   // 画笔形状下拉菜单
   document.querySelectorAll('[data-brush-shape]').forEach(item => {
@@ -216,12 +209,12 @@ function saveWorkspaceLayout() {
 
 function applyWorkspaceLayout(options = {}) {
   const { persist = false } = options;
-  const workspace = document.getElementById('editorWorkspace');
+  const container = document.querySelector('.editor-container');
 
-  if (!workspace || !workspaceLayout) return;
+  if (!container || !workspaceLayout) return;
 
-  workspace.style.setProperty('--left-panel-width', `${workspaceLayout.leftWidth}px`);
-  workspace.style.setProperty('--right-panel-width', `${workspaceLayout.rightWidth}px`);
+  container.style.setProperty('--left-panel-width', `${workspaceLayout.leftWidth}px`);
+  container.style.setProperty('--right-panel-width', `${workspaceLayout.rightWidth}px`);
 
   if (persist) {
     saveWorkspaceLayout();
@@ -240,17 +233,17 @@ function bindPanelResizer(resizer, side) {
 }
 
 function startPanelResize(side, startX) {
-  const workspace = document.getElementById('editorWorkspace');
+  const container = document.querySelector('.editor-container');
   const leftPanel = document.getElementById('editorSidebar');
   const rightPanel = document.getElementById('editorPanel');
 
-  if (!workspace || !leftPanel || !rightPanel || !workspaceLayout) return;
+  if (!container || !leftPanel || !rightPanel || !workspaceLayout) return;
 
   const startWidth = side === 'left'
     ? leftPanel.getBoundingClientRect().width
     : rightPanel.getBoundingClientRect().width;
 
-  workspace.classList.add('is-resizing');
+  container.classList.add('is-resizing');
 
   const handleMouseMove = (event) => {
     const deltaX = event.clientX - startX;
@@ -265,7 +258,7 @@ function startPanelResize(side, startX) {
   };
 
   const handleMouseUp = () => {
-    workspace.classList.remove('is-resizing');
+    container.classList.remove('is-resizing');
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);
     saveWorkspaceLayout();
@@ -420,9 +413,9 @@ function bindActionEvents() {
   
   // 取消按钮
   document.querySelector('[data-action="cancel"]').addEventListener('click', function() {
-    if (confirm('确定要取消编辑吗？未保存的更改将会丢失。')) {
+    terrainEditor.confirmAction('确定要取消编辑吗？未保存的更改将会丢失。', function() {
       window.location.href = '/terrain/';
-    }
+    }, null, 'warning');
   });
   
   // 保存按钮
