@@ -36,6 +36,7 @@ class TerrainEditor {
     this.gridLngStep1km = 0.01037;
 
     this.brushSize = 1;
+    this.brushShape = 'square'; // 'square' 或 'circle'
     
     // 渲染器
     this.canvasRenderer = L.canvas({ padding: 0.5 });
@@ -1052,6 +1053,11 @@ class TerrainEditor {
     this.brushSize = size;
   }
 
+  // 设置画笔形状 (square/circle)
+  setBrushShape(shape) {
+    this.brushShape = shape;
+  }
+
   // 像素画笔工具
   enableBrush() {
     this.clearToolEvents();
@@ -1197,6 +1203,14 @@ class TerrainEditor {
     const offset = Math.floor(size / 2);
     for (let i = 0; i < size; i++) {
       for (let j = 0; j < size; j++) {
+        // 如果是圆形，检查距离
+        if (this.brushShape === 'circle') {
+          const centerX = (size - 1) / 2;
+          const centerY = (size - 1) / 2;
+          const dist = Math.sqrt(Math.pow(i - centerX, 2) + Math.pow(j - centerY, 2));
+          if (dist > (size / 2)) continue;
+        }
+
         grids.push({
           latIndex: centerLatIdx - offset + i,
           lngIndex: centerLngIdx - offset + j

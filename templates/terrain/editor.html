@@ -161,9 +161,21 @@
       border-radius: 4px;
       cursor: pointer;
       transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
     .tool-btn:hover {
       background: #e9ecef;
+    }
+    .tool-btn i {
+      font-size: 1.1rem;
+      display: inline-block;
+      line-height: 1;
+    }
+    .tool-btn.active {
+      background: #e9ecef !important; /* 强制显示背景色 */
+      border-color: #ced4da !important;
     }
     .tool-btn.btn-primary {
       background: #0d6efd;
@@ -1004,17 +1016,24 @@
     
     <!-- 中间：编辑工具组 -->
     <div class="tool-group d-flex align-items-center">
-      <button class="tool-btn m-0 active" data-tool="browse" title="不启用编辑工具，仅保留鼠标最基本的拖拽和平移缩放">
-        <i class="bi bi-mouse"></i> 鼠标
-      </button>
-      <button class="tool-btn m-0" data-tool="move-layer" title="点击选中，拖拽图层移动，空白处拖拽平移视角">
-        <i class="bi bi-cursor-move"></i> 移动
+      <button class="tool-btn m-0" data-tool="move-layer" title="移动图层">
+        <i class="bi bi-arrows-move"></i> 移动
       </button>
       <button class="tool-btn m-0" data-tool="marquee-select" title="框选多个地块图层">
         <i class="bi bi-bounding-box"></i> 框选
       </button>
       
       <div class="vr mx-2" style="height: 24px;"></div>
+
+      <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
+        <button class="tool-btn dropdown-toggle m-0" type="button" id="brushShapeDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="设置画笔和橡皮擦的形状">
+          <i id="currentBrushShapeIcon" class="bi bi-square"></i> <span id="currentBrushShapeText">方形</span>
+        </button>
+        <ul class="dropdown-menu" aria-labelledby="brushShapeDropdown" style="min-width: 80px;">
+          <li><a class="dropdown-item active" href="#" data-brush-shape="square"><i class="bi bi-square me-2"></i>方形</a></li>
+          <li><a class="dropdown-item" href="#" data-brush-shape="circle"><i class="bi bi-circle me-2"></i>圆形</a></li>
+        </ul>
+      </div>
 
       <div class="dropdown tool-btn-group" style="display: inline-block; margin-right: 5px;">
         <button class="tool-btn m-0" data-tool="eraser">

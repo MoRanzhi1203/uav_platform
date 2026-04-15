@@ -57,6 +57,7 @@ class TerrainEditor {
     this.gridLngStep1km = 0.01037;
 
     this.brushSize = 1;
+    this.brushShape = 'square'; // 'square' 或 'circle'
     
     // 渲染器
     this.canvasRenderer = L.canvas({ padding: 0.5 });
@@ -1720,6 +1721,11 @@ class TerrainEditor {
     this.brushSize = size;
   }
 
+  // 设置画笔形状 (square/circle)
+  setBrushShape(shape) {
+    this.brushShape = shape;
+  }
+
   // 像素画笔工具
   enableBrush() {
     this.clearToolEvents();
@@ -1851,6 +1857,16 @@ class TerrainEditor {
       for (let j = 0; j < safeBrushSize; j++) {
         const dLat = i - offset;
         const dLng = j - offset;
+        
+        // 如果是圆形，检查距离
+        if (this.brushShape === 'circle') {
+          const centerX = (safeBrushSize - 1) / 2;
+          const centerY = (safeBrushSize - 1) / 2;
+          const dist = Math.sqrt(Math.pow(i - centerX, 2) + Math.pow(j - centerY, 2));
+          // 使用半径判定，略加偏移以包含中心点周围的网格
+          if (dist > (safeBrushSize / 2)) continue;
+        }
+        
         grids.push({ latIndex: latIndex + dLat, lngIndex: lngIndex + dLng });
       }
     }

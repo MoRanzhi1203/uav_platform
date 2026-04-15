@@ -38,9 +38,8 @@ function initEditor() {
   initWorkspacePanels();
 
   // 默认进入鼠标模式，仅保留基础拖拽和缩放
-  const browseBtn = document.querySelector('[data-tool="browse"]');
-  if (browseBtn) {
-    selectTool('browse', browseBtn);
+  if (terrainEditor) {
+    selectTool('browse');
   }
 
   // 加载区域及地块数据
@@ -95,6 +94,30 @@ function initEditor() {
         if (terrainEditor.currentTool !== 'brush' && terrainEditor.currentTool !== 'eraser') {
           selectTool('brush', document.querySelector('[data-tool="brush"]'));
         }
+      }
+    });
+  });
+
+  // 画笔形状下拉菜单
+  document.querySelectorAll('[data-brush-shape]').forEach(item => {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      const shape = this.getAttribute('data-brush-shape');
+      const label = shape === 'square' ? '方形' : '圆形';
+      const iconClass = shape === 'square' ? 'bi-square' : 'bi-circle';
+      
+      // 更新按钮文本和图标
+      document.getElementById('currentBrushShapeText').textContent = label;
+      const icon = document.getElementById('currentBrushShapeIcon');
+      if (icon) icon.className = `bi ${iconClass}`;
+      
+      // 更新激活状态
+      document.querySelectorAll('[data-brush-shape]').forEach(i => i.classList.remove('active'));
+      this.classList.add('active');
+      
+      // 传递给编辑器
+      if (terrainEditor) {
+        terrainEditor.setBrushShape(shape);
       }
     });
   });
@@ -279,11 +302,9 @@ function bindToolEvents() {
   document.querySelectorAll('[data-tool]').forEach(button => {
     button.addEventListener('click', function() {
       const tool = this.getAttribute('data-tool');
-      if (terrainEditor?.currentTool === tool && tool !== 'browse') {
-        const browseBtn = document.querySelector('[data-tool="browse"]');
-        if (browseBtn) {
-          selectTool('browse', browseBtn);
-        }
+      // 如果点击的是当前已激活的工具，则取消选择并切回鼠标模式
+      if (terrainEditor?.currentTool === tool) {
+        selectTool('browse');
         return;
       }
       selectTool(tool, this);
@@ -349,36 +370,39 @@ function bindAttributeEvents() {
   });
 }
 
-// 选择工具
+// 选择工具 (button 可选，不传表示进入鼠标模式但没有按钮高亮)
 function selectTool(tool, button) {
   // 移除所有工具按钮的激活状态
   document.querySelectorAll('[data-tool]').forEach(btn => {
     btn.classList.remove('active');
   });
   
-  // 激活当前工具按钮
-  button.classList.add('active');
+  // 如果提供了按钮，则激活该工具按钮
+  if (button) {
+    button.classList.add('active');
+  }
   
-  // 设置当前工具
-  terrainEditor.currentTool = tool;
-  
-  // 执行工具切换逻辑
-  switch (tool) {
-    case 'browse':
-      terrainEditor.enableBrowseMode();
-      break;
-    case 'move-layer':
-      terrainEditor.enableMoveLayer();
-      break;
-    case 'marquee-select':
-      terrainEditor.enableMarqueeSelect();
-      break;
-    case 'brush':
-      terrainEditor.enableBrush();
-      break;
-    case 'eraser':
-      terrainEditor.enableEraser();
-      break;
+  // 设置当前工具并执行工具切换逻辑
+  if (terrainEditor) {
+    terrainEditor.currentTool = tool;
+    
+    switch (tool) {
+      case 'browse':
+        terrainEditor.enableBrowseMode();
+        break;
+      case 'move-layer':
+        terrainEditor.enableMoveLayer();
+        break;
+      case 'marquee-select':
+        terrainEditor.enableMarqueeSelect();
+        break;
+      case 'brush':
+        terrainEditor.enableBrush();
+        break;
+      case 'eraser':
+        terrainEditor.enableEraser();
+        break;
+    }
   }
 }
 
