@@ -128,34 +128,28 @@ class TerrainEditor {
     this.loadAdminBoundaries();
   }
   
-  // 加载行政区划边界 (调用 shp 文件)
+  // 加载行政区划边界 (直接读取 GeoJSON 文件)
   async loadAdminBoundaries() {
     try {
-      if (typeof shp === 'undefined') {
-        console.error('shpjs 库未找到，请确保已正确引入');
-        return;
-      }
-
-      // 确保 Proj4 已定义，这对 3857 -> 4326 转换至关重要
-      if (typeof proj4 !== 'undefined') {
-        // 定义 EPSG:3857 (Web Mercator) 的投影参数
-        proj4.defs("EPSG:3857","+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs");
-      }
-
-      // 指向 static 下的 shp 文件目录
-      // 使用绝对路径避免 URL 构造失败问题
-      const shpUrl = window.location.origin + '/static/shp/chongqing_admin_3857/chongqing_admin_3857';
+      const geojsonUrl = window.location.origin + '/static/geojson/chongqing_admin.json';
       this.adminBoundaryColor = document.getElementById('adminBoundaryColor')?.value || '#4a90e2';
       
-      console.log('正在请求行政区划边界 (SHP):', shpUrl);
-      
-      // 使用 shpjs 的通用方法加载并转换 GeoJSON
-      // 由于已配置 Proj4，shpjs 应该能够根据 .prj 文件自动完成转换
-      const geojson = await shp(shpUrl);
+      console.log('正在请求行政区划边界 (GeoJSON):', geojsonUrl);
+      const response = await fetch(geojsonUrl);
+      if (!response.ok) {
+        throw new Error(`GeoJSON 请求失败: ${response.status} ${response.statusText}`);
+      }
+
+      const geojson = await response.json();
       
       if (geojson) {
         const data = Array.isArray(geojson) ? geojson[0] : geojson;
         if (data && data.features && data.features.length > 0) {
+          if (typeof turf !== 'undefined') {
+            const fullBbox = turf.bbox(data);
+            this.viewportConfig.chongqingBounds = [[fullBbox[1], fullBbox[0]], [fullBbox[3], fullBbox[2]]];
+          }
+
           // 智能过滤：仅保留区县级行政区划，过滤掉密集的乡镇和街道
           let allFeatures = data.features;
           let districts = allFeatures.filter(f => {
@@ -181,16 +175,6 @@ class TerrainEditor {
           }
 
           console.log(`成功解析行政区划数据，原始数量: ${allFeatures.length}，过滤后区县数量: ${districts.length}`);
-          
-          // 增加强制手动转换逻辑，确保数据一定能落在 4326 范围内
-          if (typeof proj4 !== 'undefined') {
-            districts.forEach(f => {
-              if (f.geometry && f.geometry.coordinates) {
-                this._transformGeometry(f.geometry);
-              }
-            });
-            console.log('坐标系强制转换/检查完成 (3857 -> 4326)');
-          }
 
           // 分块渲染以避免 UI 卡顿
           const chunkSize = 50;
@@ -246,7 +230,7 @@ class TerrainEditor {
       }
     } catch (error) {
       console.error('行政区划边界加载或渲染失败:', error);
-      console.warn('如果是 404，请确认 Django 是否开启了 static 目录下的 .shp 文件访问权限');
+      console.warn('如果是 404，请确认 Django 是否开启了 static 目录下的 .geojson 文件访问权限');
     }
   }
 

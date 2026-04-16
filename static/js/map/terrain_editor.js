@@ -1,6 +1,8 @@
 // 地形编辑器类
 class TerrainEditor {
-  constructor(mapId) {
+  constructor(mapId, options = {}) {
+    this.areaId = options.areaId || null; // 预先获取 areaId，防止异步加载过程中的判断失误
+    
     // 初始化地图
     this.map = window.initMap(mapId, {
       center: [30.05, 107.60],
@@ -10,11 +12,11 @@ class TerrainEditor {
       zoomSnap: 0.1, // 允许更精细的缩放级别以精确匹配重庆占比
     });
     
-    // 默认缩放占比配置
+    // 默认缩放占比配置 (根据用户要求：地块/重庆市占 3/4 边宽)
     this.viewportConfig = {
-      targetHeightRatio: 2/3,
-      targetWidthRatio: 1/2,
-      chongqingBounds: [[28.16, 105.18], [32.20, 110.19]]
+      targetHeightRatio: 0.75,
+      targetWidthRatio: 0.75,
+      chongqingBounds: [[28.16, 105.18], [32.20, 110.19]] // 初始估算，稍后由行政区划数据修正
     };
 
     this.layerManager = new window.LayerManager(this.map);
@@ -23,10 +25,8 @@ class TerrainEditor {
     this.baseLayers = window.baseLayers;
     this.currentBasemap = 'satellite';
     this.activeBaseLayer = null; // 存储当前正在使用的底图实例
-    
-    // 等高线叠加管理
-    this.isContourOverlayEnabled = false;
-    this.contourLayer = null;
+    this.topographicAssistLayer = null; // 卫星底图上的等高线参考叠加层
+    this.topographicAssistOpacity = 0.5;
     
     // 状态管理
     this.currentTool = 'browse';
@@ -38,8 +38,9 @@ class TerrainEditor {
     this.isMultiSelectMode = false;
     this.history = [];
     this.historyIndex = -1;
-    this.areaId = null; // 当前正在编辑的区域 ID
+    // this.areaId 已在 constructor 顶部初始化
     this.areaData = null; // 区域基础信息
+    this.originalBoundaryLayer = null; // 原始边界图层
     this.subcategoryOptionsByCategory = {};
     this._disjointSplitModalBound = false;
     this._pendingDisjointSplitResolver = null;
@@ -140,6 +141,8 @@ class TerrainEditor {
     container.style.webkitUserSelect = 'none';
     
     this.addLayerGroups();
+    this.layerManager.addLayerGroup('auxiliary'); // 辅助图层，如原始边界
+    
     this.initReferenceGrid();
     this.bindEvents();
     
@@ -176,16 +179,17 @@ class TerrainEditor {
     }
 
     // 如果是新建地块（没有加载 areaId），自动调整一次视口到重庆
-    setTimeout(() => {
-      if (!this.areaId) {
+    if (!this.areaId) {
+      setTimeout(() => {
         this.updateMapViewport();
-      }
-    }, 100);
+      }, 100);
+    }
 
     this.captureHistorySnapshot();
     
-    // 初始化时，根据默认底图（satellite）设置行政区划边界的可用性
+    // 初始化时，根据默认底图（satellite）同步辅助图层的可用性
     this.updateAdminBoundaryAvailability(this.currentBasemap);
+    this.updateTopographicAssistAvailability(this.currentBasemap);
 
     // 首屏渲染一次左侧图层面板：无论是否携带 area_id，至少要显示空状态/按钮状态
     this.updateSelectedPlotsList();
@@ -207,48 +211,51 @@ class TerrainEditor {
    * @param {Object} boundaryGeoJSON 区域边界 GeoJSON
    */
   updateMapViewport(boundaryGeoJSON) {
-    let bounds;
-    if (boundaryGeoJSON && typeof turf !== 'undefined') {
-      try {
-        const bbox = turf.bbox(boundaryGeoJSON);
-        bounds = L.latLngBounds([bbox[1], bbox[0]], [bbox[3], bbox[2]]);
-      } catch (e) {
-        console.error('计算区域边界失败:', e);
-      }
-    }
-    
-    if (!bounds) {
-      bounds = L.latLngBounds(this.viewportConfig.chongqingBounds);
-    }
-    
-    const center = bounds.getCenter();
-    
-    // 获取地图容器大小
+    // 1. 获取基础参考边界
+    const cqBounds = L.latLngBounds(this.viewportConfig.chongqingBounds);
     const container = this.map.getContainer();
     const containerWidth = container.offsetWidth;
     const containerHeight = container.offsetHeight;
     
-    // 只有在容器大小有效时才进行计算，否则等待一会
     if (containerWidth === 0 || containerHeight === 0) {
       setTimeout(() => this.updateMapViewport(boundaryGeoJSON), 100);
       return;
     }
+
+    // 2. 静态计算重庆市全境的最小缩放级别 (占据 3/4 边宽)
+    const cqPaddingY = (1 - this.viewportConfig.targetHeightRatio) / 2 * containerHeight;
+    const cqPaddingX = (1 - this.viewportConfig.targetWidthRatio) / 2 * containerWidth;
+    const cqMinZoom = this.map.getBoundsZoom(cqBounds, false, [cqPaddingX, cqPaddingY]);
     
-    const paddingY = (1 - this.viewportConfig.targetHeightRatio) / 2 * containerHeight;
-    const paddingX = (1 - this.viewportConfig.targetWidthRatio) / 2 * containerWidth;
-    
-    const optimalZoom = this.map.getBoundsZoom(bounds, false, [paddingX, paddingY]);
-    
-    // 恢复原来的地图缩放限制 (锁定到 optimalZoom)
-    this.map.setMinZoom(optimalZoom);
+    // 3. 应用地图限制 (立即生效，不再跳转)
+    this.map.setMinZoom(cqMinZoom);
     this.map.setMaxZoom(18);
-    this.map.setView(center, optimalZoom);
-    
-    // 重新启用边界锁定，防止用户移出重庆市/区域范围
-    this.map.once('moveend', () => {
-      const initialBounds = this.map.getBounds();
-      this.map.setMaxBounds(initialBounds);
-    });
+    // 锁定最大移动范围为重庆市全境 (稍微外扩一点保证边缘可见性)
+    this.map.setMaxBounds(cqBounds.pad(0.2));
+
+    // 4. 直接定位到目标视口，消除中间切换过程
+    if (boundaryGeoJSON) {
+      try {
+        const bbox = turf.bbox(boundaryGeoJSON);
+        const terrainBounds = L.latLngBounds([bbox[1], bbox[0]], [bbox[3], bbox[2]]);
+        const terrainCenter = terrainBounds.getCenter();
+        
+        const terrainPaddingY = (1 - this.viewportConfig.targetHeightRatio) / 2 * containerHeight;
+        const terrainPaddingX = (1 - this.viewportConfig.targetWidthRatio) / 2 * containerWidth;
+        const terrainZoom = this.map.getBoundsZoom(terrainBounds, false, [terrainPaddingX, terrainPaddingY]);
+        
+        // 直接设置视口，无动画
+        this.map.setView(terrainCenter, terrainZoom, { animate: false });
+        console.log(`地图已直接定位至地形 "${this.areaData?.name}", 缩放级别: ${terrainZoom}`);
+      } catch (e) {
+        console.error('计算地形视口失败，回退到重庆全境:', e);
+        this.map.setView(cqBounds.getCenter(), cqMinZoom, { animate: false });
+      }
+    } else {
+      // 如果没有地形数据（新建模式），则显示重庆全境
+      this.map.setView(cqBounds.getCenter(), cqMinZoom, { animate: false });
+      console.log('地图已直接定位至重庆市全境');
+    }
   }
   
   // 初始化参考网格 (10m, 1km)
@@ -271,35 +278,49 @@ class TerrainEditor {
     this.loadAdminBoundaries();
   }
   
-  // 加载行政区划边界 (调用 shp 文件)
+  // 加载行政区划边界 (直接读取 GeoJSON 文件)
   async loadAdminBoundaries() {
     try {
-      if (typeof shp === 'undefined') {
-        console.error('shpjs 库未找到，请确保已正确引入');
-        return;
-      }
-
-      // 确保 Proj4 已定义，这对 3857 -> 4326 转换至关重要
-      if (typeof proj4 !== 'undefined') {
-        // 定义 EPSG:3857 (Web Mercator) 的投影参数
-        proj4.defs("EPSG:3857","+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs");
-      }
-
-      // 指向 static 下的 shp 文件目录
-      // 使用绝对路径避免 URL 构造失败问题
-      const shpUrl = window.location.origin + '/static/shp/chongqing_admin_3857/chongqing_admin_3857';
+      const geojsonUrl = window.location.origin + '/static/geojson/chongqing_admin.json';
       this.adminBoundaryColor = document.getElementById('adminBoundaryColor')?.value || '#4a90e2';
       
-      console.log('正在请求行政区划边界 (SHP):', shpUrl);
-      
-      // 使用 shpjs 的通用方法加载并转换 GeoJSON
-      // 由于已配置 Proj4，shpjs 应该能够根据 .prj 文件自动完成转换
-      const geojson = await shp(shpUrl);
+      console.log('正在请求行政区划边界 (GeoJSON):', geojsonUrl);
+      const response = await fetch(geojsonUrl);
+      if (!response.ok) {
+        throw new Error(`GeoJSON 请求失败: ${response.status} ${response.statusText}`);
+      }
+
+      const geojson = await response.json();
       
       if (geojson) {
         const data = Array.isArray(geojson) ? geojson[0] : geojson;
         if (data && data.features && data.features.length > 0) {
-          // 智能过滤：仅保留区县级行政区划，过滤掉密集的乡镇和街道
+          // 计算行政区划的总边界 (重庆市全境)
+          if (typeof turf !== 'undefined') {
+            const fullBbox = turf.bbox(data);
+            this.viewportConfig.chongqingBounds = [[fullBbox[1], fullBbox[0]], [fullBbox[3], fullBbox[2]]];
+            console.log('重庆市参考范围已更新:', this.viewportConfig.chongqingBounds);
+            
+            // 获取容器尺寸用于计算
+            const container = this.map.getContainer();
+            const cqPaddingY = (1 - this.viewportConfig.targetHeightRatio) / 2 * container.offsetHeight;
+            const cqPaddingX = (1 - this.viewportConfig.targetWidthRatio) / 2 * container.offsetWidth;
+            const cqMinZoom = this.map.getBoundsZoom(this.viewportConfig.chongqingBounds, false, [cqPaddingX, cqPaddingY]);
+
+            // 3. 更新全局限制参数 (但不移动视口，除非是新建模式)
+            this.map.setMinZoom(cqMinZoom);
+            this.map.setMaxBounds(L.latLngBounds(this.viewportConfig.chongqingBounds).pad(0.2));
+
+            // 如果当前没有加载具体区域（新建模式），则执行初始视口刷新
+            if (!this.areaId) {
+              console.log('新建模式：定位至重庆全境');
+              this.updateMapViewport();
+            } else {
+              console.log('编辑模式：已加载地形，保持当前视口，仅更新缩放限制');
+            }
+          }
+
+          // 智能过滤并准备渲染
           let allFeatures = data.features;
           let districts = allFeatures.filter(f => {
             const p = f.properties;
@@ -325,16 +346,6 @@ class TerrainEditor {
 
           console.log(`成功解析行政区划数据，原始数量: ${allFeatures.length}，过滤后区县数量: ${districts.length}`);
           
-          // 增加强制手动转换逻辑，确保数据一定能落在 4326 范围内
-          if (typeof proj4 !== 'undefined') {
-            districts.forEach(f => {
-              if (f.geometry && f.geometry.coordinates) {
-                this._transformGeometry(f.geometry);
-              }
-            });
-            console.log('坐标系强制转换/检查完成 (3857 -> 4326)');
-          }
-
           // 分块渲染以避免 UI 卡顿
           const chunkSize = 50;
           let index = 0;
@@ -389,7 +400,7 @@ class TerrainEditor {
       }
     } catch (error) {
       console.error('行政区划边界加载或渲染失败:', error);
-      console.warn('如果是 404，请确认 Django 是否开启了 static 目录下的 .shp 文件访问权限');
+      console.warn('如果是 404，请确认 Django 是否开启了 static 目录下的 .geojson 文件访问权限');
     }
   }
 
@@ -439,6 +450,37 @@ class TerrainEditor {
       this.adminBoundaryLayer.addTo(this.map);
     } else {
       this.map.removeLayer(this.adminBoundaryLayer);
+    }
+  }
+
+  // 切换卫星底图上的等高线参考叠加层
+  toggleTopographicAssist(visible) {
+    if (!this.topographicAssistLayer) {
+      this.topographicAssistLayer = window.getOverlayLayer
+        ? window.getOverlayLayer('contours')
+        : getOverlayLayer('contours');
+      if (this.topographicAssistLayer?.setOpacity) {
+        this.topographicAssistLayer.setOpacity(this.topographicAssistOpacity);
+      }
+    }
+
+    if (!this.topographicAssistLayer) return;
+
+    const shouldDisplay = visible && this.currentBasemap === 'satellite';
+    if (shouldDisplay) {
+      if (!this.map.hasLayer(this.topographicAssistLayer)) {
+        this.topographicAssistLayer.addTo(this.map);
+      }
+    } else if (this.map.hasLayer(this.topographicAssistLayer)) {
+      this.map.removeLayer(this.topographicAssistLayer);
+    }
+  }
+
+  // 更新等高线参考叠加层透明度
+  setTopographicAssistOpacity(opacity) {
+    this.topographicAssistOpacity = opacity;
+    if (this.topographicAssistLayer?.setOpacity) {
+      this.topographicAssistLayer.setOpacity(opacity);
     }
   }
 
@@ -2460,6 +2502,17 @@ class TerrainEditor {
         if (area.boundary_json) {
           this.renderAreaBoundary(area.boundary_json);
           this.updateMapViewport(area.boundary_json);
+          
+          // 创建原始边界图层
+          this.originalBoundaryLayer = L.geoJSON(area.boundary_json, {
+            style: {
+              color: '#ff0000', // 红色
+              weight: 2,
+              dashArray: '5, 5',
+              fillOpacity: 0
+            }
+          });
+          this.layerManager.addLayer('originalBoundary', this.originalBoundaryLayer, 'auxiliary');
         } else {
           this.updateMapViewport();
         }
@@ -2514,11 +2567,7 @@ class TerrainEditor {
         }
       }).addTo(this.map);
       
-      // 自动缩放到边界
-      const bounds = this.areaBoundaryLayer.getBounds();
-      if (bounds.isValid()) {
-        this.map.fitBounds(bounds);
-      }
+      // 注意：视口缩放由 loadAreaEditDetail 统一调用 updateMapViewport 处理，此处不再 fitBounds
     } catch (err) {
       console.warn('渲染区域边界失败，GeoJSON 可能不完整:', err, geojson);
     }
@@ -3351,10 +3400,25 @@ class TerrainEditor {
       }
     }
   }
+
+  /**
+   * 切换原始边界图层的可见性
+   * @param {boolean} show 是否显示
+   */
+  toggleOriginalBoundaryLayer(show) {
+    if (this.originalBoundaryLayer) {
+      if (show) {
+        this.layerManager.showLayer('originalBoundary');
+      } else {
+        this.layerManager.hideLayer('originalBoundary');
+      }
+    }
+  }
   
   // 切换底图
   switchBasemap(basemap) {
-    if (basemap === this.currentBasemap && this.activeBaseLayer) return;
+    const normalizedBasemap = basemap === 'grayscale' ? 'osm' : basemap;
+    if (normalizedBasemap === this.currentBasemap && this.activeBaseLayer) return;
     
     // 移除当前底图实例
     if (this.activeBaseLayer) {
@@ -3369,14 +3433,14 @@ class TerrainEditor {
     }
     
     // 获取新底图实例
-    const newLayer = this.baseLayers[basemap];
+    const newLayer = this.baseLayers[normalizedBasemap];
     if (newLayer) {
       newLayer.addTo(this.map);
       this.activeBaseLayer = newLayer;
-      this.currentBasemap = basemap;
+      this.currentBasemap = normalizedBasemap;
       
       // 更新按钮显示名称
-      this.updateBasemapUI(basemap);
+      this.updateBasemapUI(normalizedBasemap);
     }
   }
   
@@ -3384,8 +3448,9 @@ class TerrainEditor {
   updateBasemapUI(basemap) {
     // 更新按钮文字
     const basemapNames = {
-      grayscale: '标准底图',
-      satellite: '卫星底图'
+      satellite: '卫星底图',
+      topographic: '等高线底图',
+      osm: '标准底图'
     };
     
     const basemapName = basemapNames[basemap] || '底图';
@@ -3407,6 +3472,7 @@ class TerrainEditor {
 
     // 根据底图模式禁用/启用行政区划边界
     this.updateAdminBoundaryAvailability(basemap);
+    this.updateTopographicAssistAvailability(basemap);
   }
 
   /**
@@ -3445,6 +3511,44 @@ class TerrainEditor {
     if (adminColor) {
       adminColor.disabled = !isSatellite;
       adminColor.style.cursor = isSatellite ? 'pointer' : 'not-allowed';
+    }
+  }
+
+  /**
+   * 根据当前底图模式更新等高线参考叠加层的可用性
+   * @param {string} basemap 当前底图模式
+   */
+  updateTopographicAssistAvailability(basemap) {
+    const isSatellite = basemap === 'satellite';
+    const topoToggle = document.getElementById('topographicAssistToggle');
+    const topoSlider = document.getElementById('topographicAssistOpacity');
+    const topoControl = document.getElementById('topographicAssistControl');
+
+    if (!topoToggle) return;
+
+    topoToggle.disabled = !isSatellite;
+
+    if (topoControl) {
+      if (!isSatellite) {
+        topoControl.classList.add('text-muted');
+        topoControl.style.opacity = '0.6';
+        topoControl.title = '等高线参考层仅在卫星底图模式下可用';
+      } else {
+        topoControl.classList.remove('text-muted');
+        topoControl.style.opacity = '1';
+        topoControl.title = '叠加等高线参考层，便于结合卫星影像判读地形';
+      }
+    }
+
+    if (topoSlider) {
+      topoSlider.disabled = !isSatellite || !topoToggle.checked;
+      topoSlider.style.cursor = topoSlider.disabled ? 'not-allowed' : 'pointer';
+    }
+
+    if (!isSatellite) {
+      this.toggleTopographicAssist(false);
+    } else if (topoToggle.checked) {
+      this.toggleTopographicAssist(true);
     }
   }
 

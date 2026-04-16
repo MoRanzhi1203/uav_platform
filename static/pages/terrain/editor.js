@@ -458,6 +458,31 @@ function bindActionEvents() {
 
 // 绑定辅助图层事件
 function bindAssistLayerEvents() {
+  // 卫星底图上的等高线参考层
+  const topographicAssistToggle = document.getElementById('topographicAssistToggle');
+  const topographicAssistOpacity = document.getElementById('topographicAssistOpacity');
+  const topographicAssistOpacityValue = document.getElementById('topographicAssistOpacityValue');
+
+  if (topographicAssistToggle) {
+    topographicAssistToggle.addEventListener('change', function() {
+      if (!terrainEditor) return;
+      terrainEditor.toggleTopographicAssist(this.checked);
+      terrainEditor.updateTopographicAssistAvailability(terrainEditor.currentBasemap);
+    });
+  }
+
+  if (topographicAssistOpacity) {
+    topographicAssistOpacity.addEventListener('input', function() {
+      const opacity = Number(this.value) / 100;
+      if (topographicAssistOpacityValue) {
+        topographicAssistOpacityValue.textContent = `${this.value}%`;
+      }
+      if (terrainEditor) {
+        terrainEditor.setTopographicAssistOpacity(opacity);
+      }
+    });
+  }
+
   // 10m 网格
   const grid10m = document.getElementById('gridToggle10m');
   if (grid10m) {
