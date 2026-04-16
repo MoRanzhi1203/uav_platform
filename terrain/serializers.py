@@ -2,9 +2,21 @@ from rest_framework import serializers
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 
 class TerrainAreaSerializer(serializers.ModelSerializer):
+    zone_count = serializers.IntegerField(source='zones.count', read_only=True)
+    total_area = serializers.SerializerMethodField()
+    high_risk_zones = serializers.SerializerMethodField()
+    
     class Meta:
         model = TerrainArea
         fields = '__all__'
+
+    def get_total_area(self, obj):
+        # 统计该区域下所有地块的总面积
+        return sum(zone.area for zone in obj.zones.filter(is_deleted=False))
+
+    def get_high_risk_zones(self, obj):
+        return obj.zones.filter(risk_level='high', is_deleted=False).count()
+
 
 class TerrainSubCategorySerializer(serializers.ModelSerializer):
     class Meta:

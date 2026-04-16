@@ -383,7 +383,7 @@
       color: #2563eb !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
-    @container (max-width: 760px) {
+    @container (max-width: 850px) {
       .tool-group {
         gap: 4px;
       }
@@ -393,9 +393,9 @@
       .editor-header-center .tool-btn {
         flex: 0 1 auto;
         padding: 6px 9px;
-        font-size: 0.82rem;
+        font-size: 0.85rem;
         gap: 4px;
-        max-width: 112px;
+        max-width: 140px;
         overflow: hidden;
       }
       .editor-header-center .tool-btn-label,
@@ -410,41 +410,42 @@
       .editor-header-center .tool-btn-label,
       .editor-header-center #currentBrushShapeText,
       .editor-header-center #currentEraserMode {
-        max-width: 3.8em;
+        max-width: 6em;
       }
       .editor-header-center .tool-btn-value {
-        max-width: 2.8em;
+        max-width: 4em;
       }
       .editor-header-center .tool-divider {
         margin: 0 4px;
       }
     }
-    @container (max-width: 660px) {
+    @container (max-width: 720px) {
       .editor-header-center .tool-btn {
         padding: 6px 8px;
-        font-size: 0.76rem;
+        font-size: 0.82rem;
         gap: 3px;
-        max-width: 72px;
+        max-width: 100px;
       }
       .editor-header-center .tool-btn-label,
       .editor-header-center #currentBrushShapeText,
       .editor-header-center #currentEraserMode {
-        max-width: 1.2em;
+        max-width: 3.5em;
       }
       .editor-header-center .tool-btn-value {
-        max-width: 1.8em;
+        max-width: 2.5em;
       }
       .editor-header-center .tool-divider {
         margin: 0 3px;
       }
     }
-    @container (max-width: 560px) {
+    @container (max-width: 600px) {
       .tool-group {
-        gap: 3px;
+        gap: 2px;
       }
       .editor-header-center .tool-btn {
         padding: 6px 7px;
-        max-width: 40px;
+        max-width: 44px;
+        justify-content: center;
       }
       .editor-header-center .tool-btn-label,
       .editor-header-center #currentBrushShapeText,
@@ -452,6 +453,7 @@
       .editor-header-center .tool-btn-value {
         max-width: 0;
         opacity: 0;
+        margin: 0;
       }
       .editor-header-center .tool-btn.dropdown-toggle::after {
         margin-left: 0;
