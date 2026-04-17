@@ -119,17 +119,7 @@
           <label for="terrainName" class="form-label">地形名称</label>
           <input type="text" class="form-control" id="terrainName" placeholder="请输入地形名称">
         </div>
-        <div class="col-md-2">
-          <label for="terrainType" class="form-label">类型</label>
-          <select class="form-select" id="terrainType">
-            <option value="">全部类型</option>
-            <option value="mountain">山地</option>
-            <option value="hill">丘陵</option>
-            <option value="valley">山谷</option>
-            <option value="plateau">高原</option>
-          </select>
-        </div>
-        <div class="col-md-2">
+        <div class="col-md-3">
           <label for="riskLevel" class="form-label">风险等级</label>
           <select class="form-select" id="riskLevel">
             <option value="">全部等级</option>
@@ -138,7 +128,7 @@
             <option value="high">高</option>
           </select>
         </div>
-        <div class="col-md-2">
+        <div class="col-md-3">
           <label for="timeRange" class="form-label">时间范围</label>
           <select class="form-select" id="timeRange">
             <option value="7">最近7天</option>
@@ -178,13 +168,15 @@
                   <th scope="col">#</th>
                   <th scope="col">地形名称</th>
                   <th scope="col">面积(公顷)</th>
-                  <th scope="col">类型</th>
                   <th scope="col">风险等级</th>
+                  <th scope="col">地块数量</th>
                   <th scope="col">操作</th>
                 </tr>
               </thead>
               <tbody>
-                <!-- 数据将由 Vue 动态填充 -->
+                <tr>
+                  <td colspan="6" class="text-center text-muted py-4">正在加载地形区域...</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -200,7 +192,13 @@
     <div class="col-lg-8">
       <div class="card">
         <div class="card-body">
-          <h5 class="card-title">地形地图</h5>
+          <div class="terrain-map-header">
+            <div>
+              <h5 class="card-title mb-1">地形地图</h5>
+              <div class="terrain-map-subtitle" id="terrainMapTitle">当前地形：未选择</div>
+            </div>
+            <div class="terrain-map-status" id="terrainMapStatus">等待加载区域数据</div>
+          </div>
           <div id="terrainMap" class="map-container" style="height: 600px;"></div>
           <div class="mt-3">
             <div class="btn-group" role="group">
@@ -240,12 +238,12 @@
             <div class="col-6">
               <p class="mb-1"><strong>地形名称:</strong> <span id="detailName">-</span></p>
               <p class="mb-1"><strong>面积:</strong> <span id="detailArea">-</span> 公顷</p>
-              <p class="mb-1"><strong>类型:</strong> <span id="detailType">-</span></p>
+              <p class="mb-1"><strong>组成概览:</strong> <span id="detailComposition">-</span></p>
             </div>
             <div class="col-6">
               <p class="mb-1"><strong>风险等级:</strong> <span id="detailRisk">-</span></p>
-              <p class="mb-1"><strong>数据精度:</strong> <span id="detailAccuracy">-</span></p>
-              <p class="mb-1"><strong>最后测绘:</strong> <span id="detailLastSurvey">-</span></p>
+              <p class="mb-1"><strong>地块数量:</strong> <span id="detailPlotCount">-</span></p>
+              <p class="mb-1"><strong>更新时间:</strong> <span id="detailUpdatedAt">-</span></p>
             </div>
           </div>
         </div>
@@ -388,16 +386,16 @@
         <form id="terrainForm">
           <input type="hidden" id="terrainId">
           <div class="mb-3">
-            <label for="name" class="form-label">地形名称</label>
-            <input type="text" class="form-control" id="name" placeholder="请输入地形名称">
+            <label for="terrainFormName" class="form-label">地形名称</label>
+            <input type="text" class="form-control" id="terrainFormName" placeholder="请输入地形名称">
           </div>
           <div class="mb-3">
-            <label for="area" class="form-label">面积（公顷）</label>
-            <input type="number" class="form-control" id="area" placeholder="请输入面积">
+            <label for="terrainFormArea" class="form-label">面积（公顷）</label>
+            <input type="number" class="form-control" id="terrainFormArea" placeholder="请输入面积">
           </div>
           <div class="mb-3">
-            <label for="terrainType" class="form-label">类型</label>
-            <select class="form-select" id="terrainType">
+            <label for="terrainFormType" class="form-label">类型</label>
+            <select class="form-select" id="terrainFormType">
               <option value="mountain">山地</option>
               <option value="hill">丘陵</option>
               <option value="valley">山谷</option>
@@ -405,16 +403,16 @@
             </select>
           </div>
           <div class="mb-3">
-            <label for="riskLevel" class="form-label">风险等级</label>
-            <select class="form-select" id="riskLevel">
+            <label for="terrainFormRiskLevel" class="form-label">风险等级</label>
+            <select class="form-select" id="terrainFormRiskLevel">
               <option value="low">低</option>
               <option value="medium">中</option>
               <option value="high">高</option>
             </select>
           </div>
           <div class="mb-3">
-            <label for="description" class="form-label">描述</label>
-            <textarea class="form-control" id="description" rows="3" placeholder="请输入地形描述"></textarea>
+            <label for="terrainFormDescription" class="form-label">描述</label>
+            <textarea class="form-control" id="terrainFormDescription" rows="3" placeholder="请输入地形描述"></textarea>
           </div>
         </form>
       </div>

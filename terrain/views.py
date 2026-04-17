@@ -5,13 +5,13 @@ from pathlib import Path
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Prefetch, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from shapely.geometry import shape, mapping, MultiPolygon, Polygon
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 from .serializers import (
-    TerrainAreaSerializer, TerrainZoneSerializer, 
+    TerrainAreaSerializer, TerrainAreaListSerializer, TerrainZoneSerializer,
     TerrainElementSerializer, TerrainSubCategorySerializer
 )
 from common.responses import api_response, api_error
@@ -152,8 +152,15 @@ def delete_terrain(request, pk):
 def list_areas(request):
     """区域列表接口"""
     try:
-        queryset = TerrainArea.objects.filter(is_deleted=False).order_by('-created_at')
-        serializer = TerrainAreaSerializer(queryset, many=True)
+        active_zones = TerrainZone.objects.filter(is_deleted=False).order_by('id')
+        queryset = (
+            TerrainArea.objects
+            .filter(is_deleted=False)
+            .annotate(plot_count=Count('zones', filter=Q(zones__is_deleted=False)))
+            .prefetch_related(Prefetch('zones', queryset=active_zones, to_attr='active_zones'))
+            .order_by('-created_at')
+        )
+        serializer = TerrainAreaListSerializer(queryset, many=True)
         return api_response(data=serializer.data)
     except Exception as e:
         logger.error(f"获取区域列表异常: {str(e)}")
@@ -217,7 +224,8 @@ def unified_save_terrain(request):
                 terrain = TerrainArea.objects.create(
                     name=terrain_data.get('name'),
                     description=terrain_data.get('description', ''),
-                    type=terrain_data.get('type', 'farm'),
+                    # TerrainArea.type 仍是历史模型字段，默认回到地形级值，避免被地块默认类别污染。
+                    type=terrain_data.get('type', 'mountain'),
                     risk_level=terrain_data.get('risk_level', 'low')
                 )
                 msg = "地形与地块已成功创建"

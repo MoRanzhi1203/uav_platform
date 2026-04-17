@@ -16,11 +16,38 @@ const WORKSPACE_LEFT_COLLAPSED_MIN = 260;
 const WORKSPACE_LEFT_COLLAPSED_MAX = 340;
 const WORKSPACE_RIGHT_MIN = 280;
 const WORKSPACE_RIGHT_MAX = 560;
+const HISTORY_LAYER_STATE_KEYS = [
+  'showHistoryLayer',
+  'showHistoryTerrain',
+  'enableHistoryAssist',
+  'restoreAuxLayerState'
+];
+
+function purgeHistoryLayerState() {
+  HISTORY_LAYER_STATE_KEYS.forEach((key) => {
+    try {
+      window.localStorage.removeItem(key);
+    } catch (error) {
+      console.warn(`[历史图层] 清理 localStorage 状态失败: ${key}`, error);
+    }
+
+    try {
+      window.sessionStorage.removeItem(key);
+    } catch (error) {
+      console.warn(`[历史图层] 清理 sessionStorage 状态失败: ${key}`, error);
+    }
+  });
+}
 
 // 初始化页面
 function initEditor() {
+  purgeHistoryLayerState();
+
   // 初始化编辑器
   terrainEditor = new TerrainEditor('editorMap');
+  if (terrainEditor && typeof terrainEditor.clearLegacyReferenceLayers === 'function') {
+    terrainEditor.clearLegacyReferenceLayers();
+  }
   
   // 绑定工具按钮事件
   bindToolEvents();

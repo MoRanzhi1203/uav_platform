@@ -1,15 +1,27 @@
 // 地形编辑器类
+// 当前版本彻底禁用历史地块/历史地形辅助图层，避免 UI 移除后底层仍偷偷渲染。
+const ENABLE_HISTORY_PLOT_ASSIST = false;
+const ENABLE_HISTORY_TERRAIN_LAYER = false;
+const HISTORY_LAYER_STATE_KEYS = [
+  'showHistoryLayer',
+  'showHistoryTerrain',
+  'enableHistoryAssist',
+  'restoreAuxLayerState'
+];
+
 class TerrainEditor {
   constructor(mapId, options = {}) {
     this.areaId = options.areaId || null; // 预先获取 areaId，防止异步加载过程中的判断失误
     
     // 初始化地图
+    // 修复：强制跳过默认底图加载，由 switchBasemap 统一负责首屏加载，防止叠加
     this.map = window.initMap(mapId, {
       center: [30.05, 107.60],
       zoom: 7,
       minZoom: 5,
       maxZoom: 18,
       zoomSnap: 0.1, // 允许更精细的缩放级别以精确匹配重庆占比
+      skipDefaultLayer: true 
     });
     
     // 默认缩放占比配置 (根据用户要求：地块/重庆市占 3/4 边宽)
@@ -41,6 +53,13 @@ class TerrainEditor {
     // this.areaId 已在 constructor 顶部初始化
     this.areaData = null; // 区域基础信息
     this.originalBoundaryLayer = null; // 原始边界图层
+    this.areaBoundaryLayer = null; // 旧的区域参考边界层（禁止自动渲染）
+    this.historyLayerGroup = null;
+    this.historyTerrainLayer = null;
+    this.historyPlotLayer = null;
+    this.comparisonLayer = null;
+    this.cachedHistoryGeojsonLayer = null;
+    this.referenceTerrainLayer = null;
     this.subcategoryOptionsByCategory = {};
     this._disjointSplitModalBound = false;
     this._pendingDisjointSplitResolver = null;
@@ -193,6 +212,143 @@ class TerrainEditor {
 
     // 首屏渲染一次左侧图层面板：无论是否携带 area_id，至少要显示空状态/按钮状态
     this.updateSelectedPlotsList();
+
+    // 修复：地图初始化后强制清理所有旧参考层/历史层/比较层
+    this.clearLegacyReferenceLayers();
+  }
+
+  /**
+   * 清理本地缓存中的历史图层状态，避免刷新后自动恢复
+   */
+  purgeHistoricalLayerState() {
+    HISTORY_LAYER_STATE_KEYS.forEach((key) => {
+      try {
+        window.localStorage.removeItem(key);
+      } catch (error) {
+        console.warn(`[历史图层] 清理 localStorage 状态失败: ${key}`, error);
+      }
+
+      try {
+        window.sessionStorage.removeItem(key);
+      } catch (error) {
+        console.warn(`[历史图层] 清理 sessionStorage 状态失败: ${key}`, error);
+      }
+    });
+  }
+
+  /**
+   * 统一移除一个历史图层实例，确保既 removeLayer 又 clearLayers
+   * @param {*} layer 可能存在的 Leaflet 图层实例
+   */
+  removeHistoricalLayerInstance(layer) {
+    if (!layer) return;
+
+    if (typeof layer.clearLayers === 'function') {
+      layer.clearLayers();
+    }
+
+    if (this.map && this.map.hasLayer(layer)) {
+      this.map.removeLayer(layer);
+    }
+  }
+
+  /**
+   * 强制清理所有旧参考层、历史层、比较层、缓存 GeoJSON 层。
+   * 该函数在地图初始化完成后立即执行，并在异步详情加载后再次执行，
+   * 防止任何旧链路通过 addTo(map) 或 layerGroup 恢复到地图上。
+   */
+  clearLegacyReferenceLayers() {
+    if (ENABLE_HISTORY_PLOT_ASSIST || ENABLE_HISTORY_TERRAIN_LAYER) return;
+
+    console.log('[清理] 正在强制移除旧参考层/历史层/比较层...');
+    this.purgeHistoricalLayerState();
+    
+    const historicalLayerRefs = [
+      'areaBoundaryLayer',
+      'originalBoundaryLayer',
+      'historyLayerGroup',
+      'historyTerrainLayer',
+      'historyPlotLayer',
+      'comparisonLayer',
+      'cachedHistoryGeojsonLayer',
+      'referenceTerrainLayer'
+    ];
+
+    // 1. 清理 layerManager 中的业务组及历史图层引用
+    if (this.layerManager) {
+      const auxiliaryGroup = this.layerManager.layerGroups?.auxiliary;
+      historicalLayerRefs.forEach((propName) => {
+        const layer = this[propName];
+        if (layer && auxiliaryGroup && typeof auxiliaryGroup.removeLayer === 'function') {
+          auxiliaryGroup.removeLayer(layer);
+        }
+        this.removeHistoricalLayerInstance(layer);
+        this[propName] = null;
+      });
+
+      const businessGroup = this.layerManager.layerGroups?.business;
+      if (businessGroup) {
+        this.removeHistoricalLayerInstance(businessGroup);
+      }
+      if (businessGroup && typeof this.layerManager.toggleLayerGroup === 'function') {
+        this.layerManager.toggleLayerGroup('business', false);
+      }
+
+      if (auxiliaryGroup) {
+        this.removeHistoricalLayerInstance(auxiliaryGroup);
+        if (typeof this.layerManager.toggleLayerGroup === 'function') {
+          this.layerManager.toggleLayerGroup('auxiliary', false);
+        }
+      }
+
+      Object.keys(this.layerManager.layers || {}).forEach((layerName) => {
+        if (/^(terrain|risk|noFly|forest|farm|plot|reference|comparison|history|aux)-/i.test(layerName)) {
+          this.layerManager.removeLayer(layerName);
+        }
+      });
+    }
+
+    // 2. 清理内部图层引用
+    if (this.layers?.business) {
+      Object.keys(this.layers.business).forEach((key) => {
+        this.removeHistoricalLayerInstance(this.layers.business[key]);
+      });
+      this.layers.business = {};
+    }
+
+    // 3. 清理 base/auxiliary 组中可能残留的历史提示层
+    const baseGroup = this.layerManager?.layerGroups?.base;
+    if (this.layers?.base?.historyHints) {
+      if (baseGroup && typeof baseGroup.removeLayer === 'function') {
+        baseGroup.removeLayer(this.layers.base.historyHints);
+      }
+      this.removeHistoricalLayerInstance(this.layers.base.historyHints);
+      this.layers.base.historyHints = null;
+    }
+
+    // 4. 防守式清理地图上的疑似历史图层对象
+    if (this.map) {
+      this.map.eachLayer((layer) => {
+        const layerName = layer?.options?.name || layer?.layerName || '';
+        const looksHistorical = typeof layerName === 'string' && /history|comparison|reference|aux|legacy|context|old/i.test(layerName);
+        if (looksHistorical) {
+          this.removeHistoricalLayerInstance(layer);
+        }
+      });
+    }
+
+    // 5. 彻底移除 MapDataManager 实例（如果已创建），阻止后续自动请求
+    if (this.dataManager) {
+      this.dataManager.callbacks = [];
+      this.dataManager = null;
+    }
+  }
+
+  /**
+   * 兼容旧调用名，统一收口到 clearLegacyReferenceLayers
+   */
+  cleanupHistoricalLayers() {
+    this.clearLegacyReferenceLayers();
   }
   
   /**
@@ -568,6 +724,11 @@ class TerrainEditor {
 
   // 切换历史地块提示
   toggleHistoryHints(visible) {
+    if (!ENABLE_HISTORY_PLOT_ASSIST || !ENABLE_HISTORY_TERRAIN_LAYER) {
+      console.log('[历史图层] 功能已全局禁用');
+      this.clearLegacyReferenceLayers();
+      return;
+    }
     if (visible) {
       if (!this.layers.base.historyHints) {
         this.layers.base.historyHints = L.layerGroup();
@@ -2567,7 +2728,7 @@ class TerrainEditor {
     if (terrainDescInput) terrainDescInput.value = area.description || '';
     if (terrainIdInput) terrainIdInput.value = area.id || '';
 
-    if (boundaryGeoJSON) {
+    if (boundaryGeoJSON && ENABLE_HISTORY_TERRAIN_LAYER) {
       this.renderAreaBoundary(boundaryGeoJSON);
     } else if (this.areaBoundaryLayer && this.map.hasLayer(this.areaBoundaryLayer)) {
       this.map.removeLayer(this.areaBoundaryLayer);
@@ -2612,11 +2773,18 @@ class TerrainEditor {
     });
 
     this.updateSelectedPlotsList();
+    this.clearLegacyReferenceLayers();
     console.log(`成功加载地形 "${area.name || areaId}", 包含 ${zones.length} 个地块`);
   }
 
+
   // 渲染区域边界 (作为背景参考)
   renderAreaBoundary(geojson) {
+    if (!ENABLE_HISTORY_TERRAIN_LAYER) {
+      this.clearLegacyReferenceLayers();
+      return;
+    }
+
     // 优化目的: boundary_json 仅作为编辑态弱兜底参考层显示，不在此处锁死视野或覆盖真实地块聚焦。
     const parseJson = (value) => {
       let current = value;
@@ -3424,6 +3592,12 @@ class TerrainEditor {
   
   // 初始化数据管理器
   initDataManager() {
+    if (!ENABLE_HISTORY_TERRAIN_LAYER) {
+      console.log('[历史地形] 数据管理器初始化已禁用');
+      this.clearLegacyReferenceLayers();
+      return;
+    }
+
     this.dataManager = new window.MapDataManager();
     
     // 注册数据加载完成回调
@@ -3437,6 +3611,11 @@ class TerrainEditor {
   
   // 加载地形数据
   loadTerrainData(data) {
+    if (!ENABLE_HISTORY_PLOT_ASSIST || !ENABLE_HISTORY_TERRAIN_LAYER) {
+      console.log('[历史图层] 数据加载已禁用');
+      this.clearLegacyReferenceLayers();
+      return;
+    }
     // 优化目的: 业务图层继续正常加载，但编辑态不再让 allLayers / fitBounds 覆盖当前地块初始视野。
     console.log('=== 开始加载地形数据 ===');
     console.log('数据内容:', data);
@@ -3799,39 +3978,62 @@ class TerrainEditor {
   
   // 切换底图
   switchBasemap(basemap) {
-    const normalizedBasemap = basemap === 'grayscale' ? 'osm' : basemap;
-    if (normalizedBasemap === this.currentBasemap && this.activeBaseLayer) return;
+    // 统一键名规范
+    const normalizedBasemap = basemap === 'osm' ? 'grayscale' : basemap;
     
-    // 移除当前底图实例
-    if (this.activeBaseLayer) {
-      this.map.removeLayer(this.activeBaseLayer);
-    } else {
-      // 兜底：如果 activeBaseLayer 为空，尝试移除所有可能的底图
-      this.map.eachLayer(layer => {
-        if (layer instanceof L.TileLayer && !layer.options.opacity) {
-           this.map.removeLayer(layer);
-        }
-      });
+    // 如果目标底图与当前一致且实例存在，则跳过，避免重复加载
+    if (normalizedBasemap === this.currentBasemap && this.activeBaseLayer && this.map.hasLayer(this.activeBaseLayer)) {
+      return;
     }
     
-    // 获取新底图实例
+    console.log(`[底图切换] 正在从 ${this.currentBasemap || '无'} 切换至 ${normalizedBasemap}`);
+
+    // 1. 彻底移除已知的当前底图实例
+    if (this.activeBaseLayer) {
+      this.map.removeLayer(this.activeBaseLayer);
+      this.activeBaseLayer = null;
+    }
+    
+    // 2. 强力清理：移除地图上所有非叠加层的 TileLayer，防止第三方逻辑或初始化残留导致叠加
+    // 识别标准：是 TileLayer 实例，且没有设置透明度（底图通常不透明），且不是已知的等高线参考层
+    this.map.eachLayer(layer => {
+      if (layer instanceof L.TileLayer) {
+        const isOverlay = layer.options && (layer.options.opacity < 1 || layer.options.isOverlay === true);
+        const isContour = layer === this.topographicAssistLayer;
+        
+        if (!isOverlay && !isContour) {
+           console.log('[底图切换] 发现并移除残留底图层:', layer._url || 'TileLayer');
+           this.map.removeLayer(layer);
+        }
+      }
+    });
+    
+    // 3. 加载新底图
     const newLayer = this.baseLayers[normalizedBasemap];
     if (newLayer) {
       newLayer.addTo(this.map);
       this.activeBaseLayer = newLayer;
       this.currentBasemap = normalizedBasemap;
       
-      // 更新按钮显示名称
+      // 核心要求：底图必须永远在最底层，确保不遮挡任何矢量地块
+      if (this.activeBaseLayer.bringToBack) {
+        this.activeBaseLayer.bringToBack();
+      }
+      
+      // 4. 同步更新 UI 状态
       this.updateBasemapUI(normalizedBasemap);
+    } else {
+      console.error(`[底图切换] 错误：找不到键名为 "${normalizedBasemap}" 的底图配置，请检查 map_init.js`);
     }
   }
   
   // 更新底图UI
   updateBasemapUI(basemap) {
-    // 更新按钮文字
+    // 修复：更新映射关系，支持 grayscale
     const basemapNames = {
       satellite: '卫星底图',
       topographic: '等高线底图',
+      grayscale: '标准底图',
       osm: '标准底图'
     };
     

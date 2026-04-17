@@ -62,11 +62,13 @@ const activeMaps = [];
 
 // 通用地图初始化函数
 function initMap(mapId, options = {}) {
-  const mapOptions = { ...mapConfig, ...options };
+  const { skipDefaultLayer, ...mapOptions } = { ...mapConfig, ...options };
   const map = L.map(mapId, mapOptions);
 
-  // 默认添加卫星底图 (确保是新实例)
-  getBaseLayer('satellite').addTo(map);
+  // 修复：支持跳过默认底图加载，由外部逻辑（如 TerrainEditor）统一管理
+  if (!skipDefaultLayer) {
+    getBaseLayer('satellite').addTo(map);
+  }
 
   // 将新地图实例加入全局追踪
   activeMaps.push(map);

@@ -1,416 +1,590 @@
-// 地形管理页面逻辑
-// 使用全局变量
-// 直接使用全局变量TerrainMap，不需要重复声明
+const DEFAULT_MAP_CENTER = [30.05, 107.60];
+const DEFAULT_MAP_ZOOM = 7;
+const RISK_LEVEL_LABELS = {
+  high: '高',
+  medium: '中',
+  low: '低'
+};
+const PLOT_CATEGORY_LABELS = new Set(['林区', '农田', '水域', '道路', '建筑', '空地', '裸地', '其他']);
 
-// 页面数据
-let terrainData = {
+const terrainState = {
   terrains: [],
+  filteredTerrains: [],
   riskAreas: [],
   surveys: [],
-  currentTerrain: null
+  currentTerrain: null,
+  activeTerrainId: null,
+  map: null,
+  terrainOverlay: null,
+  terrainCenterMarker: null,
+  detailDrawer: null
 };
 
-// 全局地图实例
-let terrainMap;
-
-// 全局Vue实例
-let vueInstances = {};
-
-// 初始化页面
 function initPage() {
-  // 检查是否需要刷新列表 (来自编辑器保存或删除后的跳转)
-  if (localStorage.getItem('terrain_list_should_refresh') === '1') {
-    localStorage.removeItem('terrain_list_should_refresh');
-    // 可以延迟一小会刷新，或者直接执行 loadRealData
-  }
-
-  // 初始化Vue实例
-  initVue();
-
-  // 初始化地图
-  terrainMap = new TerrainMap('terrainMap');
-  terrainMap.init();
-
-  // 加载真实数据 (已清理伪数据)
-  loadRealData();
-
-  // 初始化筛选表单
+  initMap();
   initFilterForm();
-
-  // 初始化表格
-  initTables();
-
-  // 初始化事件绑定
   initEvents();
+  loadRealData();
 }
 
-// 加载真实数据
+function initMap() {
+  if (window.initMap) {
+    terrainState.map = window.initMap('terrainMap');
+  } else {
+    terrainState.map = L.map('terrainMap').setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(terrainState.map);
+  }
+
+  setMapStatus('等待加载区域数据');
+  setMapTitle(null);
+}
+
 async function loadRealData() {
   try {
-    // 1. 加载区域列表 (Area List)
+    setMapStatus('正在加载地形区域...');
     const response = await fetch('/terrain/api/areas/');
     const result = await response.json();
-    
-    if (result.code === 0) {
-      // 转换后端数据为前端格式
-      terrainData.terrains = result.data.map(item => ({
-        id: item.id,
-        name: item.name,
-        area: item.area,
-        type: translateLandType(item.type),
-        land_type: item.type,
-        risk_level: translateRiskLevel(item.risk_level),
-        riskLevelRaw: item.risk_level,
-        description: item.description,
-        boundary_json: item.boundary_json,
-        center: [item.center_lat, item.center_lng],
-        updated_at: item.updated_at
-      }));
 
-      // 更新页面显示
-      updatePageData();
-
-      // 同步到地图
-      if (terrainMap) {
-        terrainMap.loadTerrains(terrainData.terrains);
-      }
-    } else {
-      console.error('加载区域数据失败:', result.message);
+    if (result.code !== 0) {
+      throw new Error(result.message || '地形区域加载失败');
     }
-  } catch (e) {
-    console.error('请求区域数据异常:', e);
+
+    terrainState.terrains = (result.data || []).map(normalizeTerrainRecord);
+    updatePageData();
+    applyFilters({ preserveSelection: false });
+  } catch (error) {
+    console.error('请求区域数据异常:', error);
+    renderTerrainList([]);
+    setMapStatus('地形区域加载失败');
   }
 }
 
-// 类型转换辅助函数
-function translateLandType(type) {
-  const mapping = {
-    'mountain': '山地',
-    'hill': '丘陵',
-    'valley': '山谷',
-    'plateau': '高原',
-    'plain': '平原',
-    'forest': '林区',
-    'farm': '农田',
-    'farmland': '农田',
-    'water': '水域',
-    'road': '道路',
-    'building': '建筑',
-    'mixed': '混合'
+function normalizeTerrainRecord(item) {
+  const normalized = {
+    id: item.id,
+    name: item.name || `未命名地形-${item.id}`,
+    area: item.area,
+    risk_level: item.risk_level || 'low',
+    risk_level_label: translateRiskLevel(item.risk_level),
+    plot_count: Number(item.plot_count || 0),
+    composition_summary: item.composition_summary || '',
+    plot_category_counts: Array.isArray(item.plot_category_counts) ? item.plot_category_counts : [],
+    sub_category_count: Number(item.sub_category_count || 0),
+    center_lat: toNullableNumber(item.center_lat),
+    center_lng: toNullableNumber(item.center_lng),
+    bbox: item.bbox,
+    geojson: item.geojson,
+    boundary_geojson: item.boundary_geojson,
+    created_at: item.created_at || '',
+    updated_at: item.updated_at || '',
+    description: item.description || ''
   };
-  return mapping[type] || type;
+
+  normalized.composition_summary = buildCompositionSummary(normalized);
+  return normalized;
 }
 
 function translateRiskLevel(level) {
-  const mapping = {
-    'high': '高',
-    'medium': '中',
-    'low': '低'
-  };
-  return mapping[level] || level;
+  return RISK_LEVEL_LABELS[level] || level || '-';
 }
 
-// 废弃旧的假数据加载逻辑
-function loadMockData() {
-  console.warn('loadMockData 已废弃，请使用 loadRealData');
+function buildCompositionSummary(record) {
+  const rawSummary = typeof record.composition_summary === 'string'
+    ? record.composition_summary.trim()
+    : '';
+
+  if (rawSummary && !PLOT_CATEGORY_LABELS.has(rawSummary)) {
+    return rawSummary;
+  }
+
+  const categoryCount = Array.isArray(record.plot_category_counts)
+    ? record.plot_category_counts.filter(item => Number(item.count) > 0).length
+    : 0;
+
+  if (record.sub_category_count >= 2) {
+    return `包含${record.sub_category_count}类地块`;
+  }
+
+  if (categoryCount >= 2) {
+    return '混合地块';
+  }
+
+  if (record.plot_count > 0) {
+    return `由${record.plot_count}个地块组成`;
+  }
+
+  return '暂无地块';
 }
 
-// 初始化筛选表单
 function initFilterForm() {
-  // 时间范围选择
-  document.getElementById('timeRange').addEventListener('change', function() {
+  document.getElementById('timeRange')?.addEventListener('change', function() {
     const dateRange = document.getElementById('dateRange');
-    if (this.value === 'custom') {
-      dateRange.classList.remove('d-none');
-    } else {
-      dateRange.classList.add('d-none');
-    }
+    if (!dateRange) return;
+    dateRange.classList.toggle('d-none', this.value !== 'custom');
   });
 
-  // 搜索按钮
-  document.getElementById('searchBtn').addEventListener('click', function() {
-    const formData = {
-      name: document.getElementById('terrainName').value,
-      terrainType: document.getElementById('terrainType').value,
-      riskLevel: document.getElementById('riskLevel').value,
-      timeRange: document.getElementById('timeRange').value
-    };
-    // 模拟搜索
-    console.log('搜索条件:', formData);
-    // 这里可以添加实际的搜索逻辑
+  document.getElementById('searchBtn')?.addEventListener('click', function() {
+    applyFilters({ preserveSelection: true });
   });
 
-  // 重置按钮
-  document.getElementById('resetBtn').addEventListener('click', function() {
-    document.getElementById('terrainFilterForm').reset();
-    document.getElementById('dateRange').classList.add('d-none');
+  document.getElementById('resetBtn')?.addEventListener('click', function() {
+    document.getElementById('terrainFilterForm')?.reset();
+    document.getElementById('dateRange')?.classList.add('d-none');
+    applyFilters({ preserveSelection: false });
   });
 }
 
-// 初始化表格
-function initTables() {
-  // 地形表格
-  // 这里可以添加表格初始化逻辑，如排序、分页等
-}
-
-// 初始化事件绑定
 function initEvents() {
-  // 监听跨页面数据同步标记
   window.addEventListener('focus', function() {
     if (localStorage.getItem('terrain_plot_changed') === '1') {
-      console.log('检测到地块数据变动，自动刷新列表');
       loadRealData();
       localStorage.removeItem('terrain_plot_changed');
     }
   });
 
-  // 新增地形按钮
-  document.getElementById('addTerrainBtn').addEventListener('click', function() {
-    // 跳转到地块编辑器页面
+  document.getElementById('terrainTable')?.addEventListener('click', handleTerrainTableClick);
+  document.getElementById('addTerrainBtn')?.addEventListener('click', () => {
     window.location.href = '/terrain/editor/';
   });
-
-  // 刷新按钮
-  document.getElementById('refreshBtn').addEventListener('click', function() {
-    console.log('手动刷新数据');
+  document.getElementById('refreshBtn')?.addEventListener('click', () => {
     loadRealData();
   });
-
-  // 保存地形按钮
-  document.getElementById('saveTerrainBtn').addEventListener('click', function() {
-    const formData = {
-      id: document.getElementById('terrainId').value,
-      name: document.getElementById('name').value,
-      area: document.getElementById('area').value,
-      terrainType: document.getElementById('terrainType').value,
-      riskLevel: document.getElementById('riskLevel').value,
-      description: document.getElementById('description').value
-    };
-    console.log('保存地形:', formData);
-    // 这里可以添加实际的保存逻辑
-    const modal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
-    modal.hide();
-  });
-
-  // 开始测绘按钮
-  document.getElementById('startSurveyBtn').addEventListener('click', function() {
-    console.log('开始测绘');
-    // 这里可以添加实际的开始测绘逻辑
-  });
-
-  // 查看详情按钮
-  document.getElementById('viewDetailBtn').addEventListener('click', function() {
-    console.log('查看详情');
-    // 这里可以添加实际的查看详情逻辑
-  });
-
-  // 编辑按钮
-  document.getElementById('editDetailBtn').addEventListener('click', function() {
-    const modal = new bootstrap.Modal(document.getElementById('editModal'));
-    document.getElementById('editModalLabel').textContent = '编辑地形';
-    // 这里可以添加实际的编辑逻辑
-    modal.show();
-  });
-
-  // 地图事件监听
-  document.addEventListener('terrainSelected', function(e) {
-    const terrain = e.detail;
-    terrainData.currentTerrain = terrain;
-    updateDetailPanel(terrain);
-  });
-}
-
-// 初始化Vue实例
-function initVue() {
-  // 检查DOM元素是否存在
-  console.log('DOM元素检查:');
-  console.log('terrainTable:', document.getElementById('terrainTable') ? '存在' : '不存在');
-  console.log('riskAreasTable:', document.getElementById('riskAreasTable') ? '存在' : '不存在');
-  console.log('surveyRecordsTable:', document.getElementById('surveyRecordsTable') ? '存在' : '不存在');
-  
-  // 地形表格
-  console.log('创建地形表格Vue实例');
-  vueInstances.terrainTable = new Vue({
-    el: '#terrainTable',
-    data: {
-      terrains: terrainData.terrains
-    },
-    template: `
-      <table class="table table-hover" id="terrainTable">
-        <thead>
-          <tr>
-            <th scope="col">#</th>
-            <th scope="col">地形名称</th>
-            <th scope="col">面积(公顷)</th>
-            <th scope="col">类型</th>
-            <th scope="col">风险等级</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(terrain, index) in terrains" :key="terrain.id" @click="selectTerrain(terrain)" style="cursor: pointer;">
-            <th scope="row">{{ index + 1 }}</th>
-            <td>{{ terrain.name }}</td>
-            <td>{{ terrain.area }}</td>
-            <td>{{ terrain.type }}</td>
-            <td>
-              <span v-if="terrain.risk_level === '高'" class="badge bg-danger">高</span>
-              <span v-else-if="terrain.risk_level === '中等'" class="badge bg-warning">中</span>
-              <span v-else class="badge bg-success">低</span>
-            </td>
-            <td>
-              <button class="btn btn-sm btn-outline-primary" @click.stop="viewDetail(terrain)">
-                详情
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    `,
-    methods: {
-      selectTerrain: function(terrain) {
-        // 触发地形选择事件
-        const event = new CustomEvent('terrainSelected', { detail: terrain });
-        document.dispatchEvent(event);
-        // 打开详情抽屉
-        const offcanvas = new bootstrap.Offcanvas(document.getElementById('detailDrawer'));
-        offcanvas.show();
-      },
-      viewDetail: function(terrain) {
-        // 直接跳转到地块编辑器，传递区域 ID
-        window.location.href = `/terrain/editor/?area_id=${terrain.id}`;
-      }
+  document.getElementById('resetMapBtn')?.addEventListener('click', () => {
+    if (terrainState.currentTerrain) {
+      focusTerrainOnMap(terrainState.currentTerrain);
+    } else {
+      resetMapToDefault('未选中地形，已回到重庆默认视角');
     }
   });
 
-  // 风险区域表格
-  console.log('创建风险区域表格Vue实例');
-  vueInstances.riskAreasTable = new Vue({
-    el: '#riskAreasTable',
-    data: {
-      riskAreas: terrainData.riskAreas
-    },
-    template: `
-      <table class="table table-hover" id="riskAreasTable">
-        <thead>
-          <tr>
-            <th scope="col">#</th>
-            <th scope="col">风险区域</th>
-            <th scope="col">所属地形</th>
-            <th scope="col">风险等级</th>
-            <th scope="col">面积(公顷)</th>
-            <th scope="col">发现时间</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(area, index) in riskAreas" :key="area.id">
-            <th scope="row">{{ index + 1 }}</th>
-            <td>{{ area.name }}</td>
-            <td>{{ area.terrain_name }}</td>
-            <td>
-              <span v-if="area.risk_level === '高'" class="badge bg-danger">高</span>
-              <span v-else-if="area.risk_level === '中等'" class="badge bg-warning">中</span>
-              <span v-else class="badge bg-success">低</span>
-            </td>
-            <td>{{ area.area }}</td>
-            <td>{{ area.discovery_time }}</td>
-            <td>
-              <button class="btn btn-sm btn-outline-primary">查看</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    `
-  });
-  console.log('风险区域表格Vue实例创建成功:', vueInstances.riskAreasTable);
+  document.querySelectorAll('[data-layer]').forEach(button => {
+    button.addEventListener('click', function() {
+      document.querySelectorAll('[data-layer]').forEach(item => item.classList.remove('active'));
+      this.classList.add('active');
 
-  // 测绘记录表格
-  console.log('创建测绘记录表格Vue实例');
-  vueInstances.surveyRecordsTable = new Vue({
-    el: '#surveyRecordsTable',
-    data: {
-      surveys: terrainData.surveys
-    },
-    template: `
-      <table class="table table-hover" id="surveyRecordsTable">
-        <thead>
-          <tr>
-            <th scope="col">#</th>
-            <th scope="col">测绘任务</th>
-            <th scope="col">无人机</th>
-            <th scope="col">开始时间</th>
-            <th scope="col">结束时间</th>
-            <th scope="col">数据精度</th>
-            <th scope="col">状态</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(survey, index) in surveys" :key="survey.id">
-            <th scope="row">{{ index + 1 }}</th>
-            <td>{{ survey.name }}</td>
-            <td>无人机-{{ index + 1 }}</td>
-            <td>{{ survey.start_time }}</td>
-            <td>{{ survey.end_time }}</td>
-            <td>{{ survey.accuracy }}%</td>
-            <td>
-              <span v-if="survey.status === '完成'" class="badge bg-success">已完成</span>
-              <span v-else-if="survey.status === '进行中'" class="badge bg-primary">进行中</span>
-              <span v-else class="badge bg-warning">未开始</span>
-            </td>
-            <td>
-              <button class="btn btn-sm btn-outline-primary">查看</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    `
+      const layerType = this.getAttribute('data-layer');
+      if (layerType === 'terrain' && terrainState.currentTerrain) {
+        focusTerrainOnMap(terrainState.currentTerrain);
+      }
+    });
   });
-  console.log('测绘记录表格Vue实例创建成功:', vueInstances.surveyRecordsTable);
-  console.log('Vue实例初始化完成');
+  document.querySelector('[data-layer="terrain"]')?.classList.add('active');
+
+  document.getElementById('saveTerrainBtn')?.addEventListener('click', function() {
+    const formData = {
+      id: document.getElementById('terrainId')?.value,
+      name: document.getElementById('terrainFormName')?.value,
+      area: document.getElementById('terrainFormArea')?.value,
+      terrainType: document.getElementById('terrainFormType')?.value,
+      riskLevel: document.getElementById('terrainFormRiskLevel')?.value,
+      description: document.getElementById('terrainFormDescription')?.value
+    };
+    console.log('保存地形:', formData);
+    bootstrap.Modal.getInstance(document.getElementById('editModal'))?.hide();
+  });
+
+  document.getElementById('viewDetailBtn')?.addEventListener('click', function() {
+    if (terrainState.currentTerrain) {
+      window.location.href = `/terrain/editor/?area_id=${terrainState.currentTerrain.id}`;
+    }
+  });
+
+  document.getElementById('editDetailBtn')?.addEventListener('click', function() {
+    if (terrainState.currentTerrain) {
+      window.location.href = `/terrain/editor/?area_id=${terrainState.currentTerrain.id}`;
+    }
+  });
 }
 
-// 更新页面数据
+function handleTerrainTableClick(event) {
+  const actionButton = event.target.closest('button[data-action]');
+  if (actionButton) {
+    const terrainId = Number(actionButton.dataset.terrainId);
+    if (!Number.isFinite(terrainId)) return;
+
+    const terrain = terrainState.filteredTerrains.find(item => item.id === terrainId)
+      || terrainState.terrains.find(item => item.id === terrainId);
+    if (!terrain) return;
+
+    if (actionButton.dataset.action === 'focus') {
+      selectTerrainRecord(terrain, { showDrawer: false });
+      return;
+    }
+
+    if (actionButton.dataset.action === 'edit') {
+      window.location.href = `/terrain/editor/?area_id=${terrain.id}`;
+    }
+    return;
+  }
+
+  const row = event.target.closest('tr[data-terrain-id]');
+  if (!row) return;
+
+  const terrainId = Number(row.dataset.terrainId);
+  const terrain = terrainState.filteredTerrains.find(item => item.id === terrainId);
+  if (!terrain) return;
+
+  selectTerrainRecord(terrain, { showDrawer: true });
+}
+
 function updatePageData() {
-  // 更新统计数据
-  document.getElementById('totalTerrains').textContent = terrainData.terrains.length;
-  document.getElementById('highRiskAreas').textContent = terrainData.riskAreas.filter(a => a.risk_level === '高').length;
-  document.getElementById('activeTasks').textContent = terrainData.surveys.filter(s => s.status === '进行中').length;
+  document.getElementById('totalTerrains').textContent = terrainState.terrains.length;
+  document.getElementById('highRiskAreas').textContent = terrainState.terrains.filter(item => item.risk_level === 'high').length;
+  document.getElementById('activeTasks').textContent = terrainState.surveys.filter(item => item.status === '进行中').length;
   document.getElementById('dataAccuracy').textContent = '92%';
-  
-  // 更新Vue数据
-  if (vueInstances.terrainTable) {
-    vueInstances.terrainTable.terrains = terrainData.terrains;
-    vueInstances.terrainTable.$forceUpdate();
-  }
-  if (vueInstances.riskAreasTable) {
-    vueInstances.riskAreasTable.riskAreas = terrainData.riskAreas;
-    vueInstances.riskAreasTable.$forceUpdate();
-  }
-  if (vueInstances.surveyRecordsTable) {
-    vueInstances.surveyRecordsTable.surveys = terrainData.surveys;
-    vueInstances.surveyRecordsTable.$forceUpdate();
+}
+
+function applyFilters(options = {}) {
+  const { preserveSelection = true } = options;
+  const nameKeyword = (document.getElementById('terrainName')?.value || '').trim().toLowerCase();
+  const riskLevel = document.getElementById('riskLevel')?.value || '';
+  const timeRange = document.getElementById('timeRange')?.value || '';
+  const customStartDate = document.getElementById('startDate')?.value || '';
+
+  terrainState.filteredTerrains = terrainState.terrains.filter(record => {
+    if (nameKeyword && !record.name.toLowerCase().includes(nameKeyword)) {
+      return false;
+    }
+
+    if (riskLevel && record.risk_level !== riskLevel) {
+      return false;
+    }
+
+    if (!passesTimeRange(record, timeRange, customStartDate)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  renderTerrainList(terrainState.filteredTerrains);
+
+  const selectedId = preserveSelection ? terrainState.activeTerrainId : null;
+  const nextActive = terrainState.filteredTerrains.find(item => item.id === selectedId) || terrainState.filteredTerrains[0];
+
+  if (nextActive) {
+    selectTerrainRecord(nextActive, { showDrawer: false });
+  } else {
+    terrainState.currentTerrain = null;
+    terrainState.activeTerrainId = null;
+    clearTerrainOverlay();
+    updateDetailPanel(null);
+    setMapTitle(null);
+    resetMapToDefault('当前筛选条件下无可展示地形');
   }
 }
 
-// 更新详情面板
-function updateDetailPanel(terrain) {
-  document.getElementById('detailName').textContent = terrain.name;
-  document.getElementById('detailArea').textContent = terrain.area;
-  document.getElementById('detailType').textContent = terrain.type;
-  document.getElementById('detailRisk').textContent = {
-    'high': '高',
-    'medium': '中',
-    'low': '低'
-  }[terrain.risk_level] || terrain.risk_level;
-  document.getElementById('detailAccuracy').textContent = '92%';
-  document.getElementById('detailLastSurvey').textContent = '2026-04-12 10:00';
-  document.getElementById('detailElevation').textContent = '850';
-  document.getElementById('detailSlope').textContent = '25';
-  document.getElementById('detailCoverage').textContent = '85';
-  document.getElementById('detailSoil').textContent = '黄壤';
+function passesTimeRange(record, timeRange, customStartDate) {
+  if (!timeRange) {
+    return true;
+  }
+
+  if (timeRange === 'custom') {
+    if (!customStartDate) {
+      return true;
+    }
+    const recordDate = parseDate(record.updated_at || record.created_at);
+    const startDate = parseDate(customStartDate);
+    if (!recordDate || !startDate) {
+      return true;
+    }
+    return recordDate >= startDate;
+  }
+
+  const days = Number(timeRange);
+  if (!Number.isFinite(days) || days <= 0) {
+    return true;
+  }
+
+  const recordDate = parseDate(record.updated_at || record.created_at);
+  if (!recordDate) {
+    return true;
+  }
+
+  const threshold = new Date();
+  threshold.setHours(0, 0, 0, 0);
+  threshold.setDate(threshold.getDate() - days);
+  return recordDate >= threshold;
 }
 
-// 页面加载完成后初始化
+function renderTerrainList(data) {
+  const tbody = document.querySelector('#terrainTable tbody');
+  if (!tbody) return;
+
+  if (!Array.isArray(data) || data.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="text-center text-muted py-4">暂无匹配的地形区域</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = data.map((record, index) => `
+    <tr class="terrain-row${record.id === terrainState.activeTerrainId ? ' active' : ''}" data-terrain-id="${record.id}">
+      <th scope="row">${index + 1}</th>
+      <td class="terrain-name-cell">
+        <div class="terrain-name-main">${escapeHtml(record.name)}</div>
+        <div class="terrain-composition-text">${escapeHtml(buildCompositionSummary(record))}</div>
+      </td>
+      <td>${formatArea(record.area)}</td>
+      <td>${buildRiskBadge(record.risk_level)}</td>
+      <td>${record.plot_count}块</td>
+      <td class="terrain-actions-cell">
+        <button type="button" class="btn btn-sm btn-outline-primary" data-action="focus" data-terrain-id="${record.id}">定位</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-action="edit" data-terrain-id="${record.id}">编辑</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function setActiveTerrainRow(id) {
+  terrainState.activeTerrainId = id;
+  document.querySelectorAll('#terrainTable tbody tr[data-terrain-id]').forEach(row => {
+    row.classList.toggle('active', Number(row.dataset.terrainId) === id);
+  });
+}
+
+function selectTerrainRecord(record, options = {}) {
+  const { showDrawer = false } = options;
+  terrainState.currentTerrain = record;
+  setActiveTerrainRow(record.id);
+  updateDetailPanel(record);
+  focusTerrainOnMap(record);
+
+  if (showDrawer) {
+    getDetailDrawer().show();
+  }
+}
+
+function parseTerrainGeometry(record) {
+  const geojson = parseGeoJSON(record?.geojson);
+  if (geojson) {
+    return { mode: 'geojson', value: geojson };
+  }
+
+  const boundaryGeoJSON = parseGeoJSON(record?.boundary_geojson);
+  if (boundaryGeoJSON) {
+    return { mode: 'geojson', value: boundaryGeoJSON };
+  }
+
+  const bbox = parseBBox(record?.bbox);
+  if (bbox) {
+    return { mode: 'bbox', value: bbox };
+  }
+
+  const center = parseCenter(record?.center_lat, record?.center_lng);
+  if (center) {
+    return { mode: 'center', value: center };
+  }
+
+  return { mode: 'default', value: null };
+}
+
+function clearTerrainOverlay() {
+  if (terrainState.terrainOverlay && terrainState.map) {
+    terrainState.map.removeLayer(terrainState.terrainOverlay);
+  }
+  if (terrainState.terrainCenterMarker && terrainState.map) {
+    terrainState.map.removeLayer(terrainState.terrainCenterMarker);
+  }
+  terrainState.terrainOverlay = null;
+  terrainState.terrainCenterMarker = null;
+}
+
+function focusTerrainOnMap(record) {
+  if (!terrainState.map || !record) {
+    return;
+  }
+
+  clearTerrainOverlay();
+  setMapTitle(record.name);
+
+  const parsedGeometry = parseTerrainGeometry(record);
+  if (parsedGeometry.mode === 'geojson') {
+    terrainState.terrainOverlay = L.geoJSON(parsedGeometry.value, {
+      style: {
+        color: '#2563eb',
+        weight: 3,
+        fillColor: '#60a5fa',
+        fillOpacity: 0.2
+      },
+      pointToLayer: function(feature, latlng) {
+        return L.circleMarker(latlng, {
+          radius: 6,
+          color: '#1d4ed8',
+          fillColor: '#60a5fa',
+          fillOpacity: 0.9
+        });
+      }
+    }).addTo(terrainState.map);
+
+    const bounds = terrainState.terrainOverlay.getBounds();
+    if (bounds.isValid()) {
+      terrainState.map.fitBounds(bounds, { padding: [32, 32] });
+      setMapStatus('已按区域边界定位');
+    } else {
+      resetMapToDefault('地形空间数据无有效范围，已回退默认视角');
+    }
+    return;
+  }
+
+  if (parsedGeometry.mode === 'bbox') {
+    const [[minLat, minLng], [maxLat, maxLng]] = parsedGeometry.value;
+    terrainState.terrainOverlay = L.rectangle([[minLat, minLng], [maxLat, maxLng]], {
+      color: '#2563eb',
+      weight: 2,
+      fillColor: '#93c5fd',
+      fillOpacity: 0.18
+    }).addTo(terrainState.map);
+    terrainState.map.fitBounds(terrainState.terrainOverlay.getBounds(), { padding: [32, 32] });
+    setMapStatus('已按边界框定位');
+    return;
+  }
+
+  if (parsedGeometry.mode === 'center') {
+    terrainState.terrainCenterMarker = L.marker(parsedGeometry.value).addTo(terrainState.map);
+    terrainState.map.setView(parsedGeometry.value, 14);
+    setMapStatus('缺少边界数据，已按中心点定位');
+    return;
+  }
+
+  resetMapToDefault('当前地形缺少空间数据，已回退重庆默认视角');
+}
+
+function updateDetailPanel(record) {
+  document.getElementById('detailName').textContent = record ? record.name : '-';
+  document.getElementById('detailArea').textContent = record ? formatArea(record.area) : '-';
+  document.getElementById('detailComposition').textContent = record ? buildCompositionSummary(record) : '-';
+  document.getElementById('detailRisk').textContent = record ? record.risk_level_label : '-';
+  document.getElementById('detailPlotCount').textContent = record ? `${record.plot_count}块` : '-';
+  document.getElementById('detailUpdatedAt').textContent = record ? formatDateTime(record.updated_at || record.created_at) : '-';
+  document.getElementById('detailAccuracy').textContent = record ? '92%' : '-';
+  document.getElementById('detailElevation').textContent = record ? '850' : '-';
+  document.getElementById('detailSlope').textContent = record ? '25' : '-';
+  document.getElementById('detailCoverage').textContent = record ? '85' : '-';
+  document.getElementById('detailSoil').textContent = record ? '黄壤' : '-';
+}
+
+function buildRiskBadge(riskLevel) {
+  const label = translateRiskLevel(riskLevel);
+  const badgeClass = riskLevel === 'high'
+    ? 'bg-danger'
+    : riskLevel === 'medium'
+      ? 'bg-warning text-dark'
+      : 'bg-success';
+  return `<span class="badge ${badgeClass}">${label}</span>`;
+}
+
+function formatArea(value) {
+  const areaNumber = Number(value);
+  if (!Number.isFinite(areaNumber)) {
+    return '-';
+  }
+  return areaNumber.toFixed(2);
+}
+
+function formatDateTime(value) {
+  const date = parseDate(value);
+  if (!date) {
+    return '-';
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
+function parseDate(value) {
+  if (!value) {
+    return null;
+  }
+  const parsedDate = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
+function parseGeoJSON(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsedValue = value;
+  if (typeof parsedValue === 'string') {
+    try {
+      parsedValue = JSON.parse(parsedValue);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  return parsedValue && typeof parsedValue === 'object' && parsedValue.type ? parsedValue : null;
+}
+
+function parseBBox(value) {
+  if (!Array.isArray(value) || value.length !== 4) {
+    return null;
+  }
+
+  const [minLng, minLat, maxLng, maxLat] = value.map(Number);
+  if ([minLng, minLat, maxLng, maxLat].some(item => !Number.isFinite(item))) {
+    return null;
+  }
+
+  return [[minLat, minLng], [maxLat, maxLng]];
+}
+
+function parseCenter(lat, lng) {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+  return [latitude, longitude];
+}
+
+function resetMapToDefault(message) {
+  clearTerrainOverlay();
+  if (terrainState.map) {
+    terrainState.map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+  }
+  setMapStatus(message);
+}
+
+function setMapTitle(name) {
+  const titleElement = document.getElementById('terrainMapTitle');
+  if (!titleElement) return;
+  titleElement.textContent = name ? `当前地形：${name}` : '当前地形：未选择';
+}
+
+function setMapStatus(message) {
+  const statusElement = document.getElementById('terrainMapStatus');
+  if (!statusElement) return;
+  statusElement.textContent = message;
+}
+
+function getDetailDrawer() {
+  if (!terrainState.detailDrawer) {
+    terrainState.detailDrawer = new bootstrap.Offcanvas(document.getElementById('detailDrawer'));
+  }
+  return terrainState.detailDrawer;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toNullableNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 window.addEventListener('DOMContentLoaded', initPage);

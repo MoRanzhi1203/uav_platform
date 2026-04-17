@@ -58,6 +58,61 @@
   background-color: rgba(59, 130, 246, 0.1);
 }
 
+#terrainTable tbody tr {
+  cursor: pointer;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+#terrainTable tbody tr.active {
+  background-color: rgba(37, 99, 235, 0.12);
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+#terrainTable tbody tr.active:hover {
+  background-color: rgba(37, 99, 235, 0.16);
+}
+
+.terrain-name-cell {
+  min-width: 180px;
+}
+
+.terrain-name-main {
+  color: #0f172a;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.terrain-composition-text {
+  margin-top: 0.2rem;
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.terrain-actions-cell {
+  white-space: nowrap;
+}
+
+.terrain-map-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.terrain-map-subtitle {
+  color: #334155;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.terrain-map-status {
+  color: #64748b;
+  font-size: 0.85rem;
+  text-align: right;
+}
+
 /* 按钮样式 */
 .btn-primary {
   background-color: #3b82f6;
@@ -286,6 +341,15 @@
 @media (max-width: 768px) {
   .map-container {
     height: 300px;
+  }
+
+  .terrain-map-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .terrain-map-status {
+    text-align: left;
   }
 }
 
