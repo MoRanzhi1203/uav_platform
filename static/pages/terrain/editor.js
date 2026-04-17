@@ -92,7 +92,7 @@ function initEditor() {
       console.warn('未指定区域 ID，部分功能可能受限');
       
       // 新建地形时，触发默认分类（如林区）的子类型加载联动
-      const defaultPlotType = document.getElementById('plotType')?.value;
+      const defaultPlotType = document.getElementById('plotCategory')?.value;
       if (defaultPlotType) {
         terrainEditor.setPlotCategoryAndLoadSubcategories(defaultPlotType, '');
       }
@@ -178,15 +178,15 @@ function initEditor() {
   });
 
   // 地块类型选择联动
-  const plotTypeSelect = document.getElementById('plotType');
-  const subTypeGroup = document.getElementById('subTypeGroup');
-  if (plotTypeSelect && subTypeGroup) {
-    plotTypeSelect.addEventListener('change', function() {
+  const plotCategorySelect = document.getElementById('plotCategory');
+  const subCategoryGroup = document.getElementById('subCategoryGroup');
+  if (plotCategorySelect && subCategoryGroup) {
+    plotCategorySelect.addEventListener('change', function() {
       if (this.value) {
-        subTypeGroup.style.display = 'block';
+        subCategoryGroup.style.display = 'block';
       } else {
-        subTypeGroup.style.display = 'none';
-        document.getElementById('plotSubType').value = '';
+        subCategoryGroup.style.display = 'none';
+        document.getElementById('plotSubCategory').value = '';
       }
     });
   }
@@ -382,32 +382,30 @@ function bindToolEvents() {
 
 // 绑定属性面板事件
 function bindAttributeEvents() {
-  const plotType = document.getElementById('plotType');
-  const subTypeGroup = document.getElementById('subTypeGroup');
-  const plotSubType = document.getElementById('plotSubType');
+  const plotCategory = document.getElementById('plotCategory');
+  const subCategoryGroup = document.getElementById('subCategoryGroup');
+  const plotSubCategory = document.getElementById('plotSubCategory');
 
-  if (plotType) {
-    plotType.addEventListener('change', function(e) {
-      const type = this.value;
+  if (plotCategory) {
+    plotCategory.addEventListener('change', function(e) {
+      const category = this.value;
       const isUserAction = e.isTrusted || (e.detail && e.detail.isUserTriggered);
-      // --- 日志4：类型-子类别联动日志 ---
-      console.log('[日志4：类型联动]');
-      console.log('- plot_type 变化来源:', isUserAction ? '用户主动修改' : '代码初始化/回填');
-      console.log('- 新的 plot_type:', type);
+      // --- 日志4：大类-小类别联动日志 ---
+      console.log('[日志4：大类联动]');
+      console.log('- plot_category 变化来源:', isUserAction ? '用户主动修改' : '代码初始化/回填');
+      console.log('- 新的 plot_category:', category);
       
-      // 所有大类都支持显示子类别下拉列表，实现全类型统一
-      if (type) {
-        if (subTypeGroup) subTypeGroup.style.display = 'block';
+      if (category) {
+        if (subCategoryGroup) subCategoryGroup.style.display = 'block';
         if (terrainEditor) {
-          // 只有用户主动改变时才清空子类别；代码触发时保持现状（或在 load 中回填）
           if (isUserAction) {
-            console.log('- 触发原因：用户主动修改，正在清空 subtype');
+            console.log('- 触发原因：用户主动修改，正在清空 subCategory');
             terrainEditor.selectSubCategory('');
             terrainEditor.loadSubCategories('');
           }
         }
       } else {
-        if (subTypeGroup) subTypeGroup.style.display = 'none';
+        if (subCategoryGroup) subCategoryGroup.style.display = 'none';
         if (terrainEditor) {
           if (isUserAction) {
             terrainEditor.selectSubCategory('');
@@ -417,19 +415,22 @@ function bindAttributeEvents() {
       
       // 更新当前激活地块的属性 (如果有)
       if (terrainEditor && terrainEditor.activePlotId) {
-        terrainEditor.updateActivePlotProperties({ type: type });
+        terrainEditor.updateActivePlotProperties({ category });
       }
     });
   }
 
-  // 其他属性变化监听，移除 plotRemark (已集成到子类型)
-  ['plotName', 'riskLevel', 'description', 'plotSubType'].forEach(id => {
+  // 其他属性变化监听
+  ['plotName', 'riskLevel', 'description', 'plotSubCategory'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', function() {
         if (terrainEditor && terrainEditor.activePlotId) {
           const props = {};
           let key = id.replace('plot', '').charAt(0).toLowerCase() + id.replace('plot', '').slice(1);
+          if (key === 'subCategory') {
+            key = 'subCategory';
+          }
           props[key] = this.value;
           terrainEditor.updateActivePlotProperties(props);
         }
@@ -591,11 +592,11 @@ function bindAssistLayerEvents() {
 
 // 绑定自定义地块类型下拉菜单事件
 function bindCustomPlotTypeDropdown() {
-  const dropdownItems = document.querySelectorAll('#plotTypeDropdownMenu .dropdown-item');
-  const plotTypeInput = document.getElementById('plotType');
-  const btnContent = document.getElementById('selectedPlotTypeName');
+  const dropdownItems = document.querySelectorAll('#plotCategoryDropdownMenu .dropdown-item');
+  const plotCategoryInput = document.getElementById('plotCategory');
+  const btnContent = document.getElementById('selectedPlotCategoryName');
 
-  if (!dropdownItems.length || !plotTypeInput || !btnContent) return;
+  if (!dropdownItems.length || !plotCategoryInput || !btnContent) return;
 
   dropdownItems.forEach(item => {
     item.addEventListener('click', function(e) {
@@ -611,11 +612,11 @@ function bindCustomPlotTypeDropdown() {
       
       // 更新隐藏输入框的值
       const value = this.getAttribute('data-value');
-      plotTypeInput.value = value;
+      plotCategoryInput.value = value;
       
       // 触发 change 事件，以便触发 bindAttributeEvents 中的联动逻辑
       const event = new CustomEvent('change', { detail: { isUserTriggered: true }, bubbles: true });
-      plotTypeInput.dispatchEvent(event);
+      plotCategoryInput.dispatchEvent(event);
     });
   });
 }

@@ -20,6 +20,60 @@ logger = logging.getLogger(__name__)
 SUBCATEGORY_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "terrain_subcategories.json"
 
 
+def _pick_first_non_empty(*values):
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            if value.strip():
+                return value.strip()
+            continue
+        return value
+    return None
+
+
+def normalize_zone_payload(raw_plot_item):
+    """
+    兼容历史前端字段，并统一映射到 TerrainZone 模型字段：
+    - category = 地块大类
+    - type = 小类别名称
+    """
+    plot_item = dict(raw_plot_item or {})
+    meta_json = plot_item.get('meta_json')
+    if not isinstance(meta_json, dict):
+        meta_json = {}
+
+    category = _pick_first_non_empty(
+        plot_item.get('category'),
+        plot_item.get('plotCategory'),
+        meta_json.get('category'),
+    )
+    sub_category = _pick_first_non_empty(
+        plot_item.get('subCategory'),
+        plot_item.get('sub_category'),
+        plot_item.get('subType'),
+        plot_item.get('subcategory'),
+        plot_item.get('subcategoryName'),
+        meta_json.get('sub_type'),
+        meta_json.get('subCategory'),
+        meta_json.get('subcategory'),
+        plot_item.get('type') if plot_item.get('category') else None,
+    )
+
+    if category:
+        plot_item['category'] = category
+    if sub_category is not None:
+        plot_item['type'] = sub_category
+
+    if isinstance(plot_item.get('meta_json'), dict):
+        plot_item['meta_json']['sub_type'] = sub_category or ''
+
+    for legacy_key in ('subCategory', 'sub_category', 'subType', 'subcategory', 'subcategoryName'):
+        plot_item.pop(legacy_key, None)
+
+    return plot_item
+
+
 def load_subcategory_config():
     """读取并标准化子类别 JSON 配置。"""
     if not SUBCATEGORY_CONFIG_PATH.exists():
@@ -212,12 +266,21 @@ def unified_save_terrain(request):
             terrain_id = terrain_data.get('id')
             if terrain_id:
                 terrain = get_object_or_404(TerrainArea, id=terrain_id, is_deleted=False)
-                terrain.name = terrain_data.get('name')
-                terrain.description = terrain_data.get('description', '')
-                if terrain_data.get('type'):
+                terrain.name = terrain_data.get('name', terrain.name)
+                if 'description' in terrain_data:
+                    terrain.description = terrain_data.get('description', terrain.description)
+                if 'type' in terrain_data and terrain_data.get('type'):
                     terrain.type = terrain_data.get('type')
-                if terrain_data.get('risk_level'):
+                if 'risk_level' in terrain_data and terrain_data.get('risk_level'):
                     terrain.risk_level = terrain_data.get('risk_level')
+                if 'boundary_json' in terrain_data and terrain_data.get('boundary_json') is not None:
+                    terrain.boundary_json = terrain_data.get('boundary_json')
+                if 'center_lng' in terrain_data and terrain_data.get('center_lng') is not None:
+                    terrain.center_lng = terrain_data.get('center_lng')
+                if 'center_lat' in terrain_data and terrain_data.get('center_lat') is not None:
+                    terrain.center_lat = terrain_data.get('center_lat')
+                if 'area' in terrain_data and terrain_data.get('area') is not None:
+                    terrain.area = terrain_data.get('area')
                 terrain.save()
                 msg = "地形与地块已成功更新"
             else:
@@ -233,6 +296,7 @@ def unified_save_terrain(request):
             # 2. 批量处理地块 (TerrainZone)
             saved_plot_ids = []
             for plot_item in plots_data:
+                plot_item = normalize_zone_payload(plot_item)
                 plot_id = plot_item.get('id')
                 plot_item['area_obj'] = terrain.id # 强制关联到当前地形
                 
@@ -279,12 +343,13 @@ def create_or_update_zone(request):
     """地块创建或更新"""
     try:
         zone_id = request.data.get('id')
+        payload = normalize_zone_payload(request.data)
         if zone_id:
             zone = get_object_or_404(TerrainZone, id=zone_id, is_deleted=False)
-            serializer = TerrainZoneSerializer(zone, data=request.data, partial=True)
+            serializer = TerrainZoneSerializer(zone, data=payload, partial=True)
             msg = "地块更新成功"
         else:
-            serializer = TerrainZoneSerializer(data=request.data)
+            serializer = TerrainZoneSerializer(data=payload)
             msg = "地块创建成功"
 
         if serializer.is_valid():

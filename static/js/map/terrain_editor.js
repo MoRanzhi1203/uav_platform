@@ -1078,7 +1078,7 @@ class TerrainEditor {
     }
 
     const layerOptions = {
-      style: this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)),
+      style: this.getPlotStyle(plot.properties?.category, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)),
       interactive: this.currentTool === 'move-layer' && !plot.locked
     };
     if (!plot.db_id) {
@@ -1345,7 +1345,7 @@ class TerrainEditor {
             <i class="bi ${isVisible ? 'bi-eye' : 'bi-eye-slash'} layer-visibility"></i>
           </div>
           <div class="layer-color-area" title="${name}">
-            <span class="layer-color" style="background-color: ${this.getPlotColor(plot.properties?.type)};" title="${name}"></span>
+            <span class="layer-color" style="background-color: ${this.getPlotColor(plot.properties?.category)};" title="${name}"></span>
           </div>
           <div class="layer-name-area" title="${name}">
             <span class="layer-name text-truncate" title="${name}">${name}</span>
@@ -1530,8 +1530,8 @@ class TerrainEditor {
     // --- 日志3：图层切换日志 ---
     console.log('[日志3：图层切换]');
     console.log('- 切换前 activeLayerId:', this.activePlotId);
-    const oldSubtype = document.getElementById('plotSubType')?.value;
-    console.log('- 切换前表单 subtype:', oldSubtype);
+    const oldSubtype = document.getElementById('plotSubCategory')?.value;
+    console.log('- 切换前表单 subCategory:', oldSubtype);
 
     // 更新当前选中 ID
     this.activePlotId = plotId;
@@ -1544,7 +1544,7 @@ class TerrainEditor {
     }
 
     console.log('- 切换后 activeLayerId:', plot.id);
-    console.log('- 切换后准备从 layer 回填的 subtype:', plot.properties?.subType || '');
+    console.log('- 切换后准备从 layer 回填的 subCategory:', plot.properties?.subCategory || '');
 
     // 更新地图上所有图层的样式
     this.refreshPlotStyles();
@@ -1627,8 +1627,8 @@ class TerrainEditor {
     if (nameInput) nameInput.value = plot.properties?.name || '';
 
     // 使用统一方法设置地块类型、触发子类型加载并回填
-    const currentCategory = plot.properties?.type || 'forest';
-    const currentSubtype = plot.properties?.subType || '';
+    const currentCategory = plot.properties?.category || 'forest';
+    const currentSubtype = plot.properties?.subCategory || '';
     this.setPlotCategoryAndLoadSubcategories(currentCategory, currentSubtype);
 
     const riskSelect = document.getElementById('riskLevel');
@@ -2194,10 +2194,13 @@ class TerrainEditor {
     if (!this.activePlotId) return;
     const plot = this.userPlots.find(p => p.id === this.activePlotId);
     if (plot) {
-      plot.properties = { ...plot.properties, ...newProps };
-      // 如果类型改变，更新样式
-      if (newProps.type && plot.layer) {
-        plot.layer.setStyle(this.getPlotStyle(newProps.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
+      plot.properties = this.normalizePlotProperties({
+        ...plot.properties,
+        ...newProps
+      });
+      // 如果大类改变，更新样式
+      if (newProps.category && plot.layer) {
+        plot.layer.setStyle(this.getPlotStyle(plot.properties.category, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
       }
       this.updateSelectedPlotsList();
     }
@@ -2248,8 +2251,8 @@ class TerrainEditor {
   paintAt(latlng) {
     const grids = this.getGridsForBrush(latlng);
     const newRectangles = [];
-    const type = document.getElementById('plotType')?.value || 'forest';
-    const color = this.getPlotColor(type);
+    const category = document.getElementById('plotCategory')?.value || 'forest';
+    const color = this.getPlotColor(category);
     
     grids.forEach(g => {
       const key = `${g.latIndex},${g.lngIndex}`;
@@ -2528,29 +2531,34 @@ class TerrainEditor {
       terrain: {
         id: terrainId || null,
         name: terrainName,
-        description: terrainDesc
+        description: terrainDesc,
+        type: this.areaData?.type,
+        risk_level: this.areaData?.risk_level,
+        boundary_json: this.areaData?.boundary_json,
+        center_lng: this.areaData?.center_lng,
+        center_lat: this.areaData?.center_lat,
+        area: this.areaData?.area
       },
       plots: [] // 收集所有地块
     };
 
     // 收集所有有效图层地块
     for (const plot of validPlots) {
-      const properties = plot.properties || this.getCurrentPlotPropertiesFromForm();
-      let landType = properties.type || 'forest';
+      const properties = this.normalizePlotProperties(plot.properties || this.getCurrentPlotPropertiesFromForm());
 
       terrainPayload.plots.push({
         id: plot.db_id || null,
         area_obj: terrainId || null,
         name: properties.name || '未命名地块',
-        category: landType,
-        type: properties.subType || '', // 子类别
+        category: properties.category || 'forest',
+        type: properties.subCategory || '', // 后端 TerrainZone.type = 小类别
         risk_level: properties.riskLevel || 'low',
         area: properties.areaHa || 0,
         description: properties.description || '',
         geom_json: plot.geojson,
         grid_json: plot.gridData || { grid_size: 10, cells: [] },
         style_json: {
-          fill_color: this.getPlotColor(properties.type),
+          fill_color: this.getPlotColor(properties.category),
           stroke_color: this.colorScheme.selected,
           layer_name: properties.name,
           visible: plot.visible !== false,
@@ -2559,7 +2567,7 @@ class TerrainEditor {
         meta_json: {
           source: 'manual_draw',
           editor_mode: 'pixel_brush',
-          sub_type: properties.subType || ''
+          sub_type: properties.subCategory || ''
         }
       });
     }
@@ -2948,24 +2956,21 @@ class TerrainEditor {
       return;
     }
 
-    const category = data?.category || data?.type || meta?.category || '';
-    const subType = data?.subcategory || data?.sub_type || data?.type || meta?.sub_type || meta?.subcategory || '';
+    const category = data?.category || meta?.category || '';
+    const subCategory = data?.subCategory || data?.sub_category || data?.subcategory || data?.sub_type || data?.type || meta?.subCategory || meta?.sub_type || meta?.subcategory || '';
     const visible = styleData?.visible !== false;
     const locked = !!styleData?.locked;
 
-    const properties = {
+    const properties = this.normalizePlotProperties({
       name: data?.name || meta?.name || `地块 ${data?.id || this.userPlots.length + 1}`,
-      type: category,
-      category: category,
+      category,
       riskLevel: data?.risk_level || meta?.risk_level || 'low',
       description: data?.description || meta?.description || '',
       areaHa: data?.area || meta?.area || 0,
-      subType: subType,
-      subcategory: subType,
-      subcategoryName: data?.subcategory_name || meta?.subcategory_name || subType
-    };
+      subCategory
+    });
 
-    const baseStyle = this.getPlotStyle(properties.type, false, false);
+    const baseStyle = this.getPlotStyle(properties.category, false, false);
     const layerStyle = {
       ...baseStyle
     };
@@ -3055,13 +3060,13 @@ class TerrainEditor {
     alert('GeoJSON 导出成功（仅包含用户绘制地块）');
   }
 
-  getPlotColor(type) {
-    if (type && this.colorScheme[type]) return this.colorScheme[type];
+  getPlotColor(category) {
+    if (category && this.colorScheme[category]) return this.colorScheme[category];
     return this.colorScheme.selected;
   }
 
-  getPlotStyle(type, isActive, isMultiSelected = false) {
-    const fill = this.getPlotColor(type);
+  getPlotStyle(category, isActive, isMultiSelected = false) {
+    const fill = this.getPlotColor(category);
     if (isActive) {
       return {
         color: this.colorScheme.selected,
@@ -3086,37 +3091,56 @@ class TerrainEditor {
     };
   }
 
+  normalizePlotProperties(raw = {}) {
+    const rawSubCategory = raw.subCategory
+      ?? raw.sub_category
+      ?? raw.subType
+      ?? raw.subcategory
+      ?? raw.subcategoryName
+      ?? '';
+
+    return {
+      name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : '未命名地块',
+      category: raw.category || raw.type || raw.plotCategory || 'forest',
+      subCategory: typeof rawSubCategory === 'string' ? rawSubCategory.trim() : '',
+      riskLevel: raw.riskLevel || raw.risk_level || 'low',
+      description: raw.description || '',
+      areaHa: Number.isFinite(Number(raw.areaHa ?? raw.area ?? 0)) ? Number(raw.areaHa ?? raw.area ?? 0) : 0
+    };
+  }
+
   getCurrentPlotPropertiesFromForm() {
     const name = document.getElementById('plotName')?.value || '未命名地块';
-    const type = document.getElementById('plotType')?.value || 'forest';
-    const subType = document.getElementById('plotSubType')?.value || '';
+    const category = document.getElementById('plotCategory')?.value || 'forest';
+    const subCategory = document.getElementById('plotSubCategory')?.value || '';
     const riskLevel = document.getElementById('riskLevel')?.value || 'low';
     const description = document.getElementById('description')?.value || '';
 
-    return {
+    return this.normalizePlotProperties({
       name,
-      type,
-      subType,
+      category,
+      subCategory,
       riskLevel,
       description,
       areaHa: 0
-    };
+    });
   }
 
   canAutoMergePlot(plot, properties) {
     if (!plot || !plot.properties) return false;
     if (plot.locked) return false;
-    if (plot.properties.type !== properties.type) return false;
+    if (plot.properties.category !== properties.category) return false;
     if ((plot.properties.riskLevel || 'low') !== (properties.riskLevel || 'low')) return false;
-    if ((plot.properties.subType || '') !== (properties.subType || '')) return false;
+    if ((plot.properties.subCategory || '') !== (properties.subCategory || '')) return false;
     return true;
   }
 
   // 创建地块对象
   createPlotFromGeoJSON(geojson, properties, gridData = null, db_id = null) {
     const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const normalizedProperties = this.normalizePlotProperties(properties);
     const layer = L.geoJSON(geojson, {
-      style: this.getPlotStyle(properties.type, false, false),
+      style: this.getPlotStyle(normalizedProperties.category, false, false),
       interactive: this.currentTool === 'move-layer',
       renderer: this.canvasRenderer
     });
@@ -3127,7 +3151,10 @@ class TerrainEditor {
       db_id, // 允许传入数据库 ID
       geojson,
       gridData: gridData || { grid_size: 10, cells: [] },
-      properties,
+      properties: normalizedProperties,
+      meta: {},
+      style: {},
+      elements: [],
       visible: true,
       locked: false,
       layer
@@ -3148,8 +3175,8 @@ class TerrainEditor {
     
     const name = prompt('请输入标记名称:', '新标记');
     if (!name) return;
-    const type = prompt('请输入标记类型:', '观测点');
-    if (!type) return;
+      const type = prompt('请输入标记类型:', '观测点');
+      if (!type) return;
     
     const payload = {
       zone: plot.db_id,
@@ -3426,7 +3453,7 @@ class TerrainEditor {
   updateLayerColors() {
     this.userPlots.forEach(plot => {
       if (plot.layer && plot.layer.setStyle) {
-        plot.layer.setStyle(this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
+        plot.layer.setStyle(this.getPlotStyle(plot.properties?.category, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
       }
     });
   }
@@ -4156,8 +4183,8 @@ class TerrainEditor {
     this._createZoneNameManuallyEdited = false;
     this._lastCreateZoneAutoName = '';
 
-    categorySelect.value = defaults.type;
-    await this.populateCreateZoneSubtypeOptions(defaults.type, defaults.subType);
+    categorySelect.value = defaults.category;
+    await this.populateCreateZoneSubCategoryOptions(defaults.category, defaults.subCategory);
     this.updateCreateZoneNameSuggestion(true);
     modal.show();
   }
@@ -4170,20 +4197,20 @@ class TerrainEditor {
     if (this.activePlotId) {
       const activePlot = this.userPlots.find(p => p.id === this.activePlotId);
       if (activePlot && activePlot.properties) {
-        defaultType = activePlot.properties.type || 'forest';
-        defaultSubtype = activePlot.properties.subType || '';
+      defaultType = activePlot.properties.category || 'forest';
+      defaultSubtype = activePlot.properties.subCategory || '';
         defaultRiskLevel = activePlot.properties.riskLevel || 'low';
       }
     } else {
       // 尝试从当前表单获取作为次优先级
-      defaultType = document.getElementById('plotType')?.value || 'forest';
-      defaultSubtype = document.getElementById('plotSubType')?.value || '';
+      defaultType = document.getElementById('plotCategory')?.value || 'forest';
+      defaultSubtype = document.getElementById('plotSubCategory')?.value || '';
       defaultRiskLevel = document.getElementById('riskLevel')?.value || 'low';
     }
 
     return {
-      type: defaultType,
-      subType: defaultSubtype,
+      category: defaultType,
+      subCategory: defaultSubtype,
       riskLevel: defaultRiskLevel
     };
   }
@@ -4428,37 +4455,50 @@ class TerrainEditor {
   }
 
   async loadSubCategories(selectedValue = null, categoryOverride = null) {
-    const category = categoryOverride || document.getElementById('plotType')?.value;
+    const category = categoryOverride || document.getElementById('plotCategory')?.value;
     if (!category) return;
 
     const subcategories = await this.fetchSubCategories(category);
-    this.renderSubCategoryDropdown(subcategories, selectedValue);
+    const hasSelectedValue = !!selectedValue;
+    const normalizedSelectedValue = hasSelectedValue ? String(selectedValue).trim() : '';
+    const hasMatch = normalizedSelectedValue
+      ? subcategories.some(item => item?.name === normalizedSelectedValue)
+      : false;
+
+    if (hasSelectedValue && normalizedSelectedValue && !hasMatch) {
+      this.renderSubCategoryDropdown(subcategories, '');
+      this.selectSubCategory('');
+      this.showAlert('当前小类别不属于新的地块大类，已自动清空，请重新选择。', '小类别已重置', 'warning');
+      return;
+    }
+
+    this.renderSubCategoryDropdown(subcategories, normalizedSelectedValue);
   }
 
-  // 统一地块类型和子类型联动设置方法
+  // 统一地块大类和小类别联动设置方法
   async setPlotCategoryAndLoadSubcategories(category, selectedSubcategory = '') {
-    const plotTypeInput = document.getElementById('plotType');
-    const subTypeGroup = document.getElementById('subTypeGroup');
+    const plotCategoryInput = document.getElementById('plotCategory');
+    const subCategoryGroup = document.getElementById('subCategoryGroup');
     
-    if (plotTypeInput && category) {
-      plotTypeInput.value = category;
-      if (subTypeGroup) subTypeGroup.style.display = 'block';
+    if (plotCategoryInput && category) {
+      plotCategoryInput.value = category;
+      if (subCategoryGroup) subCategoryGroup.style.display = 'block';
       
       // 更新自定义下拉菜单 UI
-      this.updatePlotTypeUI(category);
+      this.updatePlotCategoryUI(category);
     }
     
-    // 等待子类型加载完成并回填
+    // 等待小类别加载完成并回填
     await this.loadSubCategories(selectedSubcategory, category);
   }
 
   /**
-   * 更新自定义地块类型下拉菜单的 UI 状态
-   * @param {string} category 选中的地块类型值
+   * 更新自定义地块大类下拉菜单的 UI 状态
+   * @param {string} category 选中的地块大类值
    */
-  updatePlotTypeUI(category) {
-    const dropdownMenu = document.getElementById('plotTypeDropdownMenu');
-    const selectedNameSpan = document.getElementById('selectedPlotTypeName');
+  updatePlotCategoryUI(category) {
+    const dropdownMenu = document.getElementById('plotCategoryDropdownMenu');
+    const selectedNameSpan = document.getElementById('selectedPlotCategoryName');
     if (!dropdownMenu || !selectedNameSpan) return;
 
     // 1. 更新下拉项的激活状态
@@ -4487,7 +4527,7 @@ class TerrainEditor {
   }
 
   showSubCategoryDescription(name, description, anchorElement = null) {
-    const preview = document.getElementById('subTypeDescriptionPreview');
+    const preview = document.getElementById('subCategoryDescriptionPreview');
     if (!preview) return;
     if (preview.parentElement !== document.body) {
       document.body.appendChild(preview);
@@ -4534,7 +4574,7 @@ class TerrainEditor {
   }
 
   hideSubCategoryDescription() {
-    const preview = document.getElementById('subTypeDescriptionPreview');
+    const preview = document.getElementById('subCategoryDescriptionPreview');
     if (!preview) return;
 
     preview.classList.remove('show');
@@ -4544,10 +4584,10 @@ class TerrainEditor {
   }
 
   renderSubCategoryDropdown(subcategories, selectedValue = null) {
-    const dropdownMenu = document.getElementById('subTypeDropdownMenu');
-    const selectedNameSpan = document.getElementById('selectedSubTypeName');
-    const subTypeHiddenInput = document.getElementById('plotSubType');
-    const dropdownBtn = document.getElementById('subTypeDropdownBtn');
+    const dropdownMenu = document.getElementById('subCategoryDropdownMenu');
+    const selectedNameSpan = document.getElementById('selectedSubCategoryName');
+    const subCategoryHiddenInput = document.getElementById('plotSubCategory');
+    const dropdownBtn = document.getElementById('subCategoryDropdownBtn');
     if (!dropdownMenu) return;
 
     this.hideSubCategoryDescription();
@@ -4627,28 +4667,28 @@ class TerrainEditor {
     // 3. 更新当前选中状态显示
     if (selectedValue) {
       if (selectedNameSpan) selectedNameSpan.textContent = selectedValue;
-      if (subTypeHiddenInput) subTypeHiddenInput.value = selectedValue;
+      if (subCategoryHiddenInput) subCategoryHiddenInput.value = selectedValue;
     } else {
       if (selectedNameSpan) selectedNameSpan.textContent = '请选择或新增';
-      if (subTypeHiddenInput) subTypeHiddenInput.value = '';
+      if (subCategoryHiddenInput) subCategoryHiddenInput.value = '';
     }
   }
 
   selectSubCategory(name) {
-    const selectedNameSpan = document.getElementById('selectedSubTypeName');
-    const subTypeHiddenInput = document.getElementById('plotSubType');
+    const selectedNameSpan = document.getElementById('selectedSubCategoryName');
+    const subCategoryHiddenInput = document.getElementById('plotSubCategory');
     this.hideSubCategoryDescription();
 
     if (selectedNameSpan) selectedNameSpan.textContent = name || '请选择或新增';
-    if (subTypeHiddenInput) {
-      subTypeHiddenInput.value = name;
+    if (subCategoryHiddenInput) {
+      subCategoryHiddenInput.value = name;
       // 手动触发 change 事件，以便 editor.js 中的监听器能捕获到
       const event = new Event('change', { bubbles: true });
-      subTypeHiddenInput.dispatchEvent(event);
+      subCategoryHiddenInput.dispatchEvent(event);
     }
 
     // 更新当前激活地块的属性
-    this.updateActivePlotProperties({ subType: name });
+    this.updateActivePlotProperties({ subCategory: name });
     
     // 重新渲染下拉列表以更新 active 样式
     this.loadSubCategories(name);
@@ -4750,7 +4790,7 @@ class TerrainEditor {
     const modalEl = document.getElementById('createZoneModal');
     const formEl = document.getElementById('createZoneForm');
     const categorySelect = document.getElementById('createZoneCategorySelect');
-    const subtypeSelect = document.getElementById('createZoneSubtypeSelect');
+    const subtypeSelect = document.getElementById('createZoneSubCategorySelect');
     const nameInput = document.getElementById('createZoneNameInput');
     const confirmBtn = document.getElementById('confirmCreateZoneBtn');
 
@@ -4760,7 +4800,7 @@ class TerrainEditor {
 
     formEl.addEventListener('submit', this.submitCreateZoneForm.bind(this));
     categorySelect.addEventListener('change', async () => {
-      await this.populateCreateZoneSubtypeOptions(categorySelect.value, '');
+      await this.populateCreateZoneSubCategoryOptions(categorySelect.value, '');
       this.updateCreateZoneNameSuggestion();
     });
     nameInput.addEventListener('input', () => {
@@ -4776,10 +4816,10 @@ class TerrainEditor {
       formEl.reset();
       formEl.classList.remove('was-validated');
       
-      const subtypeMenu = document.getElementById('createZoneSubtypeDropdownMenu');
-      const subtypeBtn = document.getElementById('createZoneSubtypeDropdownBtn');
-      const selectedNameSpan = document.getElementById('createZoneSubtypeSelectedName');
-      const subtypeHiddenInput = document.getElementById('createZoneSubtypeSelect');
+      const subtypeMenu = document.getElementById('createZoneSubCategoryDropdownMenu');
+      const subtypeBtn = document.getElementById('createZoneSubCategoryDropdownBtn');
+      const selectedNameSpan = document.getElementById('createZoneSubCategorySelectedName');
+      const subtypeHiddenInput = document.getElementById('createZoneSubCategorySelect');
       
       if (subtypeMenu) subtypeMenu.innerHTML = '<li><span class="dropdown-item-text small text-muted text-center">请选择子类型</span></li>';
       if (selectedNameSpan) selectedNameSpan.textContent = '请选择子类型';
@@ -4797,11 +4837,11 @@ class TerrainEditor {
     this._createZoneModalBound = true;
   }
 
-  async populateCreateZoneSubtypeOptions(category, preferredSubtype = '') {
-    const subtypeMenu = document.getElementById('createZoneSubtypeDropdownMenu');
-    const subtypeBtn = document.getElementById('createZoneSubtypeDropdownBtn');
-    const selectedNameSpan = document.getElementById('createZoneSubtypeSelectedName');
-    const subtypeHiddenInput = document.getElementById('createZoneSubtypeSelect');
+  async populateCreateZoneSubCategoryOptions(category, preferredSubtype = '') {
+    const subtypeMenu = document.getElementById('createZoneSubCategoryDropdownMenu');
+    const subtypeBtn = document.getElementById('createZoneSubCategoryDropdownBtn');
+    const selectedNameSpan = document.getElementById('createZoneSubCategorySelectedName');
+    const subtypeHiddenInput = document.getElementById('createZoneSubCategorySelect');
     
     if (!subtypeMenu || !subtypeBtn || !selectedNameSpan || !subtypeHiddenInput) return '';
 
@@ -4858,9 +4898,9 @@ class TerrainEditor {
 
   // 新增：处理新建图层弹窗中的子类别选择
   selectCreateZoneSubCategory(name, triggerUpdate = true) {
-    const selectedNameSpan = document.getElementById('createZoneSubtypeSelectedName');
-    const subtypeHiddenInput = document.getElementById('createZoneSubtypeSelect');
-    const subtypeMenu = document.getElementById('createZoneSubtypeDropdownMenu');
+    const selectedNameSpan = document.getElementById('createZoneSubCategorySelectedName');
+    const subtypeHiddenInput = document.getElementById('createZoneSubCategorySelect');
+    const subtypeMenu = document.getElementById('createZoneSubCategoryDropdownMenu');
     
     if (selectedNameSpan) selectedNameSpan.textContent = name || '暂不设置子类型';
     if (subtypeHiddenInput) {
@@ -4910,7 +4950,7 @@ class TerrainEditor {
 
   updateCreateZoneNameSuggestion(forceReplace = false) {
     const categorySelect = document.getElementById('createZoneCategorySelect');
-    const subtypeSelect = document.getElementById('createZoneSubtypeSelect');
+    const subtypeSelect = document.getElementById('createZoneSubCategorySelect');
     const nameInput = document.getElementById('createZoneNameInput');
     if (!categorySelect || !subtypeSelect || !nameInput) return;
 
@@ -4943,7 +4983,7 @@ class TerrainEditor {
 
     const formEl = document.getElementById('createZoneForm');
     const categorySelect = document.getElementById('createZoneCategorySelect');
-    const subtypeSelect = document.getElementById('createZoneSubtypeSelect');
+    const subtypeSelect = document.getElementById('createZoneSubCategorySelect');
     const nameInput = document.getElementById('createZoneNameInput');
     const confirmBtn = document.getElementById('confirmCreateZoneBtn');
     const modal = this.getCreateZoneModalInstance();
@@ -4963,8 +5003,8 @@ class TerrainEditor {
 
     const properties = {
       name,
-      type: categorySelect.value || 'forest',
-      subType: subtypeSelect.value || '',
+      category: categorySelect.value || 'forest',
+      subCategory: subtypeSelect.value || '',
       riskLevel: this._createZoneDefaultRiskLevel || 'low',
       description: '',
       areaHa: 0
@@ -5023,7 +5063,7 @@ class TerrainEditor {
   }
 
   getCurrentCategoryDisplayName(category) {
-    const activeItem = document.querySelector('#plotTypeDropdownMenu .dropdown-item.active');
+    const activeItem = document.querySelector('#plotCategoryDropdownMenu .dropdown-item.active');
     if (activeItem) {
       return activeItem.textContent.trim();
     }
@@ -5076,7 +5116,7 @@ class TerrainEditor {
   }
 
   handleAddSubCategory() {
-    const category = document.getElementById('plotType')?.value;
+    const category = document.getElementById('plotCategory')?.value;
     if (!category) {
       alert('请先选择地块大类');
       return;
@@ -5177,17 +5217,17 @@ class TerrainEditor {
       });
       const result = await response.json();
       if (result.code === 0) {
-        const currentCategory = document.getElementById('plotType')?.value;
+        const currentCategory = document.getElementById('plotCategory')?.value;
         if (currentCategory) {
           delete this.subcategoryOptionsByCategory[currentCategory];
         }
         // 如果当前选中的正是被删除的项，则清除选择
-        const subTypeHiddenInput = document.getElementById('plotSubType');
-        if (subTypeHiddenInput && subTypeHiddenInput.value === name) {
+        const subCategoryHiddenInput = document.getElementById('plotSubCategory');
+        if (subCategoryHiddenInput && subCategoryHiddenInput.value === name) {
           this.selectSubCategory('');
         } else {
           // 否则只需刷新列表
-          this.loadSubCategories(subTypeHiddenInput ? subTypeHiddenInput.value : null);
+          this.loadSubCategories(subCategoryHiddenInput ? subCategoryHiddenInput.value : null);
         }
       } else {
         alert('删除失败: ' + result.msg);

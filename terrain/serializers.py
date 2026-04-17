@@ -221,6 +221,8 @@ class TerrainElementSerializer(serializers.ModelSerializer):
 
 class TerrainZoneSerializer(serializers.ModelSerializer):
     elements = TerrainElementSerializer(many=True, read_only=True)
+    sub_category = serializers.CharField(source='type', read_only=True)
+    subCategory = serializers.CharField(source='type', read_only=True)
     
     class Meta:
         model = TerrainZone

@@ -753,8 +753,8 @@
   .attribute-group input:focus,
   .attribute-group select:focus,
   .attribute-group textarea:focus,
-  #plotTypeDropdownBtn:focus,
-  #subTypeDropdownBtn:focus,
+  #plotCategoryDropdownBtn:focus,
+  #subCategoryDropdownBtn:focus,
   #basemapDropdownSidebar:focus {
     outline: none;
     border-color: #93c5fd;
@@ -804,8 +804,8 @@
     color: #475569;
   }
 
-  #plotTypeDropdownBtn,
-  #subTypeDropdownBtn,
+  #plotCategoryDropdownBtn,
+  #subCategoryDropdownBtn,
   #basemapDropdownSidebar {
     min-height: 46px;
     border-radius: 12px;
@@ -816,8 +816,8 @@
     box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
   }
 
-  #plotTypeDropdownBtn:hover,
-  #subTypeDropdownBtn:hover,
+  #plotCategoryDropdownBtn:hover,
+  #subCategoryDropdownBtn:hover,
   #basemapDropdownSidebar:hover {
     background: #f8fafc;
     border-color: #cbd5e1;
@@ -1856,16 +1856,16 @@
           </div>
 
           <div class="attribute-group">
-            <label for="plotType">地块类型</label>
-            <div class="dropdown w-100 editor-select-dropdown" id="plotTypeDropdownWrapper">
+            <label for="plotCategory">地块大类</label>
+            <div class="dropdown w-100 editor-select-dropdown" id="plotCategoryDropdownWrapper">
               <button class="btn btn-sm text-start dropdown-toggle d-flex align-items-center" type="button"
-                id="plotTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                <span id="selectedPlotTypeName" class="d-flex align-items-center flex-grow-1 editor-select-label">
+                id="plotCategoryDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                <span id="selectedPlotCategoryName" class="d-flex align-items-center flex-grow-1 editor-select-label">
                   <span class="layer-color me-2" style="background-color: #2ecc71;"></span>
                   <span>林区</span>
                 </span>
               </button>
-              <ul class="dropdown-menu w-100 shadow-sm" id="plotTypeDropdownMenu">
+              <ul class="dropdown-menu w-100 shadow-sm" id="plotCategoryDropdownMenu">
                 <li><a class="dropdown-item d-flex align-items-center active" href="#" data-value="forest"><span
                       class="layer-color me-2" style="background-color: #2ecc71;"></span>林区</a></li>
                 <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="farmland"><span
@@ -1879,27 +1879,27 @@
                 <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="bare"><span
                       class="layer-color me-2" style="background-color: #D97706;"></span>裸地</a></li>
               </ul>
-              <input type="hidden" id="plotType" value="forest">
+              <input type="hidden" id="plotCategory" value="forest">
             </div>
           </div>
 
-          <div class="attribute-group" id="subTypeGroup" style="display: none;">
-            <label>子类型</label>
+          <div class="attribute-group" id="subCategoryGroup" style="display: none;">
+            <label>小类别</label>
             <div class="subcat-action-row">
-              <div class="dropdown flex-grow-1 editor-select-dropdown" id="subTypeDropdownWrapper">
-                <div id="subTypeDescriptionPreview" class="subcat-desc-preview" aria-hidden="true">
+              <div class="dropdown flex-grow-1 editor-select-dropdown" id="subCategoryDropdownWrapper">
+                <div id="subCategoryDescriptionPreview" class="subcat-desc-preview" aria-hidden="true">
                   <div class="subcat-desc-title">子类别说明</div>
                   <div class="subcat-desc-body subcat-desc-empty">无说明</div>
                 </div>
                 <button class="btn btn-sm text-start dropdown-toggle d-flex align-items-center" type="button"
-                  id="subTypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                  <span id="selectedSubTypeName" class="flex-grow-1 editor-select-label">请选择或新增</span>
+                  id="subCategoryDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                  <span id="selectedSubCategoryName" class="flex-grow-1 editor-select-label">请选择或新增</span>
                 </button>
-                <ul class="dropdown-menu w-100 shadow-sm" id="subTypeDropdownMenu"
+                <ul class="dropdown-menu w-100 shadow-sm" id="subCategoryDropdownMenu"
                   style="max-height: 250px; overflow-y: auto;">
-                  <!-- 动态渲染子类型项 -->
+                  <!-- 动态渲染小类别项 -->
                 </ul>
-                <input type="hidden" id="plotSubType" value="">
+                <input type="hidden" id="plotSubCategory" value="">
               </div>
               <button class="subcat-add-btn" type="button" id="addNewSubCatBtn" title="新增子类别" aria-label="新增子类别">
                 <i class="bi bi-plus-lg"></i>
@@ -2021,7 +2021,7 @@
         <form id="createZoneForm">
           <div class="modal-body">
             <div class="mb-3">
-              <label for="createZoneCategorySelect" class="form-label">地块类型</label>
+              <label for="createZoneCategorySelect" class="form-label">地块大类</label>
               <select class="form-select" id="createZoneCategorySelect" required>
                 <option value="forest">林区</option>
                 <option value="farmland">农田</option>
@@ -2032,24 +2032,24 @@
               </select>
             </div>
             <div class="mb-3">
-              <label for="createZoneSubtypeDropdownBtn" class="form-label">子类型</label>
-              <div class="dropdown editor-select-dropdown" id="createZoneSubtypeDropdownWrapper">
+              <label for="createZoneSubCategoryDropdownBtn" class="form-label">小类别</label>
+              <div class="dropdown editor-select-dropdown" id="createZoneSubCategoryDropdownWrapper">
                 <button class="btn btn-sm text-start dropdown-toggle d-flex align-items-center w-100" type="button"
-                  id="createZoneSubtypeDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false"
+                  id="createZoneSubCategoryDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false"
                   style="height: 38px; border: 1px solid #dee2e6; border-radius: 0.375rem;">
-                  <span id="createZoneSubtypeSelectedName" class="flex-grow-1 editor-select-label">请选择子类型</span>
+                  <span id="createZoneSubCategorySelectedName" class="flex-grow-1 editor-select-label">请选择小类别</span>
                 </button>
-                <ul class="dropdown-menu w-100 shadow-sm" id="createZoneSubtypeDropdownMenu"
+                <ul class="dropdown-menu w-100 shadow-sm" id="createZoneSubCategoryDropdownMenu"
                   style="max-height: 250px; overflow-y: auto;">
-                  <!-- 动态渲染子类型项 -->
+                  <!-- 动态渲染小类别项 -->
                 </ul>
-                <input type="hidden" id="createZoneSubtypeSelect" value="">
+                <input type="hidden" id="createZoneSubCategorySelect" value="">
               </div>
             </div>
             <div class="mb-0">
               <label for="createZoneNameInput" class="form-label">地块名称</label>
               <input type="text" class="form-control" id="createZoneNameInput" maxlength="100" required>
-              <div class="create-zone-name-hint mt-2" id="createZoneNameHint">系统将根据当前类型与子类型自动生成默认名称，你也可以手动修改。</div>
+              <div class="create-zone-name-hint mt-2" id="createZoneNameHint">系统将根据当前大类与小类别自动生成默认名称，你也可以手动修改。</div>
             </div>
           </div>
           <div class="modal-footer">
