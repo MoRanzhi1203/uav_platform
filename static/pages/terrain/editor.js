@@ -7,10 +7,13 @@ let workspaceLayout = null;
 const WORKSPACE_LAYOUT_KEY = 'terrain-editor-workspace-layout';
 const WORKSPACE_LAYOUT_DEFAULTS = {
   leftWidth: 320,
+  leftCollapsedWidth: 260,
   rightWidth: 360
 };
 const WORKSPACE_LEFT_MIN = 240;
 const WORKSPACE_LEFT_MAX = 520;
+const WORKSPACE_LEFT_COLLAPSED_MIN = 260;
+const WORKSPACE_LEFT_COLLAPSED_MAX = 340;
 const WORKSPACE_RIGHT_MIN = 280;
 const WORKSPACE_RIGHT_MAX = 560;
 
@@ -172,6 +175,7 @@ function initWorkspacePanels() {
 
   workspaceLayout = loadWorkspaceLayout();
   applyWorkspaceLayout();
+  bindWorkspaceSidebarState();
 
   bindPanelResizer(leftResizer, 'left');
   bindPanelResizer(rightResizer, 'right');
@@ -189,6 +193,12 @@ function loadWorkspaceLayout() {
     const parsed = JSON.parse(saved);
     return {
       leftWidth: clampWidth(parsed.leftWidth, WORKSPACE_LEFT_MIN, WORKSPACE_LEFT_MAX, WORKSPACE_LAYOUT_DEFAULTS.leftWidth),
+      leftCollapsedWidth: clampWidth(
+        parsed.leftCollapsedWidth,
+        WORKSPACE_LEFT_COLLAPSED_MIN,
+        WORKSPACE_LEFT_COLLAPSED_MAX,
+        WORKSPACE_LAYOUT_DEFAULTS.leftCollapsedWidth
+      ),
       rightWidth: clampWidth(parsed.rightWidth, WORKSPACE_RIGHT_MIN, WORKSPACE_RIGHT_MAX, WORKSPACE_LAYOUT_DEFAULTS.rightWidth)
     };
   } catch (error) {
@@ -214,6 +224,7 @@ function applyWorkspaceLayout(options = {}) {
   if (!container || !workspaceLayout) return;
 
   container.style.setProperty('--left-panel-width', `${workspaceLayout.leftWidth}px`);
+  container.style.setProperty('--left-panel-collapsed-width', `${workspaceLayout.leftCollapsedWidth}px`);
   container.style.setProperty('--right-panel-width', `${workspaceLayout.rightWidth}px`);
 
   if (persist) {
@@ -221,6 +232,22 @@ function applyWorkspaceLayout(options = {}) {
   }
 
   requestMapResize();
+}
+
+function bindWorkspaceSidebarState() {
+  const body = document.body;
+  if (!body) return;
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        applyWorkspaceLayout({ persist: false });
+        break;
+      }
+    }
+  });
+
+  observer.observe(body, { attributes: true, attributeFilter: ['class'] });
 }
 
 function bindPanelResizer(resizer, side) {
@@ -249,7 +276,21 @@ function startPanelResize(side, startX) {
     const deltaX = event.clientX - startX;
 
     if (side === 'left') {
-      workspaceLayout.leftWidth = clampWidth(startWidth + deltaX, WORKSPACE_LEFT_MIN, WORKSPACE_LEFT_MAX, WORKSPACE_LAYOUT_DEFAULTS.leftWidth);
+      if (isAdminSidebarExpanded()) {
+        workspaceLayout.leftCollapsedWidth = clampWidth(
+          startWidth + deltaX,
+          WORKSPACE_LEFT_COLLAPSED_MIN,
+          WORKSPACE_LEFT_COLLAPSED_MAX,
+          WORKSPACE_LAYOUT_DEFAULTS.leftCollapsedWidth
+        );
+      } else {
+        workspaceLayout.leftWidth = clampWidth(
+          startWidth + deltaX,
+          WORKSPACE_LEFT_MIN,
+          WORKSPACE_LEFT_MAX,
+          WORKSPACE_LAYOUT_DEFAULTS.leftWidth
+        );
+      }
     } else {
       workspaceLayout.rightWidth = clampWidth(startWidth - deltaX, WORKSPACE_RIGHT_MIN, WORKSPACE_RIGHT_MAX, WORKSPACE_LAYOUT_DEFAULTS.rightWidth);
     }
@@ -267,6 +308,10 @@ function startPanelResize(side, startX) {
 
   document.addEventListener('mousemove', handleMouseMove);
   document.addEventListener('mouseup', handleMouseUp);
+}
+
+function isAdminSidebarExpanded() {
+  return document.body && !document.body.classList.contains('toggle-sidebar');
 }
 
 function clampWidth(value, min, max, fallback) {
