@@ -90,6 +90,11 @@
     container-type: inline-size;
   }
 
+  .editor-header-center.is-dropdown-open,
+  .editor-header-center:focus-within {
+    overflow: visible;
+  }
+
   .editor-header-center-inner {
     width: 100%;
     min-width: 0;
@@ -116,6 +121,11 @@
     background: #f1f5f9;
     border: 1px solid #e2e8f0;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  }
+
+  .editor-header-center-inner > .tool-group:not(.actions).is-dropdown-open,
+  .editor-header-center-inner > .tool-group:not(.actions):focus-within {
+    overflow: visible;
   }
 
   /* 让主工具组内部按钮正确收缩 */
@@ -422,6 +432,10 @@
     border-radius: 0.375rem;
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
     padding: 0.5rem 0;
+  }
+
+  .editor-header-center .dropdown-menu {
+    z-index: 4000 !important;
   }
 
   .dropdown-item {
@@ -1784,10 +1798,6 @@
             <input type="color" id="adminBoundaryColor" value="#4a90e2"
               style="width: 24px; height: 24px; border: none; padding: 0; cursor: pointer; border-radius: 4px;"
               title="自定义边界颜色">
-          </div>
-          <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" id="historyToggle">
-            <span>历史地块提示</span>
           </div>
         </div>
       </div>

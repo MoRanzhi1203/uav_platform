@@ -37,6 +37,9 @@ function initEditor() {
   // 绑定自定义地块类型下拉菜单事件
   bindCustomPlotTypeDropdown();
 
+  // 绑定顶部工具栏下拉菜单展开态，避免菜单被工具栏容器裁切
+  bindToolbarDropdownState();
+
   // 绑定左右工作台的显示/隐藏与拖拽调宽
   initWorkspacePanels();
 
@@ -557,14 +560,6 @@ function bindAssistLayerEvents() {
       if (terrainEditor) terrainEditor.updateAdminBoundaryColor(e.target.value);
     });
   }
-
-  // 历史地块提示切换
-  const historyToggle = document.getElementById('historyToggle');
-  if (historyToggle) {
-    historyToggle.addEventListener('change', function() {
-      if (terrainEditor) terrainEditor.toggleHistoryHints(this.checked);
-    });
-  }
 }
 
 // 绑定自定义地块类型下拉菜单事件
@@ -596,6 +591,31 @@ function bindCustomPlotTypeDropdown() {
       plotTypeInput.dispatchEvent(event);
     });
   });
+}
+
+function bindToolbarDropdownState() {
+  const toolbarCenter = document.querySelector('.editor-header-center');
+  const toolbarGroup = document.querySelector('.editor-header-center-inner > .tool-group:not(.actions)');
+  const toolbarDropdowns = document.querySelectorAll('.editor-header-center .dropdown');
+
+  if (!toolbarCenter || !toolbarGroup || !toolbarDropdowns.length) return;
+
+  const syncToolbarDropdownState = () => {
+    const hasOpenDropdown = Array.from(toolbarDropdowns).some(dropdown => {
+      const menu = dropdown.querySelector('.dropdown-menu');
+      return dropdown.classList.contains('show') || (menu && menu.classList.contains('show'));
+    });
+
+    toolbarCenter.classList.toggle('is-dropdown-open', hasOpenDropdown);
+    toolbarGroup.classList.toggle('is-dropdown-open', hasOpenDropdown);
+  };
+
+  toolbarDropdowns.forEach(dropdown => {
+    dropdown.addEventListener('shown.bs.dropdown', syncToolbarDropdownState);
+    dropdown.addEventListener('hidden.bs.dropdown', syncToolbarDropdownState);
+  });
+
+  syncToolbarDropdownState();
 }
 
 // 页面加载完成后初始化
