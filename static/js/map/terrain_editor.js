@@ -30,31 +30,31 @@ class TerrainEditor {
     this.topographicAssistOpacity = 0.5;
     this.adminBoundaryStyles = {
       city: {
-        color: '#0066CC',
-        weight: 2.4,
-        opacity: 0.95,
-        fillColor: '#0066CC',
-        fillOpacity: 0.02,
+        color: '#1d4ed8',
+        weight: 3,
+        opacity: 0.9,
+        fillColor: '#1d4ed8',
+        fillOpacity: 0,
         dashArray: '',
         interactive: false
       },
       district: {
-        color: '#999999',
-        weight: 1,
-        opacity: 0.85,
-        fillColor: '#999999',
-        fillOpacity: 0.01,
-        dashArray: '3, 3',
-        interactive: true
+        color: '#94a3b8',
+        weight: 1.2,
+        opacity: 0.78,
+        fillColor: '#94a3b8',
+        fillOpacity: 0,
+        dashArray: '4,4',
+        interactive: false
       },
       township: {
-        color: '#3399FF',
-        weight: 1.5,
-        opacity: 0.8,
-        fillColor: '#3399FF',
-        fillOpacity: 0.01,
-        dashArray: '',
-        interactive: true
+        color: '#9fbad6',
+        weight: 0.6,
+        opacity: 0.42,
+        fillColor: '#9fbad6',
+        fillOpacity: 0,
+        dashArray: '2,3',
+        interactive: false
       }
     };
     this.adminBoundaryDisplayLevel = 1;
@@ -492,29 +492,23 @@ class TerrainEditor {
   }
 
   bindAdminBoundaryTooltip(level, feature, layer) {
+    // 仅区/县层级绑定标签，市级和乡镇级保持纯净
+    if (level !== 'district') return;
+
     const label = this.getAdminBoundaryLabel(feature);
     if (!label) return;
 
-    if (level === 'district') {
-      layer.bindTooltip(label, {
-        permanent: true,
-        direction: 'center',
-        className: 'admin-label-large',
-        opacity: 1,
-        interactive: false
-      });
-      return;
-    }
+    // 检查是否应该显示标签（抽稀逻辑）
+    // 已经在 renderAdminBoundaryChunks 中通过标记 _showLabel 进行了初步筛选
+    if (feature._showLabel === false) return;
 
-    if (level === 'township') {
-      layer.bindTooltip(label, {
-        permanent: false,
-        sticky: true,
-        direction: 'top',
-        className: 'admin-label',
-        opacity: 0.95
-      });
-    }
+    layer.bindTooltip(label, {
+      permanent: true,
+      direction: 'center',
+      className: 'admin-label-district',
+      opacity: 0.85,
+      interactive: false
+    });
   }
 
   renderAdminBoundaryChunks(level, features) {
@@ -525,12 +519,39 @@ class TerrainEditor {
 
     targetLayerGroup.clearLayers();
 
+    // 针对区/县层级实现“抽稀显示”逻辑
+    if (level === 'district' && typeof turf !== 'undefined') {
+      try {
+        // 计算每个要素的面积
+        features.forEach(f => {
+          f._area = turf.area(f);
+        });
+        
+        // 按面积降序排序
+        const sortedFeatures = [...features].sort((a, b) => b._area - a._area);
+        
+        // 标记哪些需要显示标签：
+        // 1. 面积排名前 15 的大区县
+        // 2. 这里的数量 N 可以根据需求调整
+        const topN = 15;
+        sortedFeatures.forEach((f, idx) => {
+          f._showLabel = idx < topN;
+        });
+      } catch (e) {
+        console.warn('区县标签抽稀计算失败:', e);
+      }
+    }
+
     return new Promise(resolve => {
       let index = 0;
 
       const loadChunk = () => {
         const chunk = features.slice(index, index + this.adminBoundaryChunkSize);
         if (chunk.length === 0) {
+          // 如果是市级层级，在渲染完成后添加一个唯一的静态标签
+          if (level === 'city') {
+            this.addStaticCityLabel(features);
+          }
           resolve();
           return;
         }
@@ -552,6 +573,38 @@ class TerrainEditor {
 
       loadChunk();
     });
+  }
+
+  /**
+   * 为市级边界添加一个唯一的静态非交互标签
+   */
+  addStaticCityLabel(features) {
+    if (!features || features.length === 0 || typeof turf === 'undefined') return;
+    
+    try {
+      // 合并所有要素计算中心点（针对市级，通常只有一个大要素或几个部分）
+      const collection = { type: 'FeatureCollection', features: features };
+      const center = turf.centerOfMass(collection);
+      const coords = center.geometry.coordinates;
+      
+      // 创建一个透明的 marker 来承载静态 tooltip
+      const cityMarker = L.marker([coords[1], coords[0]], {
+        icon: L.divIcon({ className: 'admin-label-city-anchor', html: '' }),
+        interactive: false
+      });
+      
+      cityMarker.bindTooltip('重庆市', {
+        permanent: true,
+        direction: 'center',
+        className: 'admin-label-city',
+        opacity: 0.9,
+        interactive: false
+      });
+      
+      cityMarker.addTo(this.cityLayer);
+    } catch (e) {
+      console.warn('添加市级静态标签失败:', e);
+    }
   }
 
   // 内部辅助方法：递归转换几何坐标
@@ -633,19 +686,19 @@ class TerrainEditor {
     this.adminBoundaryDisplayLevel = numericLevel;
     this.syncAdminBoundarySliderUI();
 
-    // 如果是市级边界 (level === 0)，确保移除所有交互和提示
-    if (numericLevel === 0 && this.cityLayer) {
-      this.cityLayer.eachLayer(layer => {
-        if (layer.eachLayer) {
+    // 切换层级时，如果是市级或乡镇级，确保交互被禁用（由样式 interactive: false 控制，此处为双重保险）
+    if ((numericLevel === 0 || numericLevel === 2) && this.adminBoundaryLayers[this.getAdminBoundaryLevelKey(numericLevel)]) {
+      const layerGroup = this.adminBoundaryLayers[this.getAdminBoundaryLevelKey(numericLevel)];
+      layerGroup.eachLayer(layer => {
+        // 只有 GeoJSON 图层（边界线）需要强制清理交互
+        // 注意：市级的静态标签 marker 不应该被清理 tooltip
+        if (layer instanceof L.GeoJSON) {
           layer.eachLayer(subLayer => {
             subLayer.unbindPopup();
+            // 乡镇级也不显示 tooltip，市级也不显示 feature 级别的 tooltip
             subLayer.unbindTooltip();
             subLayer.off('mouseover mousemove mouseout click');
           });
-        } else {
-          layer.unbindPopup();
-          layer.unbindTooltip();
-          layer.off('mouseover mousemove mouseout click');
         }
       });
     }
