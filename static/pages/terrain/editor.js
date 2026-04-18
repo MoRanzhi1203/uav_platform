@@ -568,13 +568,24 @@ function bindAssistLayerEvents() {
   }
 
   // 行政区划边界切换
-  const adminToggle = document.getElementById('adminBoundaryToggle');
+  const adminToggleMap = {
+    toggleCity: 'city',
+    toggleDistrict: 'district',
+    toggleTownship: 'township'
+  };
   const adminColor = document.getElementById('adminBoundaryColor');
-  if (adminToggle) {
-    adminToggle.addEventListener('change', function() {
-      if (terrainEditor) terrainEditor.toggleAdminBoundaries(this.checked);
+
+  Object.entries(adminToggleMap).forEach(([elementId, level]) => {
+    const checkbox = document.getElementById(elementId);
+    if (!checkbox) return;
+
+    checkbox.addEventListener('change', function() {
+      if (terrainEditor) {
+        terrainEditor.toggleAdminBoundaryLevel(level, this.checked);
+      }
     });
-  }
+  });
+
   if (adminColor) {
     adminColor.addEventListener('input', function(e) {
       if (terrainEditor) terrainEditor.updateAdminBoundaryColor(e.target.value);

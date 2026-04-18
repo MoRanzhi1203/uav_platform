@@ -28,6 +28,52 @@ class TerrainEditor {
     this.activeBaseLayer = null; // 存储当前正在使用的底图实例
     this.topographicAssistLayer = null; // 卫星底图上的等高线参考叠加层
     this.topographicAssistOpacity = 0.5;
+    this.adminBoundaryStyles = {
+      city: {
+        color: '#2563eb',
+        weight: 2.8,
+        opacity: 0.95,
+        fillColor: '#2563eb',
+        fillOpacity: 0.02,
+        dashArray: '',
+        interactive: true
+      },
+      district: {
+        color: document.getElementById('adminBoundaryColor')?.value || '#4a90e2',
+        weight: 2.2,
+        opacity: 0.9,
+        fillColor: document.getElementById('adminBoundaryColor')?.value || '#4a90e2',
+        fillOpacity: 0.03,
+        dashArray: '8, 8',
+        interactive: false
+      },
+      township: {
+        color: '#8b5cf6',
+        weight: 1.2,
+        opacity: 0.7,
+        fillColor: '#8b5cf6',
+        fillOpacity: 0.01,
+        dashArray: '4, 6',
+        interactive: false
+      }
+    };
+    this.adminBoundaryVisibility = {
+      city: document.getElementById('toggleCity')?.checked ?? true,
+      district: document.getElementById('toggleDistrict')?.checked ?? true,
+      township: document.getElementById('toggleTownship')?.checked ?? false
+    };
+    this.adminBoundaryZoomThresholds = {
+      districtMin: 10,
+      townshipMin: 14
+    };
+    this.adminBoundaryChunkSize = 50;
+    this.adminBoundaryLoaded = {
+      city: false,
+      district: false,
+      township: false
+    };
+    this.adminBoundaryLoadPromises = {};
+    this.adminBoundarySourceUrls = this.getAdminBoundarySourceUrls();
     
     // 状态管理
     this.currentTool = 'browse';
@@ -154,6 +200,7 @@ class TerrainEditor {
     // 监听缩放事件以更新字体大小 (行政区划边界)
     this.map.on('zoomend', () => {
       this.updateLabelScaling();
+      this.applyAdminBoundaryVisibility();
     });
     this.updateLabelScaling(); // 初始执行一次
 
@@ -263,7 +310,14 @@ class TerrainEditor {
   initReferenceGrid() {
     this.refGridLayer10m = L.layerGroup();
     this.refGridLayer1km = L.layerGroup();
-    this.adminBoundaryLayer = L.layerGroup();
+    this.cityLayer = L.layerGroup();
+    this.districtLayer = L.layerGroup();
+    this.townshipLayer = L.layerGroup();
+    this.adminBoundaryLayers = {
+      city: this.cityLayer,
+      district: this.districtLayer,
+      township: this.townshipLayer
+    };
     
     // 监听缩放和移动事件来重绘网格
     const redrawGrids = () => {
@@ -275,134 +329,226 @@ class TerrainEditor {
     this.map.on('zoomend', redrawGrids);
     
     // 初始化行政区划边界层 (独立于参考网格管理)
-    this.adminBoundaryLayer = L.layerGroup();
     this.loadAdminBoundaries();
   }
   
-  // 加载行政区划边界 (直接读取 GeoJSON 文件)
-  async loadAdminBoundaries() {
-    try {
-      const geojsonUrl = window.location.origin + '/static/geojson/chongqing_admin.json';
-      this.adminBoundaryColor = document.getElementById('adminBoundaryColor')?.value || '#4a90e2';
-      
-      console.log('正在请求行政区划边界 (GeoJSON):', geojsonUrl);
-      const response = await fetch(geojsonUrl);
-      if (!response.ok) {
-        throw new Error(`GeoJSON 请求失败: ${response.status} ${response.statusText}`);
-      }
+  getAdminBoundarySourceUrls() {
+    const apiSources = window.ADMIN_BOUNDARY_API_URLS || {};
+    const origin = window.location.origin;
+    return {
+      city: apiSources.city || `${origin}/static/shp/chongqing/chongqing_city/chongqing_city.shp`,
+      district: apiSources.district || `${origin}/static/shp/chongqing/chongqing_district_county.geojson`,
+      township: apiSources.township || `${origin}/static/shp/chongqing/chongqing_township_street/chongqing_township_street.shp`
+    };
+  }
 
-      const geojson = await response.json();
-      
-      if (geojson) {
-        const data = Array.isArray(geojson) ? geojson[0] : geojson;
-        if (data && data.features && data.features.length > 0) {
-          // 计算行政区划的总边界 (重庆市全境)
-          if (typeof turf !== 'undefined') {
-            const fullBbox = turf.bbox(data);
-            this.viewportConfig.chongqingBounds = [[fullBbox[1], fullBbox[0]], [fullBbox[3], fullBbox[2]]];
-            console.log('重庆市参考范围已更新:', this.viewportConfig.chongqingBounds);
-            
-            // 获取容器尺寸用于计算
-            const container = this.map.getContainer();
-            const cqPaddingY = (1 - this.viewportConfig.targetHeightRatio) / 2 * container.offsetHeight;
-            const cqPaddingX = (1 - this.viewportConfig.targetWidthRatio) / 2 * container.offsetWidth;
-            const cqMinZoom = this.map.getBoundsZoom(this.viewportConfig.chongqingBounds, false, [cqPaddingX, cqPaddingY]);
+  // 初始化行政区划边界的异步加载
+  loadAdminBoundaries() {
+    this.ensureAdminBoundaryLayerLoaded('city');
+    this.ensureAdminBoundaryLayerLoaded('district');
 
-            // 3. 更新全局限制参数 (但不移动视口，除非是新建模式)
-            this.map.setMinZoom(cqMinZoom);
-            this.map.setMaxBounds(L.latLngBounds(this.viewportConfig.chongqingBounds).pad(0.2));
+    if (this.adminBoundaryVisibility.township) {
+      this.ensureAdminBoundaryLayerLoaded('township');
+    }
+  }
 
-            // 如果当前没有加载具体区域（新建模式），则执行初始视口刷新
-            if (!this.areaId) {
-              console.log('新建模式：定位至重庆全境');
-              this.updateMapViewport();
-            } else {
-              console.log('编辑模式：已加载地形，保持当前视口，仅更新缩放限制');
-            }
-          }
+  async ensureAdminBoundaryLayerLoaded(level) {
+    if (this.adminBoundaryLoaded[level]) {
+      return this.adminBoundaryLayers?.[level];
+    }
 
-          // 智能过滤并准备渲染
-          let allFeatures = data.features;
-          let districts = allFeatures.filter(f => {
-            const p = f.properties;
-            // 1. 优先使用 admin_level (6 通常代表区县)
-            if (p.admin_level !== undefined) {
-              return parseInt(p.admin_level) <= 6;
-            }
-            // 2. 检查 fclass 字段 (OSM 数据常见)
-            if (p.fclass) {
-              return p.fclass === 'admin_level6' || p.fclass === 'district' || p.fclass === 'county';
-            }
-            // 3. 根据名称后缀兜底过滤（排除乡、镇、街道、社区）
-            const name = p.name || p.NAME || '';
-            const isSubLevel = /街道$|镇$|乡$|社区$|村$/.test(name);
-            return !isSubLevel;
-          });
+    if (this.adminBoundaryLoadPromises[level]) {
+      return this.adminBoundaryLoadPromises[level];
+    }
 
-          // 如果过滤后一个都没剩，则退回到显示全部（防止数据源定义不规范导致空白）
-          if (districts.length === 0) {
-            console.warn('行政区划层级过滤未命中，退回到全量显示');
-            districts = allFeatures;
-          }
+    const sourceUrl = this.adminBoundarySourceUrls[level];
+    const loadPromise = (async () => {
+      try {
+        const rawData = await this.fetchAdminBoundarySource(sourceUrl);
+        const features = this.normalizeAdminBoundaryFeatures(rawData);
 
-          console.log(`成功解析行政区划数据，原始数量: ${allFeatures.length}，过滤后区县数量: ${districts.length}`);
-          
-          // 分块渲染以避免 UI 卡顿
-          const chunkSize = 50;
-          let index = 0;
-          
-          const loadChunk = () => {
-            const chunk = districts.slice(index, index + chunkSize);
-            if (chunk.length === 0) {
-              console.log('行政区划边界渲染完成');
-              // 如果勾选框默认是开着的，直接添加到地图
-              const adminToggle = document.getElementById('adminBoundaryToggle');
-              if (adminToggle && adminToggle.checked) {
-                this.adminBoundaryLayer.addTo(this.map);
-              }
-              return;
-            }
-            
-            L.geoJSON({ type: 'FeatureCollection', features: chunk }, {
-              style: () => ({
-                color: this.adminBoundaryColor,
-                weight: 2.5,      // 稍微加粗区县边界
-                opacity: 0.9,
-                fillOpacity: 0.03,
-                fillColor: this.adminBoundaryColor,
-                dashArray: '8, 8', // 更长的虚线
-                interactive: false
-              }),
-              onEachFeature: (feature, layer) => {
-                const props = feature.properties;
-                const name = props.name || props.NAME || props.district || props.city || props.COUNTY;
-                
-                if (name) {
-                  // 优化标签：只有区县级才显示永久标签，且增加背景阴影防止重叠
-                  layer.bindTooltip(name, {
-                    permanent: true,
-                    direction: 'center',
-                    className: 'admin-label-large', // 使用更大的样式名
-                    opacity: 1.0,
-                    interactive: false
-                  });
-                }
-              }
-            }).addTo(this.adminBoundaryLayer);
-            
-            index += chunkSize;
-            setTimeout(loadChunk, 10);
-          };
-          
-          loadChunk();
-        } else {
-          console.error('GeoJSON 数据解析失败或数据为空');
+        if (!features.length) {
+          console.warn(`行政区划图层 ${level} 未解析到有效要素:`, sourceUrl);
+          return null;
         }
+
+        if (level === 'city') {
+          this.updateViewportBoundsFromAdminFeatures(features);
+        }
+
+        await this.renderAdminBoundaryChunks(level, features);
+        this.adminBoundaryLoaded[level] = true;
+        this.applyAdminBoundaryVisibility();
+        return this.adminBoundaryLayers[level];
+      } catch (error) {
+        console.error(`行政区划图层 ${level} 加载失败:`, error);
+        return null;
+      } finally {
+        delete this.adminBoundaryLoadPromises[level];
+      }
+    })();
+
+    this.adminBoundaryLoadPromises[level] = loadPromise;
+    return loadPromise;
+  }
+
+  async fetchAdminBoundarySource(sourceUrl) {
+    const normalizedUrl = String(sourceUrl || '').toLowerCase();
+    if (!normalizedUrl) {
+      throw new Error('行政区划数据源地址为空');
+    }
+
+    if (normalizedUrl.includes('.shp')) {
+      if (typeof shp !== 'function') {
+        throw new Error('shp.js 未加载，无法解析 Shapefile');
+      }
+      return shp(sourceUrl);
+    }
+
+    const response = await fetch(sourceUrl);
+    if (!response.ok) {
+      throw new Error(`GeoJSON 请求失败: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  normalizeAdminBoundaryFeatures(sourceData) {
+    const collections = Array.isArray(sourceData) ? sourceData : [sourceData];
+    const features = [];
+
+    collections.forEach(item => {
+      if (!item) return;
+      if (item.type === 'FeatureCollection' && Array.isArray(item.features)) {
+        features.push(...item.features);
+        return;
+      }
+      if (item.type === 'Feature') {
+        features.push(item);
+        return;
+      }
+      if (Array.isArray(item.features)) {
+        features.push(...item.features);
+      }
+    });
+
+    return features
+      .filter(feature => feature?.geometry)
+      .map(feature => {
+        this._transformGeometry(feature.geometry);
+        return feature;
+      });
+  }
+
+  updateViewportBoundsFromAdminFeatures(features) {
+    if (typeof turf === 'undefined' || !Array.isArray(features) || features.length === 0) {
+      return;
+    }
+
+    try {
+      const featureCollection = {
+        type: 'FeatureCollection',
+        features
+      };
+      const fullBbox = turf.bbox(featureCollection);
+      this.viewportConfig.chongqingBounds = [[fullBbox[1], fullBbox[0]], [fullBbox[3], fullBbox[2]]];
+
+      const container = this.map.getContainer();
+      const cqPaddingY = (1 - this.viewportConfig.targetHeightRatio) / 2 * container.offsetHeight;
+      const cqPaddingX = (1 - this.viewportConfig.targetWidthRatio) / 2 * container.offsetWidth;
+      const cqBounds = L.latLngBounds(this.viewportConfig.chongqingBounds);
+      const cqMinZoom = this.map.getBoundsZoom(cqBounds, false, [cqPaddingX, cqPaddingY]);
+
+      this.map.setMinZoom(cqMinZoom);
+      this.map.setMaxBounds(cqBounds.pad(0.2));
+
+      if (!this.areaId) {
+        this.updateMapViewport();
       }
     } catch (error) {
-      console.error('行政区划边界加载或渲染失败:', error);
-      console.warn('如果是 404，请确认 Django 是否开启了 static 目录下的 .geojson 文件访问权限');
+      console.warn('根据行政区划边界更新视口限制失败，继续使用默认重庆范围:', error);
     }
+  }
+
+  getAdminBoundaryStyle(level) {
+    return { ...(this.adminBoundaryStyles[level] || this.adminBoundaryStyles.district) };
+  }
+
+  getAdminBoundaryLabel(feature) {
+    const properties = feature?.properties || {};
+    const candidateKeys = ['name', 'NAME', 'Name', 'xzqmc', 'XZQMC', 'district', 'DISTRICT', 'county', 'COUNTY', 'city', 'CITY'];
+
+    for (const key of candidateKeys) {
+      const value = properties[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return '';
+  }
+
+  bindAdminBoundaryTooltip(level, feature, layer) {
+    const label = this.getAdminBoundaryLabel(feature);
+    if (!label) return;
+
+    if (level === 'district') {
+      layer.bindTooltip(label, {
+        permanent: true,
+        direction: 'center',
+        className: 'admin-label-large',
+        opacity: 1,
+        interactive: false
+      });
+      return;
+    }
+
+    if (level === 'city') {
+      layer.bindTooltip(label, {
+        permanent: false,
+        sticky: true,
+        direction: 'top',
+        className: 'admin-label',
+        opacity: 0.95
+      });
+    }
+  }
+
+  renderAdminBoundaryChunks(level, features) {
+    const targetLayerGroup = this.adminBoundaryLayers?.[level];
+    if (!targetLayerGroup) {
+      return Promise.resolve();
+    }
+
+    targetLayerGroup.clearLayers();
+
+    return new Promise(resolve => {
+      let index = 0;
+
+      const loadChunk = () => {
+        const chunk = features.slice(index, index + this.adminBoundaryChunkSize);
+        if (chunk.length === 0) {
+          resolve();
+          return;
+        }
+
+        const layer = L.geoJSON(
+          { type: 'FeatureCollection', features: chunk },
+          {
+            style: () => this.getAdminBoundaryStyle(level),
+            onEachFeature: (feature, featureLayer) => {
+              this.bindAdminBoundaryTooltip(level, feature, featureLayer);
+            }
+          }
+        );
+
+        layer.addTo(targetLayerGroup);
+        index += this.adminBoundaryChunkSize;
+        setTimeout(loadChunk, 10);
+      };
+
+      loadChunk();
+    });
   }
 
   // 内部辅助方法：递归转换几何坐标
@@ -432,26 +578,93 @@ class TerrainEditor {
 
   // 更新行政边界颜色
   updateAdminBoundaryColor(color) {
-    this.adminBoundaryColor = color;
-    if (this.adminBoundaryLayer) {
-      this.adminBoundaryLayer.eachLayer(layer => {
-        if (layer.setStyle) {
-          layer.setStyle({
-            color: color,
-            fillColor: color
-          });
-        }
-      });
-    }
+    this.setAdminBoundaryStyle('district', {
+      color,
+      fillColor: color
+    });
   }
 
-  // 切换行政区划边界
-  toggleAdminBoundaries(visible) {
-    if (visible) {
-      this.adminBoundaryLayer.addTo(this.map);
-    } else {
-      this.map.removeLayer(this.adminBoundaryLayer);
+  setAdminBoundaryStyle(level, stylePatch = {}) {
+    if (!this.adminBoundaryStyles[level]) return;
+
+    this.adminBoundaryStyles[level] = {
+      ...this.adminBoundaryStyles[level],
+      ...stylePatch
+    };
+
+    const targetLayerGroup = this.adminBoundaryLayers?.[level];
+    if (!targetLayerGroup) return;
+
+    targetLayerGroup.eachLayer(layer => {
+      if (typeof layer.setStyle === 'function') {
+        layer.setStyle(this.getAdminBoundaryStyle(level));
+      }
+    });
+  }
+
+  shouldShowAdminBoundaryLevel(level, zoom = this.map.getZoom()) {
+    if (!this.adminBoundaryVisibility[level]) {
+      return false;
     }
+
+    if (level === 'city') {
+      return zoom < this.adminBoundaryZoomThresholds.districtMin;
+    }
+
+    if (level === 'district') {
+      return zoom >= this.adminBoundaryZoomThresholds.districtMin;
+    }
+
+    if (level === 'township') {
+      return zoom >= this.adminBoundaryZoomThresholds.townshipMin;
+    }
+
+    return false;
+  }
+
+  applyAdminBoundaryVisibility() {
+    const zoom = this.map.getZoom();
+
+    Object.entries(this.adminBoundaryLayers || {}).forEach(([level, layerGroup]) => {
+      const shouldShow = this.shouldShowAdminBoundaryLevel(level, zoom);
+
+      if (shouldShow && !this.adminBoundaryLoaded[level]) {
+        this.ensureAdminBoundaryLayerLoaded(level);
+      }
+
+      if (shouldShow && this.adminBoundaryLoaded[level]) {
+        if (!this.map.hasLayer(layerGroup)) {
+          layerGroup.addTo(this.map);
+        }
+        return;
+      }
+
+      if (this.map.hasLayer(layerGroup)) {
+        this.map.removeLayer(layerGroup);
+      }
+    });
+  }
+
+  toggleAdminBoundaryLevel(level, visible) {
+    if (!Object.prototype.hasOwnProperty.call(this.adminBoundaryVisibility, level)) {
+      return;
+    }
+
+    this.adminBoundaryVisibility[level] = Boolean(visible);
+
+    if (visible) {
+      this.ensureAdminBoundaryLayerLoaded(level);
+    }
+
+    this.applyAdminBoundaryVisibility();
+  }
+
+  // 兼容旧调用：统一切换三级行政区划图层
+  toggleAdminBoundaries(visible) {
+    Object.keys(this.adminBoundaryVisibility).forEach(level => {
+      this.adminBoundaryVisibility[level] = Boolean(visible);
+    });
+    this.applyAdminBoundaryVisibility();
   }
 
   // 切换卫星底图上的等高线参考叠加层
@@ -3859,38 +4072,28 @@ class TerrainEditor {
    * @param {string} basemap 当前底图模式
    */
   updateAdminBoundaryAvailability(basemap) {
-    const isSatellite = basemap === 'satellite';
-    const adminToggle = document.getElementById('adminBoundaryToggle');
+    const adminControl = document.getElementById('adminBoundaryControl');
     const adminColor = document.getElementById('adminBoundaryColor');
-    
-    if (adminToggle) {
-      adminToggle.disabled = !isSatellite;
-      const parentLabel = adminToggle.closest('.layer-item');
-      if (parentLabel) {
-        if (!isSatellite) {
-          parentLabel.classList.add('text-muted');
-          parentLabel.style.opacity = '0.6';
-          parentLabel.title = '行政区划边界仅在卫星底图模式下可用';
-          // 如果当前开启了，则暂时从地图上移除（不改变勾选状态）
-          if (adminToggle.checked) {
-            this.toggleAdminBoundaries(false);
-          }
-        } else {
-          parentLabel.classList.remove('text-muted');
-          parentLabel.style.opacity = '1';
-          parentLabel.title = '';
-          // 如果复选框原本是勾选的，且切回卫星底图，恢复显示
-          if (adminToggle.checked) {
-            this.toggleAdminBoundaries(true);
-          }
-        }
+
+    ['toggleCity', 'toggleDistrict', 'toggleTownship'].forEach(id => {
+      const checkbox = document.getElementById(id);
+      if (checkbox) {
+        checkbox.disabled = false;
       }
+    });
+
+    if (adminControl) {
+      adminControl.classList.remove('text-muted', 'disabled-item');
+      adminControl.style.opacity = '1';
+      adminControl.title = '行政区划边界按缩放级别动态显示，适用于所有底图模式';
     }
-    
+
     if (adminColor) {
-      adminColor.disabled = !isSatellite;
-      adminColor.style.cursor = isSatellite ? 'pointer' : 'not-allowed';
+      adminColor.disabled = false;
+      adminColor.style.cursor = 'pointer';
     }
+
+    this.applyAdminBoundaryVisibility();
   }
 
   /**
