@@ -10,6 +10,7 @@ class TerrainEditor {
       minZoom: 5,
       maxZoom: 18,
       zoomSnap: 0.1, // 允许更精细的缩放级别以精确匹配重庆占比
+      skipDefaultLayer: true, // 跳过默认底图加载，由编辑器统一管理
     });
     
     // 默认缩放占比配置 (根据用户要求：地块/重庆市占 3/4 边宽)
@@ -455,16 +456,15 @@ class TerrainEditor {
 
   // 切换卫星底图上的等高线参考叠加层
   toggleTopographicAssist(visible) {
-    if (!this.topographicAssistLayer) {
-      this.topographicAssistLayer = window.getOverlayLayer
-        ? window.getOverlayLayer('contours')
-        : getOverlayLayer('contours');
-      if (this.topographicAssistLayer?.setOpacity) {
-        this.topographicAssistLayer.setOpacity(this.topographicAssistOpacity);
-      }
+    if (!this.topographicAssistLayer && typeof window.getOverlayLayer === 'function') {
+      this.topographicAssistLayer = window.getOverlayLayer('contours');
     }
 
     if (!this.topographicAssistLayer) return;
+
+    if (this.topographicAssistLayer.setOpacity) {
+      this.topographicAssistLayer.setOpacity(this.topographicAssistOpacity);
+    }
 
     const shouldDisplay = visible && this.currentBasemap === 'satellite';
     if (shouldDisplay) {
@@ -478,9 +478,14 @@ class TerrainEditor {
 
   // 更新等高线参考叠加层透明度
   setTopographicAssistOpacity(opacity) {
-    this.topographicAssistOpacity = opacity;
+    const parsedOpacity = Number(opacity);
+    const normalizedOpacity = Number.isFinite(parsedOpacity)
+      ? Math.max(0, Math.min(1, parsedOpacity))
+      : 0;
+
+    this.topographicAssistOpacity = normalizedOpacity;
     if (this.topographicAssistLayer?.setOpacity) {
-      this.topographicAssistLayer.setOpacity(opacity);
+      this.topographicAssistLayer.setOpacity(normalizedOpacity);
     }
   }
 
@@ -3799,30 +3804,22 @@ class TerrainEditor {
   
   // 切换底图
   switchBasemap(basemap) {
-    const normalizedBasemap = basemap === 'grayscale' ? 'osm' : basemap;
-    if (normalizedBasemap === this.currentBasemap && this.activeBaseLayer) return;
+    if (basemap === this.currentBasemap && this.activeBaseLayer) return;
     
     // 移除当前底图实例
     if (this.activeBaseLayer) {
       this.map.removeLayer(this.activeBaseLayer);
-    } else {
-      // 兜底：如果 activeBaseLayer 为空，尝试移除所有可能的底图
-      this.map.eachLayer(layer => {
-        if (layer instanceof L.TileLayer && !layer.options.opacity) {
-           this.map.removeLayer(layer);
-        }
-      });
     }
     
     // 获取新底图实例
-    const newLayer = this.baseLayers[normalizedBasemap];
+    const newLayer = window.getBaseLayer(basemap);
     if (newLayer) {
       newLayer.addTo(this.map);
       this.activeBaseLayer = newLayer;
-      this.currentBasemap = normalizedBasemap;
+      this.currentBasemap = basemap;
       
       // 更新按钮显示名称
-      this.updateBasemapUI(normalizedBasemap);
+      this.updateBasemapUI(basemap);
     }
   }
   
@@ -3831,8 +3828,8 @@ class TerrainEditor {
     // 更新按钮文字
     const basemapNames = {
       satellite: '卫星底图',
-      topographic: '等高线底图',
-      osm: '标准底图'
+      grayscale: '标准底图',
+      topographic: '等高线底图'
     };
     
     const basemapName = basemapNames[basemap] || '底图';
@@ -3852,7 +3849,7 @@ class TerrainEditor {
       }
     });
 
-    // 根据底图模式禁用/启用行政区划边界
+    // 根据底图模式禁用/启用辅助图层
     this.updateAdminBoundaryAvailability(basemap);
     this.updateTopographicAssistAvailability(basemap);
   }
@@ -3874,7 +3871,7 @@ class TerrainEditor {
           parentLabel.classList.add('text-muted');
           parentLabel.style.opacity = '0.6';
           parentLabel.title = '行政区划边界仅在卫星底图模式下可用';
-          // 如果当前开启了，则暂时关闭它（不改变勾选状态，只改变显示）
+          // 如果当前开启了，则暂时从地图上移除（不改变勾选状态）
           if (adminToggle.checked) {
             this.toggleAdminBoundaries(false);
           }
@@ -3882,7 +3879,7 @@ class TerrainEditor {
           parentLabel.classList.remove('text-muted');
           parentLabel.style.opacity = '1';
           parentLabel.title = '';
-          // 如果复选框原本是勾选的，恢复显示
+          // 如果复选框原本是勾选的，且切回卫星底图，恢复显示
           if (adminToggle.checked) {
             this.toggleAdminBoundaries(true);
           }
@@ -3912,11 +3909,11 @@ class TerrainEditor {
 
     if (topoControl) {
       if (!isSatellite) {
-        topoControl.classList.add('text-muted');
+        topoControl.classList.add('text-muted', 'disabled-item');
         topoControl.style.opacity = '0.6';
         topoControl.title = '等高线参考层仅在卫星底图模式下可用';
       } else {
-        topoControl.classList.remove('text-muted');
+        topoControl.classList.remove('text-muted', 'disabled-item');
         topoControl.style.opacity = '1';
         topoControl.title = '叠加等高线参考层，便于结合卫星影像判读地形';
       }

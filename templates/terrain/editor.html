@@ -1742,6 +1742,7 @@
             <ul class="dropdown-menu shadow w-100" aria-labelledby="basemapDropdownSidebar">
               <li><a class="dropdown-item active" href="#" data-basemap="satellite">卫星底图</a></li>
               <li><a class="dropdown-item" href="#" data-basemap="grayscale">标准底图</a></li>
+              <li><a class="dropdown-item" href="#" data-basemap="topographic">等高线底图</a></li>
             </ul>
           </div>
         </div>
@@ -1782,14 +1783,36 @@
         <!-- 辅助图层 -->
         <div class="sidebar-card assist-layer-list">
           <h6 class="sidebar-section-title"><i class="bi bi-sliders"></i>辅助图层</h6>
-          <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" id="gridToggle10m">
-            <span>10m 绘制网格</span>
+          
+          <div class="layer-item" id="topographicAssistControl">
+            <div class="d-flex flex-column w-100">
+              <div class="d-flex align-items-center justify-content-between w-100">
+                <div class="d-flex align-items-center">
+                  <input type="checkbox" class="layer-checkbox" id="topographicAssistToggle">
+                  <span>卫星等高线参考层</span>
+                </div>
+                <span class="badge bg-light text-dark border small" id="topographicAssistOpacityValue">50%</span>
+              </div>
+              <div class="mt-2 px-1">
+                <input type="range" class="form-range" id="topographicAssistOpacity" min="0" max="100" step="1" value="50">
+              </div>
+            </div>
           </div>
+
           <div class="layer-item">
-            <input type="checkbox" class="layer-checkbox" id="gridToggle1km">
-            <span>1000m 参考网格</span>
+            <div class="d-flex align-items-center">
+              <input type="checkbox" class="layer-checkbox" id="gridToggle10m">
+              <span>10m 绘制网格</span>
+            </div>
           </div>
+          
+          <div class="layer-item">
+            <div class="d-flex align-items-center">
+              <input type="checkbox" class="layer-checkbox" id="gridToggle1km">
+              <span>1000m 参考网格</span>
+            </div>
+          </div>
+          
           <div class="layer-item" style="display: flex; align-items: center; justify-content: space-between;">
             <div>
               <input type="checkbox" class="layer-checkbox" id="adminBoundaryToggle" checked>

@@ -26,19 +26,28 @@ const baseLayerConfig = {
       maxZoom: 20,
       maxNativeZoom: 18
     }
+  },
+  topographic: {
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    options: {
+      attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+      maxZoom: 17,
+      maxNativeZoom: 17
+    }
   }
 };
 
 // 获取底图新实例的辅助函数 (解决多个地图实例共用图层对象的问题)
 function getBaseLayer(type) {
-  const config = baseLayerConfig[type] || baseLayerConfig.grayscale;
+  const config = baseLayerConfig[type] || baseLayerConfig.satellite;
   return L.tileLayer(config.url, config.options);
 }
 
 // 基础地图图层实例管理 (保留旧变量名以兼容现有代码，但建议使用 getBaseLayer)
 const baseLayers = {
   get grayscale() { return getBaseLayer('grayscale'); },
-  get satellite() { return getBaseLayer('satellite'); }
+  get satellite() { return getBaseLayer('satellite'); },
+  get topographic() { return getBaseLayer('topographic'); }
 };
 
 // 辅助图层
@@ -65,8 +74,10 @@ function initMap(mapId, options = {}) {
   const mapOptions = { ...mapConfig, ...options };
   const map = L.map(mapId, mapOptions);
 
-  // 默认添加卫星底图 (确保是新实例)
-  getBaseLayer('satellite').addTo(map);
+  // 如果没有明确跳过默认图层，则默认添加卫星底图 (确保是新实例)
+  if (options.skipDefaultLayer !== true) {
+    getBaseLayer('satellite').addTo(map);
+  }
 
   // 将新地图实例加入全局追踪
   activeMaps.push(map);
@@ -262,6 +273,9 @@ class LayerManager {
 try {
   window.initMap = initMap;
   window.baseLayers = baseLayers;
+  window.getBaseLayer = getBaseLayer;
+  window.overlayLayers = overlayLayers;
+  window.getOverlayLayer = function(name) { return overlayLayers[name]; };
   window.polygonStyles = polygonStyles;
   window.markerStyles = markerStyles;
   window.pathStyles = pathStyles;

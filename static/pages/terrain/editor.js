@@ -504,12 +504,34 @@ function bindActionEvents() {
   });
 }
 
+function syncTopographicAssistOpacityUI(percent) {
+  const topographicAssistOpacity = document.getElementById('topographicAssistOpacity');
+  const topographicAssistOpacityValue = document.getElementById('topographicAssistOpacityValue');
+  const parsedPercent = Number(percent);
+  const normalizedPercent = Number.isFinite(parsedPercent)
+    ? Math.max(0, Math.min(100, Math.round(parsedPercent)))
+    : 50;
+
+  if (topographicAssistOpacity) {
+    topographicAssistOpacity.value = String(normalizedPercent);
+  }
+
+  if (topographicAssistOpacityValue) {
+    topographicAssistOpacityValue.textContent = `${normalizedPercent}%`;
+  }
+
+  if (terrainEditor) {
+    terrainEditor.setTopographicAssistOpacity(normalizedPercent / 100);
+  }
+
+  return normalizedPercent;
+}
+
 // 绑定辅助图层事件
 function bindAssistLayerEvents() {
   // 卫星底图上的等高线参考层
   const topographicAssistToggle = document.getElementById('topographicAssistToggle');
   const topographicAssistOpacity = document.getElementById('topographicAssistOpacity');
-  const topographicAssistOpacityValue = document.getElementById('topographicAssistOpacityValue');
 
   if (topographicAssistToggle) {
     topographicAssistToggle.addEventListener('change', function() {
@@ -521,14 +543,12 @@ function bindAssistLayerEvents() {
 
   if (topographicAssistOpacity) {
     topographicAssistOpacity.addEventListener('input', function() {
-      const opacity = Number(this.value) / 100;
-      if (topographicAssistOpacityValue) {
-        topographicAssistOpacityValue.textContent = `${this.value}%`;
-      }
-      if (terrainEditor) {
-        terrainEditor.setTopographicAssistOpacity(opacity);
-      }
+      syncTopographicAssistOpacityUI(this.value);
     });
+
+    syncTopographicAssistOpacityUI(topographicAssistOpacity.value);
+  } else {
+    syncTopographicAssistOpacityUI(50);
   }
 
   // 10m 网格
