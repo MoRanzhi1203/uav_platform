@@ -1166,21 +1166,66 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 12px;
   }
 
-  .assist-layer-list .admin-layer-option {
+  .assist-layer-list .admin-layer-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .assist-layer-list .admin-layer-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+  }
+
+  .assist-layer-list .admin-layer-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+  }
+
+  .assist-layer-list .admin-layer-slider-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .assist-layer-list .admin-layer-slider-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    margin: 0;
-    cursor: pointer;
+    gap: 12px;
   }
 
-  .assist-layer-list .admin-layer-option small {
-    color: #64748b;
+  .assist-layer-list .admin-layer-slider-head label {
+    margin: 0;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  .assist-layer-list .admin-layer-slider-value {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.78rem;
+    font-weight: 600;
     white-space: nowrap;
+  }
+
+  .assist-layer-list #adminBoundarySlider:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
   }
 
   .assist-layer-list .admin-layer-note {
@@ -1844,34 +1889,32 @@
           
           <div class="layer-item" id="adminBoundaryControl">
             <div class="admin-layer-panel">
-              <div class="d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex flex-column gap-1">
                 <span class="fw-semibold">行政区划边界</span>
-                <input type="color" id="adminBoundaryColor" value="#4a90e2"
-                  style="width: 24px; height: 24px; border: none; padding: 0; cursor: pointer; border-radius: 4px;"
-                  title="区县边界主色">
+                <p class="admin-layer-note">滑动条一次仅显示一个行政层级，不再叠加显示。</p>
               </div>
-              <label class="admin-layer-option">
-                <span class="d-flex align-items-center">
-                  <input type="checkbox" class="layer-checkbox" id="toggleCity" checked>
-                  <span>市级边界</span>
-                </span>
-                <small>低缩放</small>
-              </label>
-              <label class="admin-layer-option">
-                <span class="d-flex align-items-center">
-                  <input type="checkbox" class="layer-checkbox" id="toggleDistrict" checked>
-                  <span>区/县边界</span>
-                </span>
-                <small>中高缩放</small>
-              </label>
-              <label class="admin-layer-option">
-                <span class="d-flex align-items-center">
-                  <input type="checkbox" class="layer-checkbox" id="toggleTownship">
-                  <span>乡镇/街道</span>
-                </span>
-                <small>高缩放</small>
-              </label>
-              <p class="admin-layer-note">系统会按缩放级别自动显隐：低缩放显示市级，中高缩放显示区县，高缩放时可叠加乡镇/街道边界。</p>
+              <div class="admin-layer-legend">
+                <div class="admin-layer-legend-item">
+                  <span class="admin-layer-swatch" style="background: #0066CC;"></span>
+                  <span>市级边界：深蓝</span>
+                </div>
+                <div class="admin-layer-legend-item">
+                  <span class="admin-layer-swatch" style="background: #999999;"></span>
+                  <span>区/县边界：固定灰色</span>
+                </div>
+                <div class="admin-layer-legend-item">
+                  <span class="admin-layer-swatch" style="background: #3399FF;"></span>
+                  <span>乡镇/街道边界：中蓝</span>
+                </div>
+              </div>
+              <div class="admin-layer-slider-wrap">
+                <div class="admin-layer-slider-head">
+                  <label for="adminBoundarySlider">行政边界级别</label>
+                  <span class="admin-layer-slider-value" id="adminBoundaryLevelLabel">区/县边界</span>
+                </div>
+                <input type="range" class="form-range" id="adminBoundarySlider" min="0" max="2" step="1" value="1">
+              </div>
+              <p class="admin-layer-note">滑块值 `0/1/2` 分别对应市级、区/县、乡镇/街道边界。默认值为 `1`，即仅显示区/县边界。</p>
             </div>
           </div>
         </div>

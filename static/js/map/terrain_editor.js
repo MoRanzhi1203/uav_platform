@@ -30,41 +30,39 @@ class TerrainEditor {
     this.topographicAssistOpacity = 0.5;
     this.adminBoundaryStyles = {
       city: {
-        color: '#2563eb',
-        weight: 2.8,
+        color: '#0066CC',
+        weight: 2.4,
         opacity: 0.95,
-        fillColor: '#2563eb',
+        fillColor: '#0066CC',
         fillOpacity: 0.02,
         dashArray: '',
         interactive: true
       },
       district: {
-        color: document.getElementById('adminBoundaryColor')?.value || '#4a90e2',
-        weight: 2.2,
-        opacity: 0.9,
-        fillColor: document.getElementById('adminBoundaryColor')?.value || '#4a90e2',
-        fillOpacity: 0.03,
-        dashArray: '8, 8',
+        color: '#999999',
+        weight: 1,
+        opacity: 0.85,
+        fillColor: '#999999',
+        fillOpacity: 0.01,
+        dashArray: '3, 3',
         interactive: false
       },
       township: {
-        color: '#8b5cf6',
-        weight: 1.2,
-        opacity: 0.7,
-        fillColor: '#8b5cf6',
+        color: '#3399FF',
+        weight: 1.5,
+        opacity: 0.8,
+        fillColor: '#3399FF',
         fillOpacity: 0.01,
-        dashArray: '4, 6',
+        dashArray: '',
         interactive: false
       }
     };
-    this.adminBoundaryVisibility = {
-      city: document.getElementById('toggleCity')?.checked ?? true,
-      district: document.getElementById('toggleDistrict')?.checked ?? true,
-      township: document.getElementById('toggleTownship')?.checked ?? false
-    };
-    this.adminBoundaryZoomThresholds = {
-      districtMin: 10,
-      townshipMin: 14
+    this.adminBoundaryDisplayLevel = 1;
+    this.adminBoundaryEnabled = true;
+    this.adminBoundaryLevelConfig = {
+      0: 'city',
+      1: 'district',
+      2: 'township'
     };
     this.adminBoundaryChunkSize = 50;
     this.adminBoundaryLoaded = {
@@ -200,7 +198,6 @@ class TerrainEditor {
     // 监听缩放事件以更新字体大小 (行政区划边界)
     this.map.on('zoomend', () => {
       this.updateLabelScaling();
-      this.applyAdminBoundaryVisibility();
     });
     this.updateLabelScaling(); // 初始执行一次
 
@@ -330,6 +327,7 @@ class TerrainEditor {
     
     // 初始化行政区划边界层 (独立于参考网格管理)
     this.loadAdminBoundaries();
+    this.syncAdminBoundarySliderUI();
   }
   
   getAdminBoundarySourceUrls() {
@@ -344,12 +342,17 @@ class TerrainEditor {
 
   // 初始化行政区划边界的异步加载
   loadAdminBoundaries() {
-    this.ensureAdminBoundaryLayerLoaded('city');
-    this.ensureAdminBoundaryLayerLoaded('district');
+    const currentLevel = this.getAdminBoundaryLevelKey();
+    this.ensureAdminBoundaryLayerLoaded(currentLevel);
 
-    if (this.adminBoundaryVisibility.township) {
-      this.ensureAdminBoundaryLayerLoaded('township');
-    }
+    // 其余层级放到空闲时预加载，兼顾首屏速度与后续切换体验。
+    ['city', 'district', 'township']
+      .filter(level => level !== currentLevel)
+      .forEach((level, index) => {
+        setTimeout(() => {
+          this.ensureAdminBoundaryLayerLoaded(level);
+        }, 40 * (index + 1));
+      });
   }
 
   async ensureAdminBoundaryLayerLoaded(level) {
@@ -471,7 +474,7 @@ class TerrainEditor {
   }
 
   getAdminBoundaryStyle(level) {
-    return { ...(this.adminBoundaryStyles[level] || this.adminBoundaryStyles.district) };
+    return { ...(this.adminBoundaryStyles[level] || this.adminBoundaryStyles.city) };
   }
 
   getAdminBoundaryLabel(feature) {
@@ -576,12 +579,9 @@ class TerrainEditor {
     processCoords(geometry.coordinates);
   }
 
-  // 更新行政边界颜色
+  // 兼容旧调用：当前边界颜色已固定，不再提供前端调色入口
   updateAdminBoundaryColor(color) {
-    this.setAdminBoundaryStyle('district', {
-      color,
-      fillColor: color
-    });
+    return color;
   }
 
   setAdminBoundaryStyle(level, stylePatch = {}) {
@@ -602,31 +602,45 @@ class TerrainEditor {
     });
   }
 
-  shouldShowAdminBoundaryLevel(level, zoom = this.map.getZoom()) {
-    if (!this.adminBoundaryVisibility[level]) {
-      return false;
+  getAdminBoundaryLevelKey(level = this.adminBoundaryDisplayLevel) {
+    return this.adminBoundaryLevelConfig[level] || this.adminBoundaryLevelConfig[1];
+  }
+
+  syncAdminBoundarySliderUI() {
+    const slider = document.getElementById('adminBoundarySlider');
+    const label = document.getElementById('adminBoundaryLevelLabel');
+    const labelMap = {
+      0: '市级边界',
+      1: '区/县边界',
+      2: '乡镇/街道边界'
+    };
+
+    if (slider) {
+      slider.value = String(this.adminBoundaryDisplayLevel);
     }
 
-    if (level === 'city') {
-      return zoom < this.adminBoundaryZoomThresholds.districtMin;
+    if (label) {
+      label.textContent = labelMap[this.adminBoundaryDisplayLevel] || labelMap[1];
+    }
+  }
+
+  setAdminBoundaryDisplayLevel(level) {
+    const numericLevel = Number(level);
+    if (!Object.prototype.hasOwnProperty.call(this.adminBoundaryLevelConfig, numericLevel)) {
+      return;
     }
 
-    if (level === 'district') {
-      return zoom >= this.adminBoundaryZoomThresholds.districtMin;
-    }
-
-    if (level === 'township') {
-      return zoom >= this.adminBoundaryZoomThresholds.townshipMin;
-    }
-
-    return false;
+    this.adminBoundaryDisplayLevel = numericLevel;
+    this.syncAdminBoundarySliderUI();
+    this.ensureAdminBoundaryLayerLoaded(this.getAdminBoundaryLevelKey(numericLevel));
+    this.applyAdminBoundaryVisibility();
   }
 
   applyAdminBoundaryVisibility() {
-    const zoom = this.map.getZoom();
+    const visibleLevel = this.getAdminBoundaryLevelKey();
 
     Object.entries(this.adminBoundaryLayers || {}).forEach(([level, layerGroup]) => {
-      const shouldShow = this.shouldShowAdminBoundaryLevel(level, zoom);
+      const shouldShow = this.adminBoundaryEnabled && level === visibleLevel;
 
       if (shouldShow && !this.adminBoundaryLoaded[level]) {
         this.ensureAdminBoundaryLayerLoaded(level);
@@ -646,24 +660,28 @@ class TerrainEditor {
   }
 
   toggleAdminBoundaryLevel(level, visible) {
-    if (!Object.prototype.hasOwnProperty.call(this.adminBoundaryVisibility, level)) {
+    const targetLayer = this.adminBoundaryLayers?.[level];
+    if (!targetLayer) {
       return;
     }
 
-    this.adminBoundaryVisibility[level] = Boolean(visible);
-
-    if (visible) {
-      this.ensureAdminBoundaryLayerLoaded(level);
+    if (!visible) {
+      if (this.map.hasLayer(targetLayer)) {
+        this.map.removeLayer(targetLayer);
+      }
+      return;
     }
 
-    this.applyAdminBoundaryVisibility();
+    this.ensureAdminBoundaryLayerLoaded(level).then(() => {
+      if (this.adminBoundaryEnabled) {
+        targetLayer.addTo(this.map);
+      }
+    });
   }
 
   // 兼容旧调用：统一切换三级行政区划图层
   toggleAdminBoundaries(visible) {
-    Object.keys(this.adminBoundaryVisibility).forEach(level => {
-      this.adminBoundaryVisibility[level] = Boolean(visible);
-    });
+    this.adminBoundaryEnabled = Boolean(visible);
     this.applyAdminBoundaryVisibility();
   }
 
@@ -4073,24 +4091,16 @@ class TerrainEditor {
    */
   updateAdminBoundaryAvailability(basemap) {
     const adminControl = document.getElementById('adminBoundaryControl');
-    const adminColor = document.getElementById('adminBoundaryColor');
+    const slider = document.getElementById('adminBoundarySlider');
 
-    ['toggleCity', 'toggleDistrict', 'toggleTownship'].forEach(id => {
-      const checkbox = document.getElementById(id);
-      if (checkbox) {
-        checkbox.disabled = false;
-      }
-    });
+    if (slider) {
+      slider.disabled = false;
+    }
 
     if (adminControl) {
       adminControl.classList.remove('text-muted', 'disabled-item');
       adminControl.style.opacity = '1';
-      adminControl.title = '行政区划边界按缩放级别动态显示，适用于所有底图模式';
-    }
-
-    if (adminColor) {
-      adminColor.disabled = false;
-      adminColor.style.cursor = 'pointer';
+      adminControl.title = '行政区划边界支持按层级滑动切换，适用于所有底图模式';
     }
 
     this.applyAdminBoundaryVisibility();

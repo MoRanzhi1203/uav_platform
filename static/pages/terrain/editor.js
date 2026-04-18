@@ -567,29 +567,32 @@ function bindAssistLayerEvents() {
     });
   }
 
-  // 行政区划边界切换
-  const adminToggleMap = {
-    toggleCity: 'city',
-    toggleDistrict: 'district',
-    toggleTownship: 'township'
+  // 行政区划层级滑动条
+  const adminBoundarySlider = document.getElementById('adminBoundarySlider');
+  const adminBoundaryLevelLabel = document.getElementById('adminBoundaryLevelLabel');
+  const adminBoundaryLabelMap = {
+    0: '市级边界',
+    1: '区/县边界',
+    2: '乡镇/街道边界'
   };
-  const adminColor = document.getElementById('adminBoundaryColor');
 
-  Object.entries(adminToggleMap).forEach(([elementId, level]) => {
-    const checkbox = document.getElementById(elementId);
-    if (!checkbox) return;
+  if (adminBoundarySlider) {
+    adminBoundarySlider.addEventListener('input', function() {
+      const level = Number(this.value);
 
-    checkbox.addEventListener('change', function() {
+      if (adminBoundaryLevelLabel) {
+        adminBoundaryLevelLabel.textContent = adminBoundaryLabelMap[level] || adminBoundaryLabelMap[1];
+      }
+
       if (terrainEditor) {
-        terrainEditor.toggleAdminBoundaryLevel(level, this.checked);
+        terrainEditor.setAdminBoundaryDisplayLevel(level);
       }
     });
-  });
 
-  if (adminColor) {
-    adminColor.addEventListener('input', function(e) {
-      if (terrainEditor) terrainEditor.updateAdminBoundaryColor(e.target.value);
-    });
+    if (adminBoundaryLevelLabel) {
+      const initialLevel = Number(adminBoundarySlider.value);
+      adminBoundaryLevelLabel.textContent = adminBoundaryLabelMap[initialLevel] || adminBoundaryLabelMap[1];
+    }
   }
 }
 
