@@ -36,7 +36,7 @@ class TerrainEditor {
         fillColor: '#0066CC',
         fillOpacity: 0.02,
         dashArray: '',
-        interactive: true
+        interactive: false
       },
       district: {
         color: '#999999',
@@ -45,7 +45,7 @@ class TerrainEditor {
         fillColor: '#999999',
         fillOpacity: 0.01,
         dashArray: '3, 3',
-        interactive: false
+        interactive: true
       },
       township: {
         color: '#3399FF',
@@ -54,7 +54,7 @@ class TerrainEditor {
         fillColor: '#3399FF',
         fillOpacity: 0.01,
         dashArray: '',
-        interactive: false
+        interactive: true
       }
     };
     this.adminBoundaryDisplayLevel = 1;
@@ -506,7 +506,7 @@ class TerrainEditor {
       return;
     }
 
-    if (level === 'city') {
+    if (level === 'township') {
       layer.bindTooltip(label, {
         permanent: false,
         sticky: true,
@@ -632,6 +632,24 @@ class TerrainEditor {
 
     this.adminBoundaryDisplayLevel = numericLevel;
     this.syncAdminBoundarySliderUI();
+
+    // 如果是市级边界 (level === 0)，确保移除所有交互和提示
+    if (numericLevel === 0 && this.cityLayer) {
+      this.cityLayer.eachLayer(layer => {
+        if (layer.eachLayer) {
+          layer.eachLayer(subLayer => {
+            subLayer.unbindPopup();
+            subLayer.unbindTooltip();
+            subLayer.off('mouseover mousemove mouseout click');
+          });
+        } else {
+          layer.unbindPopup();
+          layer.unbindTooltip();
+          layer.off('mouseover mousemove mouseout click');
+        }
+      });
+    }
+
     this.ensureAdminBoundaryLayerLoaded(this.getAdminBoundaryLevelKey(numericLevel));
     this.applyAdminBoundaryVisibility();
   }
