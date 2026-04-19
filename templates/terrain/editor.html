@@ -1223,9 +1223,114 @@
     white-space: nowrap;
   }
 
+  .assist-layer-list .admin-boundary-slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .assist-layer-list .admin-boundary-ticks {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: start;
+    gap: 0;
+    margin-top: 4px;
+    padding: 0;
+    user-select: none;
+  }
+
+  .assist-layer-list .admin-boundary-tick {
+    width: max-content;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 7px;
+    color: #64748b;
+    text-align: center;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .assist-layer-list .admin-boundary-tick:first-child {
+    justify-self: start;
+  }
+
+  .assist-layer-list .admin-boundary-tick:nth-child(2) {
+    justify-self: center;
+  }
+
+  .assist-layer-list .admin-boundary-tick:last-child {
+    justify-self: end;
+  }
+
+  .assist-layer-list .admin-boundary-tick-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.65);
+    transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .assist-layer-list .admin-boundary-tick-label {
+    display: block;
+    font-size: 0.7rem;
+    line-height: 1.15;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .assist-layer-list .admin-boundary-tick.active {
+    color: #1d4ed8;
+  }
+
+  .assist-layer-list .admin-boundary-tick.active .admin-boundary-tick-label {
+    font-weight: 600;
+  }
+
+  .assist-layer-list .admin-boundary-tick.active .admin-boundary-tick-dot {
+    background: #3b82f6;
+    transform: scale(1.12);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+  }
+
+  .assist-layer-list .admin-boundary-tick:hover {
+    color: #2563eb;
+  }
+
+  .assist-layer-list .admin-boundary-tick:active {
+    transform: translateY(1px);
+  }
+
+  .assist-layer-list .admin-boundary-tick:focus-visible {
+    outline: 2px solid rgba(37, 99, 235, 0.28);
+    outline-offset: 3px;
+  }
+
+  .assist-layer-list #adminBoundaryControl.is-disabled .admin-boundary-tick {
+    color: #cbd5e1;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .assist-layer-list #adminBoundaryControl.is-disabled .admin-boundary-tick-dot {
+    background: #e2e8f0;
+    box-shadow: 0 0 0 1px rgba(203, 213, 225, 0.9);
+  }
+
   .assist-layer-list #adminBoundarySlider:disabled {
     cursor: not-allowed;
     opacity: 0.65;
+  }
+
+  .assist-layer-list #adminBoundaryControl.is-disabled {
+    opacity: 0.6;
   }
 
   .assist-layer-list .admin-layer-note {
@@ -1888,33 +1993,31 @@
           </div>
           
           <div class="layer-item" id="adminBoundaryControl">
-            <div class="admin-layer-panel">
-              <div class="d-flex flex-column gap-1">
-                <span class="fw-semibold">行政区划边界</span>
-                <p class="admin-layer-note">滑动条一次仅显示一个行政层级，不再叠加显示。</p>
+            <div class="d-flex flex-column w-100">
+              <div class="d-flex align-items-center justify-content-between w-100">
+                <div class="d-flex align-items-center">
+                  <input type="checkbox" class="layer-checkbox" id="adminBoundaryToggle" checked>
+                  <span>行政区划边界</span>
+                </div>
+                <span class="badge bg-light text-dark border small admin-layer-slider-value" id="adminBoundaryLevelLabel">区/县</span>
               </div>
-              <div class="admin-layer-legend">
-                <div class="admin-layer-legend-item">
-                  <span class="admin-layer-swatch" style="background: #f1f5f9;"></span>
-                  <span>市级边界：冷白灰粗实线主边界</span>
-                </div>
-                <div class="admin-layer-legend-item">
-                  <span class="admin-layer-swatch" style="background: #f1f5f9;"></span>
-                  <span>区/县边界：冷白灰中实线工作边界</span>
-                </div>
-                <div class="admin-layer-legend-item">
-                  <span class="admin-layer-swatch" style="background: #f1f5f9;"></span>
-                  <span>乡镇/街道边界：冷白灰细虚线辅助边界</span>
-                </div>
-              </div>
-              <div class="admin-layer-slider-wrap">
-                <div class="admin-layer-slider-head">
-                  <label for="adminBoundarySlider">行政边界级别</label>
-                  <span class="admin-layer-slider-value" id="adminBoundaryLevelLabel">区/县边界</span>
-                </div>
+              <div class="mt-2 px-1 admin-boundary-slider-group">
                 <input type="range" class="form-range" id="adminBoundarySlider" min="0" max="2" step="1" value="1">
+                <div class="admin-boundary-ticks" id="adminBoundaryTicks" aria-label="行政边界级别快捷切换">
+                  <div class="admin-boundary-tick" data-level="0" role="button" tabindex="0">
+                    <span class="admin-boundary-tick-dot"></span>
+                    <span class="admin-boundary-tick-label">市级</span>
+                  </div>
+                  <div class="admin-boundary-tick active" data-level="1" role="button" tabindex="0">
+                    <span class="admin-boundary-tick-dot"></span>
+                    <span class="admin-boundary-tick-label">区/县</span>
+                  </div>
+                  <div class="admin-boundary-tick" data-level="2" role="button" tabindex="0">
+                    <span class="admin-boundary-tick-dot"></span>
+                    <span class="admin-boundary-tick-label">乡镇</span>
+                  </div>
+                </div>
               </div>
-              <p class="admin-layer-note">滑块值 `0/1/2` 分别对应市级主边界、区/县工作边界、乡镇/街道辅助边界。行政名称仅在当前视窗范围内按缩放级别动态显示，乡镇/街道名称需在更高缩放级别下显示。</p>
             </div>
           </div>
         </div>

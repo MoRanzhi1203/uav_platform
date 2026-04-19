@@ -381,6 +381,7 @@ class TerrainEditor {
     // 初始化行政区划边界层 (独立于参考网格管理)
     this.loadAdminBoundaries();
     this.syncAdminBoundarySliderUI();
+    this.bindAdminBoundaryControlEvents();
   }
   
   getAdminBoundaryDerivedFileNames() {
@@ -699,6 +700,14 @@ class TerrainEditor {
     return '';
   }
 
+  shouldShowCityAdminLabel(feature, level = feature?.properties?.level) {
+    if (level !== 'city') {
+      return true;
+    }
+
+    return this.getAdminBoundaryLabel(feature) !== '重庆市' || this.adminBoundaryDisplayLevel === 0;
+  }
+
   bindAdminBoundaryTooltip(level, feature, layer) {
     if (!layer) return;
 
@@ -874,6 +883,10 @@ class TerrainEditor {
       return false;
     }
 
+    if (!this.shouldShowCityAdminLabel(layer?.feature, level)) {
+      return false;
+    }
+
     if (level === 'township') {
       return this.shouldShowTownshipLabels();
     }
@@ -989,7 +1002,48 @@ class TerrainEditor {
     return this.adminBoundaryLevelConfig[level] || this.adminBoundaryLevelConfig[1];
   }
 
+  // 根据滑块值返回当前应逐级叠加显示的行政区划层级
+  getVisibleAdminBoundaryLevels(level = this.adminBoundaryDisplayLevel) {
+    const numericLevel = Number(level);
+    const normalizedLevel = Object.prototype.hasOwnProperty.call(this.adminBoundaryLevelConfig, numericLevel)
+      ? numericLevel
+      : 1;
+
+    return Object.keys(this.adminBoundaryLevelConfig)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .filter(configLevel => configLevel <= normalizedLevel)
+      .map(configLevel => this.adminBoundaryLevelConfig[configLevel]);
+  }
+
+  isAdminBoundaryAvailable(basemap = this.currentBasemap) {
+    return basemap === 'satellite';
+  }
+
+  removeAdminBoundaryLayers() {
+    Object.values(this.adminBoundaryLayers || {}).forEach(layerGroup => {
+      if (layerGroup && this.map?.hasLayer(layerGroup)) {
+        this.map.removeLayer(layerGroup);
+      }
+    });
+  }
+
+  syncAdminBoundaryTickState(level = this.adminBoundaryDisplayLevel) {
+    const ticks = document.querySelectorAll('#adminBoundaryTicks .admin-boundary-tick');
+    const numericLevel = Object.prototype.hasOwnProperty.call(this.adminBoundaryLevelConfig, Number(level))
+      ? Number(level)
+      : this.adminBoundaryDisplayLevel;
+
+    ticks.forEach(tick => {
+      const tickLevel = Number(tick.dataset.level);
+      const isActive = tickLevel === numericLevel;
+      tick.classList.toggle('active', isActive);
+      tick.setAttribute('aria-current', isActive ? 'true' : 'false');
+    });
+  }
+
   syncAdminBoundarySliderUI() {
+    const toggle = document.getElementById('adminBoundaryToggle');
     const slider = document.getElementById('adminBoundarySlider');
     const label = document.getElementById('adminBoundaryLevelLabel');
     const labelMap = {
@@ -997,14 +1051,94 @@ class TerrainEditor {
       1: '区/县边界',
       2: '乡镇/街道边界'
     };
+    const isSatellite = this.isAdminBoundaryAvailable();
+    const isEnabled = this.adminBoundaryEnabled === true;
+
+    if (toggle) {
+      toggle.checked = isEnabled;
+    }
 
     if (slider) {
       slider.value = String(this.adminBoundaryDisplayLevel);
+      slider.disabled = !isSatellite || !isEnabled;
+      slider.style.cursor = slider.disabled ? 'not-allowed' : 'pointer';
+      slider.setAttribute('aria-valuetext', labelMap[this.adminBoundaryDisplayLevel] || labelMap[1]);
     }
 
     if (label) {
       label.textContent = labelMap[this.adminBoundaryDisplayLevel] || labelMap[1];
     }
+
+    this.syncAdminBoundaryTickState();
+  }
+
+  bindAdminBoundaryControlEvents() {
+    const toggle = document.getElementById('adminBoundaryToggle');
+    const slider = document.getElementById('adminBoundarySlider');
+
+    if (toggle && !toggle.dataset.bound) {
+      toggle.addEventListener('change', () => {
+        this.toggleAdminBoundaries(toggle.checked);
+      });
+      toggle.dataset.bound = 'true';
+    }
+
+    if (slider && !slider.dataset.bound) {
+      const handleLevelChange = () => {
+        this.setAdminBoundaryDisplayLevel(Number(slider.value));
+      };
+
+      slider.addEventListener('input', handleLevelChange);
+      slider.addEventListener('change', handleLevelChange);
+      slider.dataset.bound = 'true';
+    }
+
+    this.bindAdminBoundaryTickEvents();
+  }
+
+  handleAdminBoundaryTickSelect(level) {
+    const slider = document.getElementById('adminBoundarySlider');
+    const numericLevel = Number(level);
+
+    if (!slider || slider.disabled) {
+      return;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(this.adminBoundaryLevelConfig, numericLevel)) {
+      return;
+    }
+
+    slider.value = String(numericLevel);
+    this.setAdminBoundaryDisplayLevel(numericLevel);
+  }
+
+  bindAdminBoundaryTickEvents() {
+    const ticks = document.querySelectorAll('#adminBoundaryTicks .admin-boundary-tick');
+
+    ticks.forEach(tick => {
+      if (tick.dataset.bound === 'true') {
+        return;
+      }
+
+      const handleSelect = () => {
+        this.handleAdminBoundaryTickSelect(tick.dataset.level);
+      };
+
+      tick.addEventListener('click', () => {
+        handleSelect();
+      });
+
+      tick.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+
+        event.preventDefault();
+        handleSelect();
+      });
+
+      tick.dataset.bound = 'true';
+    });
   }
 
   setAdminBoundaryDisplayLevel(level) {
@@ -1015,16 +1149,28 @@ class TerrainEditor {
 
     this.adminBoundaryDisplayLevel = numericLevel;
     this.syncAdminBoundarySliderUI();
-
-    this.ensureAdminBoundaryLayerLoaded(this.getAdminBoundaryLevelKey(numericLevel));
+    if (this.adminBoundaryEnabled && this.isAdminBoundaryAvailable()) {
+      this.getVisibleAdminBoundaryLevels(numericLevel).forEach(visibleLevel => {
+        this.ensureAdminBoundaryLayerLoaded(visibleLevel);
+      });
+    }
     this.applyAdminBoundaryVisibility();
   }
 
   applyAdminBoundaryVisibility() {
-    const visibleLevel = this.getAdminBoundaryLevelKey();
+    const canDisplay = this.currentBasemap === 'satellite' && this.adminBoundaryEnabled === true;
+    if (!canDisplay) {
+      this.removeAdminBoundaryLayers();
+      return;
+    }
+
+    const visibleLevels = this.adminBoundaryEnabled
+      ? this.getVisibleAdminBoundaryLevels()
+      : [];
+    const visibleLevelSet = new Set(visibleLevels);
 
     Object.entries(this.adminBoundaryLayers || {}).forEach(([level, layerGroup]) => {
-      const shouldShow = this.adminBoundaryEnabled && level === visibleLevel;
+      const shouldShow = visibleLevelSet.has(level);
 
       if (shouldShow && !this.adminBoundaryLoaded[level]) {
         this.ensureAdminBoundaryLayerLoaded(level);
@@ -1067,6 +1213,7 @@ class TerrainEditor {
   // 兼容旧调用：统一切换三级行政区划图层
   toggleAdminBoundaries(visible) {
     this.adminBoundaryEnabled = Boolean(visible);
+    this.syncAdminBoundarySliderUI();
     this.applyAdminBoundaryVisibility();
   }
 
@@ -4475,19 +4622,34 @@ class TerrainEditor {
    * @param {string} basemap 当前底图模式
    */
   updateAdminBoundaryAvailability(basemap) {
+    const isSatellite = this.isAdminBoundaryAvailable(basemap);
     const adminControl = document.getElementById('adminBoundaryControl');
+    const toggle = document.getElementById('adminBoundaryToggle');
     const slider = document.getElementById('adminBoundarySlider');
 
+    if (toggle) {
+      toggle.checked = this.adminBoundaryEnabled === true;
+      toggle.disabled = !isSatellite;
+    }
+
     if (slider) {
-      slider.disabled = false;
+      slider.disabled = !isSatellite || this.adminBoundaryEnabled !== true;
+      slider.style.cursor = slider.disabled ? 'not-allowed' : 'pointer';
     }
 
     if (adminControl) {
-      adminControl.classList.remove('text-muted', 'disabled-item');
-      adminControl.style.opacity = '1';
-      adminControl.title = '行政区划边界支持按层级滑动切换，适用于所有底图模式';
+      if (!isSatellite) {
+        adminControl.classList.add('text-muted', 'disabled-item', 'is-disabled');
+        adminControl.style.opacity = '0.6';
+        adminControl.title = '行政区划边界仅在卫星底图模式下可用';
+      } else {
+        adminControl.classList.remove('text-muted', 'disabled-item', 'is-disabled');
+        adminControl.style.opacity = '1';
+        adminControl.title = '叠加显示行政区划边界，便于结合卫星影像识别空间层级';
+      }
     }
 
+    this.syncAdminBoundarySliderUI();
     this.applyAdminBoundaryVisibility();
   }
 

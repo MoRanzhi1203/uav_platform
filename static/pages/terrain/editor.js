@@ -567,33 +567,6 @@ function bindAssistLayerEvents() {
     });
   }
 
-  // 行政区划层级滑动条
-  const adminBoundarySlider = document.getElementById('adminBoundarySlider');
-  const adminBoundaryLevelLabel = document.getElementById('adminBoundaryLevelLabel');
-  const adminBoundaryLabelMap = {
-    0: '市级边界',
-    1: '区/县边界',
-    2: '乡镇/街道边界'
-  };
-
-  if (adminBoundarySlider) {
-    adminBoundarySlider.addEventListener('input', function() {
-      const level = Number(this.value);
-
-      if (adminBoundaryLevelLabel) {
-        adminBoundaryLevelLabel.textContent = adminBoundaryLabelMap[level] || adminBoundaryLabelMap[1];
-      }
-
-      if (terrainEditor) {
-        terrainEditor.setAdminBoundaryDisplayLevel(level);
-      }
-    });
-
-    if (adminBoundaryLevelLabel) {
-      const initialLevel = Number(adminBoundarySlider.value);
-      adminBoundaryLevelLabel.textContent = adminBoundaryLabelMap[initialLevel] || adminBoundaryLabelMap[1];
-    }
-  }
 }
 
 // 绑定自定义地块类型下拉菜单事件
