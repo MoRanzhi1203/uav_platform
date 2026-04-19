@@ -30,31 +30,65 @@ class TerrainEditor {
     this.topographicAssistOpacity = 0.5;
     this.adminBoundaryStyles = {
       city: {
-        color: '#2563eb',
-        weight: 2.4,
-        opacity: 0.95,
-        fillColor: '#2563eb',
-        fillOpacity: 0.04,
-        dashArray: '',
-        interactive: false
+        outer: {
+          color: 'rgba(37,99,235,0.18)',
+          weight: 4.5,
+          opacity: 1,
+          fillColor: '#1d4ed8',
+          fillOpacity: 0,
+          dashArray: '',
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: false
+        },
+        inner: {
+          color: '#1d4ed8',
+          weight: 2.15,
+          opacity: 0.92,
+          fillColor: '#1d4ed8',
+          fillOpacity: 0.018,
+          dashArray: '',
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: false
+        }
       },
       district: {
-        color: '#e5e7eb',
-        weight: 1.5,
-        opacity: 0.92,
-        fillColor: '#e5e7eb',
-        fillOpacity: 0.01,
-        dashArray: '',
-        interactive: false
+        outer: {
+          color: 'rgba(15,23,42,0.18)',
+          weight: 2.2,
+          opacity: 1,
+          fillColor: '#0f172a',
+          fillOpacity: 0,
+          dashArray: '',
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: false
+        },
+        inner: {
+          color: '#f1f5f9',
+          weight: 1.35,
+          opacity: 0.9,
+          fillColor: '#f1f5f9',
+          fillOpacity: 0.006,
+          dashArray: '',
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: false
+        }
       },
       township: {
-        color: '#60a5fa',
-        weight: 0.8,
-        opacity: 0.6,
-        fillColor: '#60a5fa',
-        fillOpacity: 0.01,
-        dashArray: '3, 5',
-        interactive: false
+        single: {
+          color: '#7fb3e6',
+          weight: 0.6,
+          opacity: 0.42,
+          fillColor: '#7fb3e6',
+          fillOpacity: 0.002,
+          dashArray: '2,5',
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: false
+        }
       }
     };
     this.adminBoundaryDisplayLevel = 1;
@@ -592,8 +626,48 @@ class TerrainEditor {
     }
   }
 
-  getAdminBoundaryStyle(level) {
-    return { ...(this.adminBoundaryStyles[level] || this.adminBoundaryStyles.city) };
+  isDualStrokeLevel(level) {
+    return level === 'city' || level === 'district';
+  }
+
+  getAdminBoundaryStyle(level, strokeRole = 'inner') {
+    const levelStyles = this.adminBoundaryStyles[level] || this.adminBoundaryStyles.city;
+    if (!levelStyles) {
+      return {};
+    }
+
+    if (levelStyles.single) {
+      return { ...levelStyles.single };
+    }
+
+    return {
+      ...(levelStyles[strokeRole] || levelStyles.inner || levelStyles.outer || {})
+    };
+  }
+
+  getAdminBoundaryRenderStyles(level) {
+    if (this.isDualStrokeLevel(level)) {
+      return [
+        {
+          role: 'outer',
+          style: this.getAdminBoundaryStyle(level, 'outer'),
+          bindTooltip: false
+        },
+        {
+          role: 'inner',
+          style: this.getAdminBoundaryStyle(level, 'inner'),
+          bindTooltip: true
+        }
+      ];
+    }
+
+    return [
+      {
+        role: 'single',
+        style: this.getAdminBoundaryStyle(level, 'single'),
+        bindTooltip: true
+      }
+    ];
   }
 
   getAdminBoundaryLabel(feature) {
@@ -624,9 +698,7 @@ class TerrainEditor {
   bindAdminBoundaryTooltip(level, feature, layer) {
     if (!layer) return;
 
-    layer.unbindPopup();
-    layer.unbindTooltip();
-    layer.off('mouseover mousemove mouseout click');
+    this.clearAdminBoundaryTooltip(layer);
 
     const label = this.getAdminBoundaryLabel(feature);
     if (!label) return;
@@ -664,6 +736,50 @@ class TerrainEditor {
     }
   }
 
+  clearAdminBoundaryTooltip(layer) {
+    if (!layer) return;
+
+    layer.unbindPopup();
+    layer.unbindTooltip();
+    layer.off('mouseover mousemove mouseout click');
+  }
+
+  markAdminBoundaryFeatureLayer(featureLayer, level, renderRole, bindTooltip) {
+    if (!featureLayer) return;
+
+    featureLayer.adminBoundaryLevel = level;
+    featureLayer.adminBoundaryRenderRole = renderRole;
+    featureLayer.adminBoundaryTooltipLayer = Boolean(bindTooltip);
+  }
+
+  shouldBindAdminBoundaryTooltip(layer) {
+    if (!layer?.feature) {
+      return false;
+    }
+
+    return layer.adminBoundaryTooltipLayer !== false;
+  }
+
+  createAdminBoundaryChunkLayer(level, features, renderRole, style, bindTooltip = false) {
+    return L.geoJSON(
+      { type: 'FeatureCollection', features },
+      {
+        renderer: this.canvasRenderer,
+        style: () => ({ ...style }),
+        onEachFeature: (feature, featureLayer) => {
+          this.markAdminBoundaryFeatureLayer(featureLayer, level, renderRole, bindTooltip);
+
+          if (bindTooltip) {
+            this.bindAdminBoundaryTooltip(level, feature, featureLayer);
+            return;
+          }
+
+          this.clearAdminBoundaryTooltip(featureLayer);
+        }
+      }
+    );
+  }
+
   renderAdminBoundaryChunks(level, features) {
     const targetLayerGroup = this.adminBoundaryLayers?.[level];
     if (!targetLayerGroup) {
@@ -675,6 +791,7 @@ class TerrainEditor {
     return new Promise(resolve => {
       let index = 0;
       const chunkSize = level === 'township' ? 25 : this.adminBoundaryChunkSize;
+      const renderStyles = this.getAdminBoundaryRenderStyles(level);
 
       const loadChunk = () => {
         const chunk = features.slice(index, index + chunkSize);
@@ -684,18 +801,11 @@ class TerrainEditor {
           return;
         }
 
-        const layer = L.geoJSON(
-          { type: 'FeatureCollection', features: chunk },
-          {
-            renderer: this.canvasRenderer,
-            style: () => this.getAdminBoundaryStyle(level),
-            onEachFeature: (feature, featureLayer) => {
-              this.bindAdminBoundaryTooltip(level, feature, featureLayer);
-            }
-          }
-        );
+        renderStyles.forEach(({ role, style, bindTooltip }) => {
+          const layer = this.createAdminBoundaryChunkLayer(level, chunk, role, style, bindTooltip);
+          layer.addTo(targetLayerGroup);
+        });
 
-        layer.addTo(targetLayerGroup);
         index += chunkSize;
         setTimeout(loadChunk, 10);
       };
@@ -718,14 +828,14 @@ class TerrainEditor {
       layerGroup.eachLayer(item => {
         if (typeof item.eachLayer === 'function') {
           item.eachLayer(featureLayer => {
-            if (featureLayer?.feature) {
+            if (this.shouldBindAdminBoundaryTooltip(featureLayer)) {
               this.bindAdminBoundaryTooltip(level, featureLayer.feature, featureLayer);
             }
           });
           return;
         }
 
-        if (item?.feature) {
+        if (this.shouldBindAdminBoundaryTooltip(item)) {
           this.bindAdminBoundaryTooltip(level, item.feature, item);
         }
       });
@@ -764,17 +874,46 @@ class TerrainEditor {
   setAdminBoundaryStyle(level, stylePatch = {}) {
     if (!this.adminBoundaryStyles[level]) return;
 
-    this.adminBoundaryStyles[level] = {
-      ...this.adminBoundaryStyles[level],
-      ...stylePatch
-    };
+    const currentStyles = this.adminBoundaryStyles[level];
+    if (this.isDualStrokeLevel(level)) {
+      this.adminBoundaryStyles[level] = {
+        ...currentStyles,
+        outer: {
+          ...currentStyles.outer,
+          ...(stylePatch.outer || {})
+        },
+        inner: {
+          ...currentStyles.inner,
+          ...(stylePatch.inner || (!stylePatch.outer ? stylePatch : {}))
+        }
+      };
+    } else {
+      this.adminBoundaryStyles[level] = {
+        ...currentStyles,
+        single: {
+          ...currentStyles.single,
+          ...(stylePatch.single || stylePatch)
+        }
+      };
+    }
 
     const targetLayerGroup = this.adminBoundaryLayers?.[level];
     if (!targetLayerGroup) return;
 
     targetLayerGroup.eachLayer(layer => {
+      if (typeof layer.eachLayer === 'function') {
+        layer.eachLayer(featureLayer => {
+          if (typeof featureLayer.setStyle === 'function') {
+            const renderRole = featureLayer.adminBoundaryRenderRole || (this.isDualStrokeLevel(level) ? 'inner' : 'single');
+            featureLayer.setStyle(this.getAdminBoundaryStyle(level, renderRole));
+          }
+        });
+        return;
+      }
+
       if (typeof layer.setStyle === 'function') {
-        layer.setStyle(this.getAdminBoundaryStyle(level));
+        const renderRole = layer.adminBoundaryRenderRole || (this.isDualStrokeLevel(level) ? 'inner' : 'single');
+        layer.setStyle(this.getAdminBoundaryStyle(level, renderRole));
       }
     });
   }
