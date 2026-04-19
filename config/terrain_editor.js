@@ -131,12 +131,11 @@ class TerrainEditor {
   // 加载行政区划边界 (直接读取 GeoJSON 文件)
   async loadAdminBoundaries() {
     try {
-      const version = window.ADMIN_BOUNDARY_DATA_VERSION || Date.now();
-      const geojsonUrl = window.location.origin + '/static/shp/chongqing/derived/chongqing_district_from_township.geojson?v=' + version;
+      const geojsonUrl = window.location.origin + '/static/geojson/chongqing_admin.json';
       this.adminBoundaryColor = document.getElementById('adminBoundaryColor')?.value || '#4a90e2';
       
       console.log('正在请求行政区划边界 (GeoJSON):', geojsonUrl);
-      const response = await fetch(geojsonUrl, { cache: 'no-store' });
+      const response = await fetch(geojsonUrl);
       if (!response.ok) {
         throw new Error(`GeoJSON 请求失败: ${response.status} ${response.statusText}`);
       }

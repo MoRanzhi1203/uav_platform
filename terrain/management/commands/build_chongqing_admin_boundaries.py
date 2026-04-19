@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import geopandas as gpd
@@ -57,14 +58,13 @@ class Command(BaseCommand):
             "city": output_dir / "chongqing_city_from_township.geojson",
             "district": output_dir / "chongqing_district_from_township.geojson",
             "township": output_dir / "chongqing_township_from_source.geojson",
+            "version": output_dir / "version.json",
         }
-        version_file = output_dir / "version.json"
-        version = int(time.time() * 1000)
 
         self.write_geojson(city_gdf, output_files["city"])
         self.write_geojson(district_gdf, output_files["district"])
         self.write_geojson(township_geojson_gdf, output_files["township"])
-        self.write_version_file(version_file, version)
+        version_value = self.write_version_file(output_files["version"])
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -72,7 +72,7 @@ class Command(BaseCommand):
                 f"  city: {output_files['city']}\n"
                 f"  district: {output_files['district']}\n"
                 f"  township: {output_files['township']}\n"
-                f"  version: {version_file} ({version})"
+                f"  version: {output_files['version']} ({version_value})"
             )
         )
 
@@ -208,10 +208,15 @@ class Command(BaseCommand):
             json.dump(payload, file_obj, ensure_ascii=False, indent=2)
             file_obj.write("\n")
 
-    def write_version_file(self, output_path, version):
+    def write_version_file(self, output_path):
+        version_value = int(time.time() * 1000)
         payload = {
-            "version": version,
+            "version": version_value,
+            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
+
         with output_path.open("w", encoding="utf-8") as file_obj:
             json.dump(payload, file_obj, ensure_ascii=False, indent=2)
             file_obj.write("\n")
+
+        return version_value

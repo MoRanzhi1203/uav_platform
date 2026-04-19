@@ -18,14 +18,13 @@ from common.responses import api_response, api_error
 
 logger = logging.getLogger(__name__)
 SUBCATEGORY_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "terrain_subcategories.json"
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ADMIN_BOUNDARY_DERIVED_DIR = PROJECT_ROOT / "static" / "shp" / "chongqing" / "derived"
+ADMIN_BOUNDARY_DERIVED_DIR = Path(__file__).resolve().parents[1] / "static" / "shp" / "chongqing" / "derived"
 ADMIN_BOUNDARY_VERSION_FILE = ADMIN_BOUNDARY_DERIVED_DIR / "version.json"
-ADMIN_BOUNDARY_DERIVED_FILES = [
+ADMIN_BOUNDARY_DERIVED_FILES = (
     ADMIN_BOUNDARY_DERIVED_DIR / "chongqing_city_from_township.geojson",
     ADMIN_BOUNDARY_DERIVED_DIR / "chongqing_district_from_township.geojson",
     ADMIN_BOUNDARY_DERIVED_DIR / "chongqing_township_from_source.geojson",
-]
+)
 
 
 def load_subcategory_config():
@@ -92,26 +91,6 @@ def save_subcategory_config(config):
         logger.warning("Failed to write subcategory config: %s", SUBCATEGORY_CONFIG_PATH)
 
 
-def get_admin_boundary_data_version():
-    """返回行政区划 derived 数据版本号，用于前端静态资源缓存失效。"""
-    if ADMIN_BOUNDARY_VERSION_FILE.exists():
-        try:
-            with ADMIN_BOUNDARY_VERSION_FILE.open("r", encoding="utf-8") as fp:
-                payload = json.load(fp)
-            version = payload.get("version")
-            if version is not None:
-                return str(version)
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            logger.warning("Failed to read admin boundary version file: %s", ADMIN_BOUNDARY_VERSION_FILE)
-
-    existing_files = [path for path in ADMIN_BOUNDARY_DERIVED_FILES if path.exists()]
-    if not existing_files:
-        return "0"
-
-    latest_mtime = max(int(path.stat().st_mtime) for path in existing_files)
-    return str(latest_mtime)
-
-
 def upsert_subcategory_in_config(category, name, description=""):
     """新增或更新 JSON 配置中的子类别及说明。"""
     config = load_subcategory_config()
@@ -145,6 +124,29 @@ def remove_subcategory_from_config(category, name):
 
     config[category] = updated_items
     save_subcategory_config(config)
+
+
+def get_admin_boundary_data_version():
+    """读取行政区划 derived 数据版本号，用于前端缓存失效。"""
+    try:
+        if ADMIN_BOUNDARY_VERSION_FILE.exists():
+            with ADMIN_BOUNDARY_VERSION_FILE.open("r", encoding="utf-8") as fp:
+                payload = json.load(fp)
+            version = payload.get("version")
+            if version is not None:
+                return str(version)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        logger.warning("Failed to read admin boundary version file: %s", ADMIN_BOUNDARY_VERSION_FILE)
+
+    derived_timestamps = [
+        int(path.stat().st_mtime)
+        for path in ADMIN_BOUNDARY_DERIVED_FILES
+        if path.exists()
+    ]
+    if derived_timestamps:
+        return str(max(derived_timestamps))
+
+    return "0"
 
 # 地形管理主页 (区域列表页)
 def terrain_index(request):

@@ -76,10 +76,16 @@ class TerrainEditor {
       district: [],
       township: []
     };
+    this.adminBoundaryLoadedSourceUrls = {
+      city: '',
+      district: '',
+      township: ''
+    };
     this.adminBoundaryViewportInitialized = false;
     this.adminBoundaryTownshipLabelMinZoom = 11;
-    this.adminBoundarySourceUrls = {};
-    this.refreshAdminBoundarySourceUrls();
+    // 版本号优先由模板注入；缺失时仅在当前页面生命周期内生成一次，避免重复刷新。
+    this.adminBoundaryDataVersion = String(window.ADMIN_BOUNDARY_DATA_VERSION || Date.now());
+    this.adminBoundarySourceUrls = this.getAdminBoundarySourceUrls();
     
     // 状态管理
     this.currentTool = 'browse';
@@ -339,69 +345,88 @@ class TerrainEditor {
     this.syncAdminBoundarySliderUI();
   }
   
-  getAdminBoundarySourceUrls() {
-    const apiSources = window.ADMIN_BOUNDARY_API_URLS || {};
-    const origin = window.location.origin;
-    const version = window.ADMIN_BOUNDARY_DATA_VERSION || Date.now();
-    const derivedPaths = {
-      city: '/static/shp/chongqing/derived/chongqing_city_from_township.geojson',
-      district: '/static/shp/chongqing/derived/chongqing_district_from_township.geojson',
-      township: '/static/shp/chongqing/derived/chongqing_township_from_source.geojson'
-    };
-
-    const buildDerivedUrl = level => {
-      const derivedPath = derivedPaths[level];
-      const candidate = apiSources[level];
-      let resolvedUrl = new URL(derivedPath, origin);
-
-      if (typeof candidate === 'string' && candidate.trim()) {
-        try {
-          const candidateUrl = new URL(candidate, origin);
-          if (candidateUrl.pathname === derivedPath) {
-            resolvedUrl = candidateUrl;
-          } else {
-            console.warn(`[行政区划数据源] 忽略非 derived ${level} 路径:`, candidateUrl.toString());
-          }
-        } catch (error) {
-          console.warn(`[行政区划数据源] 无法解析 ${level} 路径，回退 derived:`, candidate, error);
-        }
-      }
-
-      resolvedUrl.searchParams.set('v', String(version));
-      return resolvedUrl.toString();
-    };
-
+  getAdminBoundaryDerivedFileNames() {
     return {
-      city: buildDerivedUrl('city'),
-      district: buildDerivedUrl('district'),
-      township: buildDerivedUrl('township')
+      city: 'chongqing_city_from_township.geojson',
+      district: 'chongqing_district_from_township.geojson',
+      township: 'chongqing_township_from_source.geojson'
     };
   }
 
-  refreshAdminBoundarySourceUrls() {
-    const nextSourceUrls = this.getAdminBoundarySourceUrls();
-    const levels = Object.keys(nextSourceUrls);
-    const changedLevels = levels.filter(level => this.adminBoundarySourceUrls[level] && this.adminBoundarySourceUrls[level] !== nextSourceUrls[level]);
+  getAdminBoundaryDerivedPath(level) {
+    const fileName = this.getAdminBoundaryDerivedFileNames()[level];
+    return fileName ? `/static/shp/chongqing/derived/${fileName}` : '';
+  }
 
-    changedLevels.forEach(level => {
-      this.adminBoundaryLoaded[level] = false;
-      this.adminBoundaryFeatureCache[level] = [];
-      this.adminBoundaryLayers?.[level]?.clearLayers();
-      delete this.adminBoundaryLoadPromises[level];
-    });
-
-    this.adminBoundarySourceUrls = nextSourceUrls;
-
-    if (changedLevels.length) {
-      console.log('[行政区划数据源已更新，清理缓存]', changedLevels, this.adminBoundarySourceUrls);
+  isExpectedAdminBoundaryUrl(level, sourceUrl) {
+    if (!sourceUrl) {
+      return false;
     }
 
-    return changedLevels;
+    try {
+      const resolvedUrl = new URL(sourceUrl, window.location.origin);
+      return resolvedUrl.pathname === this.getAdminBoundaryDerivedPath(level);
+    } catch (error) {
+      console.warn(`行政区划数据源 URL 解析失败，已回退为 derived 默认路径: ${sourceUrl}`, error);
+      return false;
+    }
+  }
+
+  appendAdminBoundaryVersion(sourceUrl, version) {
+    const resolvedUrl = new URL(sourceUrl, window.location.origin);
+    resolvedUrl.searchParams.set('v', version);
+    return resolvedUrl.toString();
+  }
+
+  getAdminBoundarySourceUrls() {
+    const apiSources = window.ADMIN_BOUNDARY_API_URLS || {};
+    const origin = window.location.origin;
+    const version = this.adminBoundaryDataVersion;
+    const defaults = {
+      city: `${origin}${this.getAdminBoundaryDerivedPath('city')}`,
+      district: `${origin}${this.getAdminBoundaryDerivedPath('district')}`,
+      township: `${origin}${this.getAdminBoundaryDerivedPath('township')}`
+    };
+
+    const sourceUrls = {};
+
+    Object.entries(defaults).forEach(([level, fallbackUrl]) => {
+      const candidateUrl = apiSources[level];
+      const normalizedSourceUrl = this.isExpectedAdminBoundaryUrl(level, candidateUrl)
+        ? candidateUrl
+        : fallbackUrl;
+
+      if (candidateUrl && normalizedSourceUrl !== candidateUrl) {
+        console.warn(`[行政区划数据源] 已忽略旧路径 ${candidateUrl}，统一回退到 derived: ${fallbackUrl}`);
+      }
+
+      sourceUrls[level] = this.appendAdminBoundaryVersion(normalizedSourceUrl, version);
+    });
+
+    console.log('[行政区划数据源]', sourceUrls);
+    return sourceUrls;
+  }
+
+  resetAdminBoundaryCacheForUrlChanges(nextSourceUrls) {
+    Object.keys(this.adminBoundaryFeatureCache || {}).forEach(level => {
+      const previousUrl = this.adminBoundaryLoadedSourceUrls[level];
+      const nextUrl = nextSourceUrls[level];
+      if (!previousUrl || previousUrl === nextUrl) {
+        return;
+      }
+
+      this.adminBoundaryFeatureCache[level] = [];
+      this.adminBoundaryLoaded[level] = false;
+      this.adminBoundaryLayers?.[level]?.clearLayers();
+      this.adminBoundaryLoadedSourceUrls[level] = '';
+    });
   }
 
   // 初始化行政区划边界的异步加载
   loadAdminBoundaries() {
-    this.refreshAdminBoundarySourceUrls();
+    const nextSourceUrls = this.getAdminBoundarySourceUrls();
+    this.resetAdminBoundaryCacheForUrlChanges(nextSourceUrls);
+    this.adminBoundarySourceUrls = nextSourceUrls;
     console.log('[行政区划数据源]', this.adminBoundarySourceUrls);
     const currentLevel = this.getAdminBoundaryLevelKey();
     setTimeout(() => {
@@ -449,12 +474,11 @@ class TerrainEditor {
     return loadPromise;
   }
 
-  async fetchAdminBoundarySource(sourceUrl, level = '') {
+  async fetchAdminBoundarySource(sourceUrl) {
     if (!sourceUrl) {
       throw new Error('行政区划数据源地址为空');
     }
 
-    console.log('[行政区划加载]', level, sourceUrl);
     const response = await fetch(sourceUrl, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`GeoJSON 请求失败: ${response.status} ${response.statusText}`);
@@ -517,16 +541,24 @@ class TerrainEditor {
   }
 
   async loadAdminBoundaryLevelData(level) {
-    this.refreshAdminBoundarySourceUrls();
-
     const sourceUrl = this.adminBoundarySourceUrls[level];
-    if (this.adminBoundaryFeatureCache[level]?.length) {
+    const cachedSourceUrl = this.adminBoundaryLoadedSourceUrls[level];
+
+    if (cachedSourceUrl && cachedSourceUrl !== sourceUrl) {
+      this.adminBoundaryFeatureCache[level] = [];
+      this.adminBoundaryLoaded[level] = false;
+      this.adminBoundaryLayers?.[level]?.clearLayers();
+    }
+
+    if (this.adminBoundaryFeatureCache[level]?.length && cachedSourceUrl === sourceUrl) {
       return this.adminBoundaryFeatureCache[level];
     }
 
-    const rawData = await this.fetchAdminBoundarySource(sourceUrl, level);
+    console.log('[行政区划加载]', level, sourceUrl);
+    const rawData = await this.fetchAdminBoundarySource(sourceUrl);
     const features = this.normalizeAdminBoundaryFeatures(rawData, level);
     this.adminBoundaryFeatureCache[level] = features;
+    this.adminBoundaryLoadedSourceUrls[level] = sourceUrl;
     return features;
   }
 
