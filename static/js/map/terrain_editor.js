@@ -30,30 +30,30 @@ class TerrainEditor {
     this.topographicAssistOpacity = 0.5;
     this.adminBoundaryStyles = {
       city: {
-        color: '#1d4ed8',
-        weight: 3,
-        opacity: 0.9,
-        fillColor: '#1d4ed8',
-        fillOpacity: 0,
+        color: '#2563eb',
+        weight: 2.4,
+        opacity: 0.95,
+        fillColor: '#2563eb',
+        fillOpacity: 0.04,
         dashArray: '',
         interactive: false
       },
       district: {
-        color: '#94a3b8',
-        weight: 1.2,
-        opacity: 0.78,
-        fillColor: '#94a3b8',
-        fillOpacity: 0,
-        dashArray: '4,4',
+        color: '#e5e7eb',
+        weight: 1.5,
+        opacity: 0.92,
+        fillColor: '#e5e7eb',
+        fillOpacity: 0.01,
+        dashArray: '',
         interactive: false
       },
       township: {
-        color: '#9fbad6',
-        weight: 0.6,
-        opacity: 0.42,
-        fillColor: '#9fbad6',
-        fillOpacity: 0,
-        dashArray: '2,3',
+        color: '#60a5fa',
+        weight: 0.8,
+        opacity: 0.6,
+        fillColor: '#60a5fa',
+        fillOpacity: 0.01,
+        dashArray: '3, 5',
         interactive: false
       }
     };
@@ -71,7 +71,15 @@ class TerrainEditor {
       township: false
     };
     this.adminBoundaryLoadPromises = {};
-    this.adminBoundarySourceUrls = this.getAdminBoundarySourceUrls();
+    this.adminBoundaryFeatureCache = {
+      city: [],
+      district: [],
+      township: []
+    };
+    this.adminBoundaryViewportInitialized = false;
+    this.adminBoundaryTownshipLabelMinZoom = 11;
+    this.adminBoundarySourceUrls = {};
+    this.refreshAdminBoundarySourceUrls();
     
     // 状态管理
     this.currentTool = 'browse';
@@ -245,10 +253,11 @@ class TerrainEditor {
    */
   updateLabelScaling() {
     const zoom = this.map.getZoom();
-    // 使用 CSS 变量控制字体大小，基准值 16px 在 zoom 10 时，每级变化 1.5px
-    // 缩放范围限制在 8px 到 24px 之间
-    let fontSize = Math.max(8, Math.min(24, (zoom - 10) * 1.5 + 16));
-    document.documentElement.style.setProperty('--admin-label-font-size', fontSize + 'px');
+    const largeFontSize = Math.max(11, Math.min(22, (zoom - 10) * 1.2 + 14));
+    const smallFontSize = Math.max(9, Math.min(18, (zoom - 10) * 0.9 + 11));
+    document.documentElement.style.setProperty('--admin-label-font-size', largeFontSize + 'px');
+    document.documentElement.style.setProperty('--admin-label-font-size-small', smallFontSize + 'px');
+    this.refreshAdminBoundaryLabels();
   }
 
   /**
@@ -333,26 +342,71 @@ class TerrainEditor {
   getAdminBoundarySourceUrls() {
     const apiSources = window.ADMIN_BOUNDARY_API_URLS || {};
     const origin = window.location.origin;
-    return {
-      city: apiSources.city || `${origin}/static/shp/chongqing/chongqing_city/chongqing_city.shp`,
-      district: apiSources.district || `${origin}/static/shp/chongqing/chongqing_district_county.geojson`,
-      township: apiSources.township || `${origin}/static/shp/chongqing/chongqing_township_street/chongqing_township_street.shp`
+    const version = window.ADMIN_BOUNDARY_DATA_VERSION || Date.now();
+    const derivedPaths = {
+      city: '/static/shp/chongqing/derived/chongqing_city_from_township.geojson',
+      district: '/static/shp/chongqing/derived/chongqing_district_from_township.geojson',
+      township: '/static/shp/chongqing/derived/chongqing_township_from_source.geojson'
     };
+
+    const buildDerivedUrl = level => {
+      const derivedPath = derivedPaths[level];
+      const candidate = apiSources[level];
+      let resolvedUrl = new URL(derivedPath, origin);
+
+      if (typeof candidate === 'string' && candidate.trim()) {
+        try {
+          const candidateUrl = new URL(candidate, origin);
+          if (candidateUrl.pathname === derivedPath) {
+            resolvedUrl = candidateUrl;
+          } else {
+            console.warn(`[行政区划数据源] 忽略非 derived ${level} 路径:`, candidateUrl.toString());
+          }
+        } catch (error) {
+          console.warn(`[行政区划数据源] 无法解析 ${level} 路径，回退 derived:`, candidate, error);
+        }
+      }
+
+      resolvedUrl.searchParams.set('v', String(version));
+      return resolvedUrl.toString();
+    };
+
+    return {
+      city: buildDerivedUrl('city'),
+      district: buildDerivedUrl('district'),
+      township: buildDerivedUrl('township')
+    };
+  }
+
+  refreshAdminBoundarySourceUrls() {
+    const nextSourceUrls = this.getAdminBoundarySourceUrls();
+    const levels = Object.keys(nextSourceUrls);
+    const changedLevels = levels.filter(level => this.adminBoundarySourceUrls[level] && this.adminBoundarySourceUrls[level] !== nextSourceUrls[level]);
+
+    changedLevels.forEach(level => {
+      this.adminBoundaryLoaded[level] = false;
+      this.adminBoundaryFeatureCache[level] = [];
+      this.adminBoundaryLayers?.[level]?.clearLayers();
+      delete this.adminBoundaryLoadPromises[level];
+    });
+
+    this.adminBoundarySourceUrls = nextSourceUrls;
+
+    if (changedLevels.length) {
+      console.log('[行政区划数据源已更新，清理缓存]', changedLevels, this.adminBoundarySourceUrls);
+    }
+
+    return changedLevels;
   }
 
   // 初始化行政区划边界的异步加载
   loadAdminBoundaries() {
+    this.refreshAdminBoundarySourceUrls();
+    console.log('[行政区划数据源]', this.adminBoundarySourceUrls);
     const currentLevel = this.getAdminBoundaryLevelKey();
-    this.ensureAdminBoundaryLayerLoaded(currentLevel);
-
-    // 其余层级放到空闲时预加载，兼顾首屏速度与后续切换体验。
-    ['city', 'district', 'township']
-      .filter(level => level !== currentLevel)
-      .forEach((level, index) => {
-        setTimeout(() => {
-          this.ensureAdminBoundaryLayerLoaded(level);
-        }, 40 * (index + 1));
-      });
+    setTimeout(() => {
+      this.ensureAdminBoundaryLayerLoaded(currentLevel);
+    }, 0);
   }
 
   async ensureAdminBoundaryLayerLoaded(level) {
@@ -364,24 +418,24 @@ class TerrainEditor {
       return this.adminBoundaryLoadPromises[level];
     }
 
-    const sourceUrl = this.adminBoundarySourceUrls[level];
     const loadPromise = (async () => {
       try {
-        const rawData = await this.fetchAdminBoundarySource(sourceUrl);
-        const features = this.normalizeAdminBoundaryFeatures(rawData);
+        const features = await this.loadAdminBoundaryLevelData(level);
 
         if (!features.length) {
-          console.warn(`行政区划图层 ${level} 未解析到有效要素:`, sourceUrl);
+          console.warn(`行政区划图层 ${level} 未解析到有效要素`);
           return null;
         }
 
-        if (level === 'city') {
+        if (!this.adminBoundaryViewportInitialized) {
           this.updateViewportBoundsFromAdminFeatures(features);
+          this.adminBoundaryViewportInitialized = true;
         }
 
         await this.renderAdminBoundaryChunks(level, features);
         this.adminBoundaryLoaded[level] = true;
         this.applyAdminBoundaryVisibility();
+        this.refreshAdminBoundaryLabels(level);
         return this.adminBoundaryLayers[level];
       } catch (error) {
         console.error(`行政区划图层 ${level} 加载失败:`, error);
@@ -395,20 +449,13 @@ class TerrainEditor {
     return loadPromise;
   }
 
-  async fetchAdminBoundarySource(sourceUrl) {
-    const normalizedUrl = String(sourceUrl || '').toLowerCase();
-    if (!normalizedUrl) {
+  async fetchAdminBoundarySource(sourceUrl, level = '') {
+    if (!sourceUrl) {
       throw new Error('行政区划数据源地址为空');
     }
 
-    if (normalizedUrl.includes('.shp')) {
-      if (typeof shp !== 'function') {
-        throw new Error('shp.js 未加载，无法解析 Shapefile');
-      }
-      return shp(sourceUrl);
-    }
-
-    const response = await fetch(sourceUrl);
+    console.log('[行政区划加载]', level, sourceUrl);
+    const response = await fetch(sourceUrl, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`GeoJSON 请求失败: ${response.status} ${response.statusText}`);
     }
@@ -416,7 +463,7 @@ class TerrainEditor {
     return response.json();
   }
 
-  normalizeAdminBoundaryFeatures(sourceData) {
+  normalizeAdminBoundaryFeatures(sourceData, level = '') {
     const collections = Array.isArray(sourceData) ? sourceData : [sourceData];
     const features = [];
 
@@ -438,9 +485,49 @@ class TerrainEditor {
     return features
       .filter(feature => feature?.geometry)
       .map(feature => {
-        this._transformGeometry(feature.geometry);
-        return feature;
+        const properties = { ...(feature.properties || {}) };
+        const normalizedLevel = String(properties.level || level || '').trim() || level;
+        const normalizedCity = String(properties.city || '').trim() || '重庆市';
+        const normalizedDistrict = String(properties.district || properties.county || '').trim();
+        const normalizedName = this.getAdminBoundaryLabel({
+          properties: {
+            ...properties,
+            level: normalizedLevel
+          }
+        }) || (
+          normalizedLevel === 'city'
+            ? '重庆市'
+            : normalizedLevel === 'district'
+              ? normalizedDistrict
+              : String(properties.name || '').trim()
+        );
+
+        return {
+          type: 'Feature',
+          geometry: feature.geometry,
+          properties: {
+            ...properties,
+            name: normalizedName,
+            level: normalizedLevel,
+            city: normalizedCity,
+            district: normalizedDistrict
+          }
+        };
       });
+  }
+
+  async loadAdminBoundaryLevelData(level) {
+    this.refreshAdminBoundarySourceUrls();
+
+    const sourceUrl = this.adminBoundarySourceUrls[level];
+    if (this.adminBoundaryFeatureCache[level]?.length) {
+      return this.adminBoundaryFeatureCache[level];
+    }
+
+    const rawData = await this.fetchAdminBoundarySource(sourceUrl, level);
+    const features = this.normalizeAdminBoundaryFeatures(rawData, level);
+    this.adminBoundaryFeatureCache[level] = features;
+    return features;
   }
 
   updateViewportBoundsFromAdminFeatures(features) {
@@ -479,8 +566,19 @@ class TerrainEditor {
 
   getAdminBoundaryLabel(feature) {
     const properties = feature?.properties || {};
-    const candidateKeys = ['name', 'NAME', 'Name', 'xzqmc', 'XZQMC', 'district', 'DISTRICT', 'county', 'COUNTY', 'city', 'CITY'];
+    if (properties.level === 'city') {
+      return '重庆市';
+    }
 
+    if (properties.level === 'district') {
+      return String(properties.name || properties.district || properties.county || '').trim();
+    }
+
+    if (properties.level === 'township') {
+      return String(properties.name || '').trim();
+    }
+
+    const candidateKeys = ['name', 'NAME', 'Name', 'district', 'DISTRICT', 'county', 'COUNTY', 'city', 'CITY'];
     for (const key of candidateKeys) {
       const value = properties[key];
       if (typeof value === 'string' && value.trim()) {
@@ -492,23 +590,46 @@ class TerrainEditor {
   }
 
   bindAdminBoundaryTooltip(level, feature, layer) {
-    // 仅区/县层级绑定标签，市级和乡镇级保持纯净
-    if (level !== 'district') return;
+    if (!layer) return;
+
+    layer.unbindPopup();
+    layer.unbindTooltip();
+    layer.off('mouseover mousemove mouseout click');
 
     const label = this.getAdminBoundaryLabel(feature);
     if (!label) return;
 
-    // 检查是否应该显示标签（抽稀逻辑）
-    // 已经在 renderAdminBoundaryChunks 中通过标记 _showLabel 进行了初步筛选
-    if (feature._showLabel === false) return;
+    if (level === 'city') {
+      layer.bindTooltip(label, {
+        permanent: true,
+        direction: 'center',
+        className: 'admin-label-large',
+        opacity: 1,
+        interactive: false
+      });
+      return;
+    }
 
-    layer.bindTooltip(label, {
-      permanent: true,
-      direction: 'center',
-      className: 'admin-label-district',
-      opacity: 0.85,
-      interactive: false
-    });
+    if (level === 'district') {
+      layer.bindTooltip(label, {
+        permanent: true,
+        direction: 'center',
+        className: 'admin-label-large',
+        opacity: 1,
+        interactive: false
+      });
+      return;
+    }
+
+    if (level === 'township' && this.shouldShowTownshipLabels()) {
+      layer.bindTooltip(label, {
+        permanent: true,
+        direction: 'center',
+        className: 'admin-label',
+        opacity: 0.92,
+        interactive: false
+      });
+    }
   }
 
   renderAdminBoundaryChunks(level, features) {
@@ -519,39 +640,14 @@ class TerrainEditor {
 
     targetLayerGroup.clearLayers();
 
-    // 针对区/县层级实现“抽稀显示”逻辑
-    if (level === 'district' && typeof turf !== 'undefined') {
-      try {
-        // 计算每个要素的面积
-        features.forEach(f => {
-          f._area = turf.area(f);
-        });
-        
-        // 按面积降序排序
-        const sortedFeatures = [...features].sort((a, b) => b._area - a._area);
-        
-        // 标记哪些需要显示标签：
-        // 1. 面积排名前 15 的大区县
-        // 2. 这里的数量 N 可以根据需求调整
-        const topN = 15;
-        sortedFeatures.forEach((f, idx) => {
-          f._showLabel = idx < topN;
-        });
-      } catch (e) {
-        console.warn('区县标签抽稀计算失败:', e);
-      }
-    }
-
     return new Promise(resolve => {
       let index = 0;
+      const chunkSize = level === 'township' ? 25 : this.adminBoundaryChunkSize;
 
       const loadChunk = () => {
-        const chunk = features.slice(index, index + this.adminBoundaryChunkSize);
+        const chunk = features.slice(index, index + chunkSize);
         if (chunk.length === 0) {
-          // 如果是市级层级，在渲染完成后添加一个唯一的静态标签
-          if (level === 'city') {
-            this.addStaticCityLabel(features);
-          }
+          this.refreshAdminBoundaryLabels(level);
           resolve();
           return;
         }
@@ -559,6 +655,7 @@ class TerrainEditor {
         const layer = L.geoJSON(
           { type: 'FeatureCollection', features: chunk },
           {
+            renderer: this.canvasRenderer,
             style: () => this.getAdminBoundaryStyle(level),
             onEachFeature: (feature, featureLayer) => {
               this.bindAdminBoundaryTooltip(level, feature, featureLayer);
@@ -567,7 +664,7 @@ class TerrainEditor {
         );
 
         layer.addTo(targetLayerGroup);
-        index += this.adminBoundaryChunkSize;
+        index += chunkSize;
         setTimeout(loadChunk, 10);
       };
 
@@ -575,61 +672,56 @@ class TerrainEditor {
     });
   }
 
-  /**
-   * 为市级边界添加一个唯一的静态非交互标签
-   */
-  addStaticCityLabel(features) {
-    if (!features || features.length === 0 || typeof turf === 'undefined') return;
-    
-    try {
-      // 合并所有要素计算中心点（针对市级，通常只有一个大要素或几个部分）
-      const collection = { type: 'FeatureCollection', features: features };
-      const center = turf.centerOfMass(collection);
-      const coords = center.geometry.coordinates;
-      
-      // 创建一个透明的 marker 来承载静态 tooltip
-      const cityMarker = L.marker([coords[1], coords[0]], {
-        icon: L.divIcon({ className: 'admin-label-city-anchor', html: '' }),
-        interactive: false
-      });
-      
-      cityMarker.bindTooltip('重庆市', {
-        permanent: true,
-        direction: 'center',
-        className: 'admin-label-city',
-        opacity: 0.9,
-        interactive: false
-      });
-      
-      cityMarker.addTo(this.cityLayer);
-    } catch (e) {
-      console.warn('添加市级静态标签失败:', e);
-    }
+  shouldShowTownshipLabels() {
+    return Boolean(this.map) && this.map.getZoom() >= this.adminBoundaryTownshipLabelMinZoom;
   }
 
-  // 内部辅助方法：递归转换几何坐标
-  _transformGeometry(geometry) {
-    if (!geometry || !geometry.coordinates) return;
-    
-    const transformPoint = (coord) => {
-      // 检查是否已经是 4326 (经纬度通常在 -180 到 180 之间)
-      if (Math.abs(coord[0]) > 180 || Math.abs(coord[1]) > 90) {
-        // 只有在坐标值明显偏大时才执行转换
-        const converted = proj4('EPSG:3857', 'EPSG:4326', [coord[0], coord[1]]);
-        coord[0] = converted[0];
-        coord[1] = converted[1];
-      }
-    };
+  refreshAdminBoundaryLabels(targetLevel = null) {
+    const levels = targetLevel ? [targetLevel] : Object.keys(this.adminBoundaryLayers || {});
 
-    const processCoords = (coords) => {
-      if (typeof coords[0] === 'number') {
-        transformPoint(coords);
-      } else {
-        coords.forEach(processCoords);
-      }
-    };
+    levels.forEach(level => {
+      const layerGroup = this.adminBoundaryLayers?.[level];
+      if (!layerGroup) return;
 
-    processCoords(geometry.coordinates);
+      layerGroup.eachLayer(item => {
+        if (typeof item.eachLayer === 'function') {
+          item.eachLayer(featureLayer => {
+            if (featureLayer?.feature) {
+              this.bindAdminBoundaryTooltip(level, featureLayer.feature, featureLayer);
+            }
+          });
+          return;
+        }
+
+        if (item?.feature) {
+          this.bindAdminBoundaryTooltip(level, item.feature, item);
+        }
+      });
+    });
+  }
+
+  // 已废弃：行政区划融合改由 Python 后端预处理，不再在前端运行时执行。
+  async prepareAdminBoundaryDerivedData() {
+    console.warn('prepareAdminBoundaryDerivedData 已废弃：行政区划派生改由后端预处理完成。');
+    return [];
+  }
+
+  // 已废弃：市级边界改由 Python 后端预处理生成 GeoJSON。
+  async buildCityBoundaryFromTownship() {
+    console.warn('buildCityBoundaryFromTownship 已废弃：请使用后端预生成的 city GeoJSON。');
+    return [];
+  }
+
+  // 已废弃：区/县边界改由 Python 后端预处理生成 GeoJSON。
+  async buildDistrictBoundariesFromTownship() {
+    console.warn('buildDistrictBoundariesFromTownship 已废弃：请使用后端预生成的 district GeoJSON。');
+    return [];
+  }
+
+  // 已废弃：行政区划融合改由 Python 后端预处理，不再在浏览器内执行。
+  mergeAdminBoundaryFeatures() {
+    console.warn('mergeAdminBoundaryFeatures 已废弃：前端不再执行行政区划 turf.union()。');
+    return null;
   }
 
   // 兼容旧调用：当前边界颜色已固定，不再提供前端调色入口
@@ -686,23 +778,6 @@ class TerrainEditor {
     this.adminBoundaryDisplayLevel = numericLevel;
     this.syncAdminBoundarySliderUI();
 
-    // 切换层级时，如果是市级或乡镇级，确保交互被禁用（由样式 interactive: false 控制，此处为双重保险）
-    if ((numericLevel === 0 || numericLevel === 2) && this.adminBoundaryLayers[this.getAdminBoundaryLevelKey(numericLevel)]) {
-      const layerGroup = this.adminBoundaryLayers[this.getAdminBoundaryLevelKey(numericLevel)];
-      layerGroup.eachLayer(layer => {
-        // 只有 GeoJSON 图层（边界线）需要强制清理交互
-        // 注意：市级的静态标签 marker 不应该被清理 tooltip
-        if (layer instanceof L.GeoJSON) {
-          layer.eachLayer(subLayer => {
-            subLayer.unbindPopup();
-            // 乡镇级也不显示 tooltip，市级也不显示 feature 级别的 tooltip
-            subLayer.unbindTooltip();
-            subLayer.off('mouseover mousemove mouseout click');
-          });
-        }
-      });
-    }
-
     this.ensureAdminBoundaryLayerLoaded(this.getAdminBoundaryLevelKey(numericLevel));
     this.applyAdminBoundaryVisibility();
   }
@@ -721,6 +796,7 @@ class TerrainEditor {
         if (!this.map.hasLayer(layerGroup)) {
           layerGroup.addTo(this.map);
         }
+        this.refreshAdminBoundaryLabels(level);
         return;
       }
 
