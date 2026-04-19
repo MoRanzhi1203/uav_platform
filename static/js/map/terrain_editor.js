@@ -31,10 +31,10 @@ class TerrainEditor {
     this.adminBoundaryStyles = {
       city: {
         outer: {
-          color: 'rgba(37,99,235,0.18)',
-          weight: 4.5,
+          color: 'rgba(15,23,42,0.24)',
+          weight: 3.6,
           opacity: 1,
-          fillColor: '#1d4ed8',
+          fillColor: '#f1f5f9',
           fillOpacity: 0,
           dashArray: '',
           lineCap: 'round',
@@ -42,11 +42,11 @@ class TerrainEditor {
           interactive: false
         },
         inner: {
-          color: '#1d4ed8',
-          weight: 2.15,
-          opacity: 0.92,
-          fillColor: '#1d4ed8',
-          fillOpacity: 0.018,
+          color: '#f1f5f9',
+          weight: 2.2,
+          opacity: 0.95,
+          fillColor: '#f1f5f9',
+          fillOpacity: 0.008,
           dashArray: '',
           lineCap: 'round',
           lineJoin: 'round',
@@ -58,7 +58,7 @@ class TerrainEditor {
           color: 'rgba(15,23,42,0.18)',
           weight: 2.2,
           opacity: 1,
-          fillColor: '#0f172a',
+          fillColor: '#f1f5f9',
           fillOpacity: 0,
           dashArray: '',
           lineCap: 'round',
@@ -79,12 +79,12 @@ class TerrainEditor {
       },
       township: {
         single: {
-          color: '#7fb3e6',
-          weight: 0.6,
-          opacity: 0.42,
-          fillColor: '#7fb3e6',
+          color: '#f1f5f9',
+          weight: 0.9,
+          opacity: 0.76,
+          fillColor: '#f1f5f9',
           fillOpacity: 0.002,
-          dashArray: '2,5',
+          dashArray: '4,6',
           lineCap: 'round',
           lineJoin: 'round',
           interactive: false
@@ -116,7 +116,6 @@ class TerrainEditor {
       township: ''
     };
     this.adminBoundaryViewportInitialized = false;
-    this.adminBoundaryTownshipLabelMinZoom = 11;
     // 版本号优先由模板注入；缺失时仅在当前页面生命周期内生成一次，避免重复刷新。
     this.adminBoundaryDataVersion = String(window.ADMIN_BOUNDARY_DATA_VERSION || Date.now());
     this.adminBoundarySourceUrls = this.getAdminBoundarySourceUrls();
@@ -370,9 +369,14 @@ class TerrainEditor {
       if (this.map.hasLayer(this.refGridLayer10m)) this.drawReferenceGrid10m();
       if (this.map.hasLayer(this.refGridLayer1km)) this.drawReferenceGrid1km();
     };
+    const refreshAdminLabels = () => {
+      this.refreshAdminBoundaryLabels();
+    };
 
     this.map.on('moveend', redrawGrids);
     this.map.on('zoomend', redrawGrids);
+    this.map.on('moveend', refreshAdminLabels);
+    this.map.on('zoomend', refreshAdminLabels);
     
     // 初始化行政区划边界层 (独立于参考网格管理)
     this.loadAdminBoundaries();
@@ -698,42 +702,42 @@ class TerrainEditor {
   bindAdminBoundaryTooltip(level, feature, layer) {
     if (!layer) return;
 
-    this.clearAdminBoundaryTooltip(layer);
-
     const label = this.getAdminBoundaryLabel(feature);
-    if (!label) return;
-
-    if (level === 'city') {
-      layer.bindTooltip(label, {
-        permanent: true,
-        direction: 'center',
-        className: 'admin-label-large',
-        opacity: 1,
-        interactive: false
-      });
+    if (!label || !this.shouldRenderAdminLabel(level, layer)) {
+      this.clearAdminBoundaryTooltip(layer);
       return;
     }
 
-    if (level === 'district') {
-      layer.bindTooltip(label, {
-        permanent: true,
-        direction: 'center',
-        className: 'admin-label-large',
-        opacity: 1,
-        interactive: false
-      });
-      return;
-    }
-
-    if (level === 'township' && this.shouldShowTownshipLabels()) {
-      layer.bindTooltip(label, {
+    const tooltipOptions = level === 'township'
+      ? {
         permanent: true,
         direction: 'center',
         className: 'admin-label',
         opacity: 0.92,
         interactive: false
-      });
+      }
+      : {
+        permanent: true,
+        direction: 'center',
+        className: 'admin-label-large',
+        opacity: 1,
+        interactive: false
+      };
+
+    const currentTooltip = typeof layer.getTooltip === 'function' ? layer.getTooltip() : null;
+    const hasSameTooltip = Boolean(currentTooltip)
+      && layer.adminBoundaryTooltipLabel === label
+      && layer.adminBoundaryTooltipClassName === tooltipOptions.className;
+
+    if (hasSameTooltip) {
+      currentTooltip.setContent(label);
+      return;
     }
+
+    this.clearAdminBoundaryTooltip(layer);
+    layer.bindTooltip(label, tooltipOptions);
+    layer.adminBoundaryTooltipLabel = label;
+    layer.adminBoundaryTooltipClassName = tooltipOptions.className;
   }
 
   clearAdminBoundaryTooltip(layer) {
@@ -742,6 +746,8 @@ class TerrainEditor {
     layer.unbindPopup();
     layer.unbindTooltip();
     layer.off('mouseover mousemove mouseout click');
+    layer.adminBoundaryTooltipLabel = '';
+    layer.adminBoundaryTooltipClassName = '';
   }
 
   markAdminBoundaryFeatureLayer(featureLayer, level, renderRole, bindTooltip) {
@@ -815,7 +821,64 @@ class TerrainEditor {
   }
 
   shouldShowTownshipLabels() {
-    return Boolean(this.map) && this.map.getZoom() >= this.adminBoundaryTownshipLabelMinZoom;
+    if (!this.map) {
+      return false;
+    }
+
+    return this.map.getZoom() >= this.getTownshipLabelMinZoom();
+  }
+
+  getTownshipLabelMinZoom() {
+    if (!this.map) {
+      return 0;
+    }
+
+    const minZoom = Number.isFinite(this.map.getMinZoom()) ? this.map.getMinZoom() : 0;
+    const maxZoom = Number.isFinite(this.map.getMaxZoom()) ? this.map.getMaxZoom() : minZoom;
+    return Math.ceil(minZoom + (maxZoom - minZoom) * 0.5);
+  }
+
+  isFeatureInViewport(layer) {
+    if (!this.map || !layer) {
+      return false;
+    }
+
+    const viewportBounds = this.map.getBounds();
+    if (!viewportBounds) {
+      return false;
+    }
+
+    try {
+      if (typeof layer.getBounds === 'function') {
+        const layerBounds = layer.getBounds();
+        return Boolean(layerBounds?.isValid?.() && viewportBounds.intersects(layerBounds));
+      }
+
+      if (typeof layer.getLatLng === 'function') {
+        const latLng = layer.getLatLng();
+        return Boolean(latLng && viewportBounds.contains(latLng));
+      }
+    } catch (error) {
+      console.warn('行政区划标签视窗判断失败，已跳过当前要素:', error);
+    }
+
+    return false;
+  }
+
+  shouldRenderAdminLabel(level, layer) {
+    if (!this.shouldBindAdminBoundaryTooltip(layer)) {
+      return false;
+    }
+
+    if (!this.isFeatureInViewport(layer)) {
+      return false;
+    }
+
+    if (level === 'township') {
+      return this.shouldShowTownshipLabels();
+    }
+
+    return true;
   }
 
   refreshAdminBoundaryLabels(targetLevel = null) {
@@ -830,6 +893,8 @@ class TerrainEditor {
           item.eachLayer(featureLayer => {
             if (this.shouldBindAdminBoundaryTooltip(featureLayer)) {
               this.bindAdminBoundaryTooltip(level, featureLayer.feature, featureLayer);
+            } else {
+              this.clearAdminBoundaryTooltip(featureLayer);
             }
           });
           return;
@@ -837,6 +902,8 @@ class TerrainEditor {
 
         if (this.shouldBindAdminBoundaryTooltip(item)) {
           this.bindAdminBoundaryTooltip(level, item.feature, item);
+        } else {
+          this.clearAdminBoundaryTooltip(item);
         }
       });
     });
