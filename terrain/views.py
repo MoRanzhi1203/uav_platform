@@ -5,13 +5,13 @@ from pathlib import Path
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from shapely.geometry import shape, mapping, MultiPolygon, Polygon
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 from .serializers import (
-    TerrainAreaSerializer, TerrainZoneSerializer, 
+    TerrainAreaSerializer, TerrainZoneSerializer, TerrainAreaPlotSerializer,
     TerrainElementSerializer, TerrainSubCategorySerializer
 )
 from common.responses import api_response, api_error
@@ -185,11 +185,30 @@ def delete_terrain(request, pk):
 def list_areas(request):
     """区域列表接口"""
     try:
-        queryset = TerrainArea.objects.filter(is_deleted=False).order_by('-created_at')
+        queryset = TerrainArea.objects.filter(is_deleted=False).annotate(
+            plot_count=Count('zones', filter=Q(zones__is_deleted=False), distinct=True)
+        ).order_by('-updated_at', '-id')
         serializer = TerrainAreaSerializer(queryset, many=True)
         return api_response(data=serializer.data)
     except Exception as e:
         logger.error(f"获取区域列表异常: {str(e)}")
+        return api_error(msg=str(e), status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def area_plots(request, area_id):
+    """按地形加载下属混合地块专题"""
+    try:
+        area = get_object_or_404(TerrainArea, id=area_id, is_deleted=False)
+        plots = TerrainZone.objects.filter(
+            area_obj=area,
+            is_deleted=False
+        ).order_by('id')
+        serializer = TerrainAreaPlotSerializer(plots, many=True)
+        return api_response(data=serializer.data)
+    except Exception as e:
+        logger.error(f"获取区域地块专题异常: {str(e)}")
         return api_error(msg=str(e), status=500)
 
 @api_view(['GET'])
@@ -206,7 +225,15 @@ def area_edit_detail(request, area_id):
         
         response_data = {
             "area": area_serializer.data,
-            "zones": zones_serializer.data
+            "zones": zones_serializer.data,
+            "editor_payload": {
+                "area": area_serializer.data,
+                "zones": zones_serializer.data,
+                "view_meta": {
+                    "area_id": area.id,
+                    "plot_count": area_serializer.data.get("plot_count", 0),
+                },
+            },
         }
         logger.info(f"--- 加载区域编辑详情返回 ---: {len(zones_serializer.data)} 个地块")
         
@@ -604,6 +631,9 @@ def create_plot(request): return create_or_update_zone(request)
 def list_plots(request): 
     # 临时兼容
     queryset = TerrainZone.objects.filter(is_deleted=False)
+    area_id = request.GET.get('area_id')
+    if area_id and str(area_id).isdigit():
+        queryset = queryset.filter(area_obj_id=area_id)
     serializer = TerrainZoneSerializer(queryset, many=True)
     return api_response(data=serializer.data)
 def plot_detail(request, pk):

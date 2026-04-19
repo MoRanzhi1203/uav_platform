@@ -1,306 +1,188 @@
-/* 地形管理页面样式 */
+/* 地形管理页面样式增强 */
 
-/* 蓝灰棕系配色 */
-.terrain-primary {
-  color: #3b82f6;
+/* 布局调整 */
+.terrain-list-shell {
+  overflow-y: auto;
+  max-height: calc(100vh - 450px);
+  min-height: 400px;
 }
 
-.terrain-secondary {
-  color: #64748b;
+/* 表格列宽控制 */
+.terrain-table { 
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
-.terrain-tertiary {
-  color: #92400e;
-}
-
-.terrain-bg-primary {
-  background-color: #3b82f6;
-}
-
-.terrain-bg-secondary {
-  background-color: #64748b;
-}
-
-.terrain-bg-tertiary {
-  background-color: #92400e;
-}
-
-.terrain-card {
-  border-left: 4px solid #3b82f6;
-}
-
-/* 地图容器样式 */
-.map-container {
-  border-radius: 0.5rem;
-  overflow: hidden;
-  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-}
-
-/* 详情面板样式 */
-.detail-panel {
-  border-radius: 0.5rem;
-  padding: 1rem;
-  background-color: #f8fafc;
-}
-
-/* 统计卡片样式 */
-.info-card {
-  transition: all 0.3s ease;
-}
-
-.info-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-}
-
-/* 表格样式 */
-.table-hover tbody tr:hover {
-  background-color: rgba(59, 130, 246, 0.1);
-}
-
-/* 按钮样式 */
-.btn-primary {
-  background-color: #3b82f6;
-  border-color: #3b82f6;
-}
-
-.btn-primary:hover {
-  background-color: #2563eb;
-  border-color: #2563eb;
-}
-
-/* 标签样式 */
-.badge-success {
-  background-color: #10b981;
-}
-
-.badge-warning {
-  background-color: #f59e0b;
-}
-
-.badge-danger {
-  background-color: #ef4444;
-}
-
-/* 表单样式 */
-.form-control:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25);
-}
-
-/* 分页样式 */
-.pagination .page-item.active .page-link {
-  background-color: #3b82f6;
-  border-color: #3b82f6;
-}
-
-/* 图层面板样式优化 */
-.layer-item {
-  display: block;
-  margin-bottom: 4px;
-  border-radius: 4px;
-  background-color: #ffffff;
-  border: 1px solid transparent;
-  transition: all 0.2s ease;
-  user-select: none;
-  cursor: pointer;
-}
-
-/* 悬停态：非常轻微的灰色，增强可点击感 */
-.layer-item:hover {
-  background-color: #F9FAFB;
-  border-color: #F3F4F6;
-}
-
-/* 当前选中图层 (active)：浅灰色系，克制高级，带微弱阴影和左侧标识条 */
-.layer-item.active {
-  background-color: #F3F4F6;
-  border-color: #E5E7EB;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  position: relative;
-}
-
-.layer-item.active::before {
-  content: '';
-  position: absolute;
-  left: -1px;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
-  background-color: #4B5563; /* 深灰/中性灰标识条 */
-  border-radius: 0 2px 2px 0;
-}
-
-.layer-item.active .layer-name {
+.terrain-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8f9fa;
+  z-index: 10;
+  font-size: 0.85rem;
   font-weight: 600;
-  color: #111827; /* 近黑色，保证清晰 */
+  color: #4b5563;
+  padding: 12px 8px;
+  border-bottom: 2px solid #e5e7eb;
 }
 
-/* 勾选态 (multi-selected)：极浅灰色背景 */
-.layer-item.multi-selected {
-  background-color: #FDFDFD;
-  border-color: #F3F4F6;
+.terrain-table tbody td {
+  padding: 12px 8px;
+  vertical-align: middle;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.875rem;
 }
 
-.layer-item.layer-hidden {
-  opacity: 0.6;
-}
+.col-index { width: 45px; }
+.col-name { width: auto; }
+.col-space { width: 140px; }
+.col-risk { width: 85px; }
+.col-area { width: 95px; }
+.col-actions { width: 110px; }
 
-.layer-item.layer-locked .layer-lock {
-  opacity: 1;
-  color: #dc3545;
-}
-
-.layer-item-content {
-  display: flex;
-  align-items: center;
-  padding: 6px 8px;
-  height: 36px;
-}
-
-.layer-check-area {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 100%;
-}
-
-.layer-multi-check {
-  margin: 0;
-  cursor: pointer;
-}
-
-.layer-visibility-area {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 100%;
-}
-
-.layer-visibility {
-  font-size: 14px;
-  color: #6c757d;
-  cursor: pointer;
-}
-
-.layer-color-area {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 100%;
-  margin: 0 4px;
-}
-
-.layer-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.layer-name-area {
-  flex: 1;
-  min-width: 0; /* 让 text-truncate 生效 */
-  padding-right: 8px;
-}
-
-.layer-name {
-  display: block;
-  font-size: 13px;
-  color: #374151; /* 默认未选中颜色改为中性灰，区分选中时的纯黑 */
-  transition: color 0.2s ease;
-}
-
-.layer-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 4px;
-}
-
-.layer-actions i {
-  font-size: 14px;
-  color: #9CA3AF; /* 调整默认图标色 */
+/* 行选中态 */
+.terrain-table tbody tr {
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.layer-actions i:hover {
-  color: #4B5563; /* hover 图标色加深 */
-  transform: scale(1.1);
+.terrain-table tbody tr:hover {
+  background-color: #f9fafb;
 }
 
-.layer-item.active .layer-actions i {
-  color: #6B7280; /* 选中态下默认图标略微加深，与背景保持对比 */
+.terrain-table tbody tr.is-selected {
+  background-color: #eff6ff;
+  border-left: 3px solid #3b82f6;
 }
 
-.layer-item.active .layer-actions i:hover {
-  color: #111827; /* 选中态下hover变为黑色 */
+.terrain-table tbody tr.is-selected td {
+  color: #1e40af;
+  font-weight: 500;
 }
 
-.layer-actions .layer-delete {
-  opacity: 0.4;
+/* 空间数据展示 */
+.terrain-space-coord {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.75rem;
+  color: #6b7280;
+  line-height: 1.45;
 }
 
-.layer-item:hover .layer-actions .layer-delete {
-  opacity: 1;
+.terrain-space-coord div {
+  white-space: nowrap;
 }
 
-.layer-actions .layer-delete:hover {
-  color: #EF4444 !important; /* 删除图标 hover 弱红色 */
+.coord-label {
+  color: #9ca3af;
+  margin-right: 4px;
 }
 
-.btn-xs {
-  padding: 0.1rem 0.3rem;
+/* 风险等级 Badge */
+.terrain-risk-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.risk-high { background: #fee2e2; color: #dc2626; }
+.risk-medium { background: #ffedd5; color: #ea580c; }
+.risk-low { background: #dcfce7; color: #16a34a; }
+
+/* 地图容器 */
+.map-container {
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+/* 地图标题与指示 */
+.terrain-map-selection-chip {
+  background: #3b82f6;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin-right: 6px;
+}
+
+/* 地图下方信息面板 */
+.terrain-info-panel {
+  border: none;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.info-item {
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  height: 100%;
+}
+
+.info-item label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.info-description-text {
+  color: #334155;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* NiceAdmin 风格分页 */
+.pagination-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagination {
+  margin-bottom: 0;
+}
+
+.page-item .page-link {
+  padding: 5px 12px;
+  color: #012970;
+  border: 1px solid #dee2e6;
+  font-size: 0.875rem;
+}
+
+.page-item.active .page-link {
+  background-color: #4154f1;
+  border-color: #4154f1;
+  color: #fff;
+}
+
+.page-item.disabled .page-link {
+  color: #6c757d;
+  pointer-events: none;
+  background-color: #fff;
+}
+
+.terrain-area-unit {
+  margin-left: 4px;
+  color: #64748b;
   font-size: 0.75rem;
 }
 
-/* 属性面板样式 */
-.attribute-group label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #495057;
-  display: block;
+/* 专题地块样式 */
+.terrain-plot-layer {
+  transition: fill-opacity 0.2s;
 }
 
-/* 滚动条美化 */
-#selectedAreas::-webkit-scrollbar {
-  width: 4px;
+.terrain-highlight-marker {
+  background: rgba(59, 130, 246, 0.2);
+  border: 2px solid #3b82f6;
+  border-radius: 50%;
+  animation: pulse-blue 2s infinite;
 }
 
-#selectedAreas::-webkit-scrollbar-thumb {
-  background-color: #ccc;
-  border-radius: 4px;
-}
-
-/* Tab 样式 */
-.nav-tabs .nav-item .nav-link.active {
-  color: #3b82f6;
-  border-bottom: 2px solid #3b82f6;
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .map-container {
-    height: 300px;
-  }
-}
-
-/* 动画效果 */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.detail-panel {
-  animation: fadeIn 0.3s ease-in-out;
+@keyframes pulse-blue {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
 }
