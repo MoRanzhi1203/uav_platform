@@ -186,6 +186,12 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'bbox_max_lat',
         )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.context.get('exclude_status_fields'):
+            self.fields.pop('spatial_status', None)
+            self.fields.pop('data_status', None)
+
     def _build_geojson_from_related_zones(self, obj):
         zones = getattr(obj, 'active_zones', None)
         if zones is None:
@@ -230,10 +236,20 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         if cache_key in self._spatial_meta_cache:
             return self._spatial_meta_cache[cache_key]
 
-        normalized_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
-        if not normalized_geojson:
-            normalized_geojson = self._build_geojson_from_related_zones(obj)
+        normalized_geojson = None
+        active_zone_geojson = self._build_geojson_from_related_zones(obj)
+        if active_zone_geojson:
+            normalized_geojson = active_zone_geojson
+        else:
+            normalized_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
+
         geometry = self._geometry_from_geojson(normalized_geojson)
+        if not geometry:
+            fallback_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
+            if fallback_geojson and fallback_geojson != normalized_geojson:
+                normalized_geojson = fallback_geojson
+                geometry = self._geometry_from_geojson(normalized_geojson)
+
         bbox = geometry.bounds if geometry else None
         derived_area_ha = self._calculate_area_ha(geometry)
         stored_area = self._coerce_float(getattr(obj, 'area', None))
@@ -268,6 +284,9 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         return meta
 
     def get_plot_count(self, obj):
+        active_zones = getattr(obj, 'active_zones', None)
+        if active_zones is not None:
+            return len(active_zones)
         plot_count = getattr(obj, 'plot_count', None)
         if plot_count is not None:
             return int(plot_count)

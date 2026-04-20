@@ -132,7 +132,10 @@ class TerrainEditor {
     this.historyIndex = -1;
     // this.areaId 已在 constructor 顶部初始化
     this.areaData = null; // 区域基础信息
-    this.originalBoundaryLayer = null; // 原始边界图层
+    this.originalBoundaryLayer = null; // 原始边界参考图层
+    this.originalBoundaryGeoJSON = null; // 原始边界参考数据，默认仅作隐藏兜底
+    this.showOriginalBoundary = Boolean(options.showOriginalBoundary);
+    this.backgroundLayerKeys = []; // 管理 dataManager 注入的业务/历史背景图层
     this.subcategoryOptionsByCategory = {};
     this._disjointSplitModalBound = false;
     this._pendingDisjointSplitResolver = null;
@@ -1383,6 +1386,245 @@ class TerrainEditor {
     if (!this.layers.temp || typeof this.layers.temp !== 'object') {
       this.layers.temp = {};
     }
+  }
+
+  clearOriginalBoundaryLayer() {
+    const auxiliaryGroup = this.layerManager?.layerGroups?.auxiliary;
+    if (this.originalBoundaryLayer && auxiliaryGroup?.hasLayer?.(this.originalBoundaryLayer)) {
+      auxiliaryGroup.removeLayer(this.originalBoundaryLayer);
+    } else if (this.originalBoundaryLayer && this.map?.hasLayer?.(this.originalBoundaryLayer)) {
+      this.map.removeLayer(this.originalBoundaryLayer);
+    }
+
+    this.originalBoundaryLayer = null;
+  }
+
+  setOriginalBoundaryReference(geojson, options = {}) {
+    const { visible = this.showOriginalBoundary } = options;
+    this.originalBoundaryGeoJSON = geojson || null;
+    this.clearOriginalBoundaryLayer();
+
+    if (this.originalBoundaryGeoJSON && visible) {
+      this.renderAreaBoundary(this.originalBoundaryGeoJSON, { visible: true });
+    }
+  }
+
+  clearManagedBackgroundLayers() {
+    const managedGroups = ['base', 'business'];
+    managedGroups.forEach((groupName) => {
+      const group = this.layerManager?.layerGroups?.[groupName];
+      if (group?.clearLayers) {
+        group.clearLayers();
+      }
+
+      if (this.layers?.[groupName] && typeof this.layers[groupName] === 'object') {
+        Object.keys(this.layers[groupName]).forEach((key) => {
+          delete this.layers[groupName][key];
+        });
+      }
+    });
+
+    this.backgroundLayerKeys.forEach((key) => {
+      if (this.layerManager?.layers?.[key]) {
+        delete this.layerManager.layers[key];
+      }
+    });
+    this.backgroundLayerKeys = [];
+  }
+
+  getCurrentEditAreaId() {
+    return this.areaId || this.areaData?.id || document.getElementById('terrainId')?.value || null;
+  }
+
+  matchesCurrentArea(item, currentAreaId) {
+    if (!currentAreaId || !item || typeof item !== 'object') {
+      return false;
+    }
+
+    const candidateIds = this.getZoneCandidateAreaIds(item);
+
+    if (!candidateIds.length) {
+      return false;
+    }
+
+    return candidateIds.some((value) => String(value) === String(currentAreaId));
+  }
+
+  getZoneCandidateAreaIds(item) {
+    if (!item || typeof item !== 'object') {
+      return [];
+    }
+
+    return [
+      item.area_id,
+      item.areaId,
+      item.area_obj_id,
+      item.areaObjId,
+      item.terrain_id,
+      item.terrainId,
+      item.area?.id,
+      item.area?.area_id,
+      item.area_obj?.id
+    ].filter((value) => value !== undefined && value !== null && value !== '');
+  }
+
+  parseZonePayloadObject(value) {
+    let current = value;
+    for (let i = 0; i < 2 && typeof current === 'string'; i += 1) {
+      try {
+        current = JSON.parse(current);
+      } catch (_) {
+        return {};
+      }
+    }
+    return current && typeof current === 'object' && !Array.isArray(current) ? current : {};
+  }
+
+  zoneHasRenderableGeometry(zoneData) {
+    const geomSource = zoneData?.geom_json || zoneData?.geometry || zoneData?.geojson || null;
+    const parsed = this.parseZonePayloadObject(geomSource);
+
+    const hasCoordinatePairs = (value) => {
+      if (Array.isArray(value)) {
+        if (value.length >= 2 && typeof value[0] === 'number' && typeof value[1] === 'number') {
+          return true;
+        }
+        return value.some((item) => hasCoordinatePairs(item));
+      }
+      return false;
+    };
+
+    const geometry = parsed?.type === 'Feature' ? (parsed.geometry || {}) : parsed;
+    if (!geometry || typeof geometry !== 'object') {
+      return false;
+    }
+
+    if (parsed?.type === 'FeatureCollection') {
+      return Array.isArray(parsed.features) && parsed.features.some((feature) => {
+        const featureGeometry = this.parseZonePayloadObject(feature)?.geometry || {};
+        return hasCoordinatePairs(featureGeometry.coordinates);
+      });
+    }
+
+    if (geometry.type === 'GeometryCollection') {
+      return Array.isArray(geometry.geometries) && geometry.geometries.some((item) => hasCoordinatePairs(item?.coordinates));
+    }
+
+    return hasCoordinatePairs(geometry.coordinates);
+  }
+
+  buildZoneRenderDedupeKey(zoneData) {
+    const geomSource = zoneData?.geom_json || zoneData?.geometry || zoneData?.geojson || null;
+    const parsedGeometry = this.parseZonePayloadObject(geomSource);
+    const geometry = parsedGeometry?.type === 'Feature' ? (parsedGeometry.geometry || {}) : parsedGeometry;
+    const areaIds = this.getZoneCandidateAreaIds(zoneData);
+
+    return JSON.stringify({
+      areaId: areaIds[0] ?? null,
+      category: zoneData?.category || zoneData?.type || '',
+      subType: zoneData?.subcategory || zoneData?.sub_type || zoneData?.type || '',
+      geometry: geometry || {}
+    });
+  }
+
+  getZoneRenderValidation(zoneData, options = {}) {
+    const areaId = options.areaId ?? this.getCurrentEditAreaId();
+    const meta = this.parseZonePayloadObject(zoneData?.meta_json || zoneData?.meta || {});
+    const style = this.parseZonePayloadObject(zoneData?.style_json || zoneData?.style || {});
+    const candidateAreaIds = this.getZoneCandidateAreaIds(zoneData);
+    const inactiveStatuses = new Set(['deleted', 'inactive', 'archived', 'history', 'historical', 'invalid', 'discarded', 'disabled', 'hidden', 'draft']);
+
+    if (!zoneData || typeof zoneData !== 'object') {
+      return { ok: false, reason: 'invalid_payload' };
+    }
+
+    if (zoneData.is_deleted === true) {
+      return { ok: false, reason: 'is_deleted' };
+    }
+
+    if (areaId && candidateAreaIds.length > 0 && !this.matchesCurrentArea(zoneData, areaId)) {
+      return { ok: false, reason: 'area_mismatch' };
+    }
+
+    if (!this.zoneHasRenderableGeometry(zoneData)) {
+      return { ok: false, reason: 'missing_geometry' };
+    }
+
+    for (const key of ['hidden', 'is_hidden', 'archived', 'is_archived', 'history', 'is_history', 'historical', 'is_historical', 'invalid', 'is_invalid', 'disabled', 'is_disabled', 'draft', 'is_draft']) {
+      if (meta[key] === true || style[key] === true) {
+        return { ok: false, reason: `flag:${key}` };
+      }
+    }
+
+    if (style.visible === false) {
+      return { ok: false, reason: 'style_hidden' };
+    }
+
+    for (const key of ['active', 'is_active', 'current', 'is_current', 'latest', 'is_latest', 'enabled', 'is_enabled']) {
+      if ((key in meta && meta[key] === false) || (key in style && style[key] === false)) {
+        return { ok: false, reason: `flag:${key}=false` };
+      }
+    }
+
+    for (const key of ['status', 'zone_status', 'record_status', 'state']) {
+      const metaStatus = meta[key];
+      const styleStatus = style[key];
+      if (metaStatus !== undefined && inactiveStatuses.has(String(metaStatus).trim().toLowerCase())) {
+        return { ok: false, reason: `status:${String(metaStatus).trim().toLowerCase()}` };
+      }
+      if (styleStatus !== undefined && inactiveStatuses.has(String(styleStatus).trim().toLowerCase())) {
+        return { ok: false, reason: `status:${String(styleStatus).trim().toLowerCase()}` };
+      }
+    }
+
+    return {
+      ok: true,
+      reason: null,
+      dedupeKey: this.buildZoneRenderDedupeKey(zoneData)
+    };
+  }
+
+  filterRenderableZones(zones, options = {}) {
+    if (!Array.isArray(zones)) {
+      return [];
+    }
+
+    const filteredZones = [];
+    const skippedZones = [];
+    const seenKeys = new Set();
+    const areaId = options.areaId ?? this.getCurrentEditAreaId();
+
+    zones.forEach((zoneData) => {
+      const validation = this.getZoneRenderValidation(zoneData, { areaId });
+      if (!validation.ok) {
+        skippedZones.push({
+          id: zoneData?.id ?? null,
+          name: zoneData?.name || '',
+          reason: validation.reason
+        });
+        return;
+      }
+
+      if (validation.dedupeKey && seenKeys.has(validation.dedupeKey)) {
+        skippedZones.push({
+          id: zoneData?.id ?? null,
+          name: zoneData?.name || '',
+          reason: 'duplicate_geometry'
+        });
+        return;
+      }
+
+      if (validation.dedupeKey) {
+        seenKeys.add(validation.dedupeKey);
+      }
+      filteredZones.push(zoneData);
+    });
+
+    if (skippedZones.length > 0) {
+      console.warn('编辑页 zones 前端兜底过滤已剔除无效地块:', skippedZones);
+    }
+
+    return filteredZones;
   }
   
   // 绑定事件
@@ -3267,6 +3509,7 @@ class TerrainEditor {
 
     this.areaId = areaId;
     this.addLayerGroups();
+    this.clearManagedBackgroundLayers();
 
     const runInNextFrame = (callback) => {
       if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -3302,7 +3545,7 @@ class TerrainEditor {
 
     const payload = result.data.editor_payload || result.data;
     const area = payload.area || result.data.area || {};
-    const zones = Array.isArray(payload.zones) ? payload.zones : (Array.isArray(result.data.zones) ? result.data.zones : []);
+    const rawZones = Array.isArray(payload.zones) ? payload.zones : (Array.isArray(result.data.zones) ? result.data.zones : []);
     const viewMeta = payload.view_meta || result.data.view_meta || {};
     const boundaryGeoJSON = area.boundary_json || area.boundary || payload.boundary_json || null;
 
@@ -3323,10 +3566,6 @@ class TerrainEditor {
       this.multiSelectedPlotIds.clear();
     }
 
-    if (this.originalBoundaryLayer && this.map.hasLayer(this.originalBoundaryLayer)) {
-      this.map.removeLayer(this.originalBoundaryLayer);
-    }
-
     // 优化目的: 表单数据与弱兜底边界先同步，确保编辑页先可见、后精确聚焦。
     const terrainNameInput = document.getElementById('terrainName');
     const terrainDescInput = document.getElementById('terrainDesc');
@@ -3335,11 +3574,12 @@ class TerrainEditor {
     if (terrainDescInput) terrainDescInput.value = area.description || '';
     if (terrainIdInput) terrainIdInput.value = area.id || '';
 
-    if (boundaryGeoJSON) {
-      this.renderAreaBoundary(boundaryGeoJSON);
-    } else if (this.areaBoundaryLayer && this.map.hasLayer(this.areaBoundaryLayer)) {
-      this.map.removeLayer(this.areaBoundaryLayer);
-    }
+    // 原始 boundary_json 仅保留为内部参考数据，默认不直接渲染到地图。
+    this.setOriginalBoundaryReference(boundaryGeoJSON, {
+      visible: this.showOriginalBoundary
+    });
+
+    const zones = this.filterRenderableZones(rawZones, { areaId });
 
     const viewportPayload = {
       area: this.areaData,
@@ -3380,12 +3620,13 @@ class TerrainEditor {
     });
 
     this.updateSelectedPlotsList();
-    console.log(`成功加载地形 "${area.name || areaId}", 包含 ${zones.length} 个地块`);
+    console.log(`成功加载地形 "${area.name || areaId}", 原始地块 ${rawZones.length} 个，实际渲染 ${zones.length} 个`);
   }
 
   // 渲染区域边界 (作为背景参考)
-  renderAreaBoundary(geojson) {
-    // 优化目的: boundary_json 仅作为编辑态弱兜底参考层显示，不在此处锁死视野或覆盖真实地块聚焦。
+  renderAreaBoundary(geojson, options = {}) {
+    // 优化目的: boundary_json 仅作为可选参考层，默认隐藏，仅在显式启用时渲染。
+    const { visible = this.showOriginalBoundary } = options;
     const parseJson = (value) => {
       let current = value;
       for (let i = 0; i < 3 && typeof current === 'string'; i += 1) {
@@ -3448,14 +3689,12 @@ class TerrainEditor {
     };
 
     const normalizedGeoJSON = normalizeGeoJSON(geojson);
-    if (!normalizedGeoJSON) return;
-
-    if (this.areaBoundaryLayer && this.map.hasLayer(this.areaBoundaryLayer)) {
-      this.map.removeLayer(this.areaBoundaryLayer);
-    }
+    this.originalBoundaryGeoJSON = normalizedGeoJSON;
+    this.clearOriginalBoundaryLayer();
+    if (!normalizedGeoJSON) return null;
 
     try {
-      this.areaBoundaryLayer = L.geoJSON(normalizedGeoJSON, {
+      this.originalBoundaryLayer = L.geoJSON(normalizedGeoJSON, {
         style: {
           color: '#666',
           weight: 2,
@@ -3463,15 +3702,33 @@ class TerrainEditor {
           fillOpacity: 0.05,
           interactive: false
         }
-      }).addTo(this.map);
+      });
+
+      if (visible) {
+        if (this.layerManager?.layerGroups?.auxiliary) {
+          this.layerManager.layerGroups.auxiliary.addLayer(this.originalBoundaryLayer);
+        } else {
+          this.originalBoundaryLayer.addTo(this.map);
+        }
+      }
+
+      return this.originalBoundaryLayer;
     } catch (err) {
       console.warn('渲染区域边界失败，GeoJSON 可能不完整:', err, normalizedGeoJSON);
+      this.originalBoundaryLayer = null;
+      return null;
     }
   }
 
   // 从数据库数据渲染地块 (Zone) 到地图
   renderPlotFromData(data) {
     // 优化目的: 统一兼容 geom_json / geometry / meta_json / type / category / 子类别，并在渲染前自动完成 3857 -> 4326 转换。
+    const validation = this.getZoneRenderValidation(data, { areaId: this.getCurrentEditAreaId() });
+    if (!validation.ok) {
+      console.warn(`跳过非编辑态有效地块 [${data?.name || '未命名'} (ID: ${data?.id || 'unknown'})]: ${validation.reason}`);
+      return null;
+    }
+
     const parseJson = (value) => {
       let current = value;
       for (let i = 0; i < 3 && typeof current === 'string'; i += 1) {
@@ -3545,7 +3802,7 @@ class TerrainEditor {
 
     if (!normalizedGeoJSON) {
       console.warn(`跳过无效地块 [${data?.name || '未命名'} (ID: ${data?.id || 'unknown'})]: 缺少有效 GeoJSON 数据`, geomSource);
-      return;
+      return null;
     }
 
     const category = data?.category || data?.type || meta?.category || '';
@@ -3584,7 +3841,7 @@ class TerrainEditor {
       });
     } catch (err) {
       console.error(`渲染地块 [${properties.name} (ID: ${data?.id || 'unknown'})] 失败:`, err, normalizedGeoJSON);
-      return;
+      return null;
     }
 
     const plot = {
@@ -3608,6 +3865,7 @@ class TerrainEditor {
     this.userPlots.push(plot);
     this.bindPlotSelectionEvents(plot);
     this.refreshPlotInteractivity();
+    return plot;
   }
 
   // 获取 CSRF Token
@@ -4205,16 +4463,18 @@ class TerrainEditor {
   
   // 加载地形数据
   loadTerrainData(data) {
-    // 优化目的: 业务图层继续正常加载，但编辑态不再让 allLayers / fitBounds 覆盖当前地块初始视野。
+    // 优化目的: 编辑态默认只保留当前 area 的 working layer，屏蔽历史/业务背景层回流。
     console.log('=== 开始加载地形数据 ===');
     console.log('数据内容:', data);
 
     this.addLayerGroups();
+    this.clearManagedBackgroundLayers();
 
     const terrainFeatures = [];
     const businessBoundaries = [];
     const allLayers = [];
-    const isEditMode = !!this.areaId;
+    const currentAreaId = this.getCurrentEditAreaId();
+    const isEditMode = !!currentAreaId;
 
     const ensureBusinessBucket = (bucketName) => {
       if (!this.layers.business[bucketName]) {
@@ -4228,11 +4488,45 @@ class TerrainEditor {
       bucket.addLayer(polygon);
     };
 
-    if (data.terrainBoundaries) {
-      console.log('=== 加载地形边界 ===');
-      console.log('地形边界数量:', data.terrainBoundaries.length);
+    const registerLayerKey = (key) => {
+      this.backgroundLayerKeys.push(key);
+      return key;
+    };
 
-      data.terrainBoundaries.forEach((boundary) => {
+    const filterByCurrentArea = (items) => {
+      if (!Array.isArray(items)) {
+        return [];
+      }
+      if (!isEditMode) {
+        return items;
+      }
+      return items.filter((item) => this.matchesCurrentArea(item, currentAreaId));
+    };
+
+    const terrainBoundaries = filterByCurrentArea(data?.terrainBoundaries);
+    const riskAreas = filterByCurrentArea(data?.riskAreas);
+    const noFlyZones = filterByCurrentArea(data?.noFlyZones);
+    const forestAreas = filterByCurrentArea(data?.forestAreas);
+    const farmAreas = filterByCurrentArea(data?.farmAreas);
+    const existingPlots = filterByCurrentArea(data?.existingPlots);
+
+    if (isEditMode) {
+      console.log('编辑态已启用 area 过滤，仅保留当前 area 相关背景数据:', {
+        currentAreaId,
+        terrainBoundaries: terrainBoundaries.length,
+        riskAreas: riskAreas.length,
+        noFlyZones: noFlyZones.length,
+        forestAreas: forestAreas.length,
+        farmAreas: farmAreas.length,
+        existingPlots: existingPlots.length
+      });
+    }
+
+    if (!isEditMode && terrainBoundaries.length) {
+      console.log('=== 加载地形边界 ===');
+      console.log('地形边界数量:', terrainBoundaries.length);
+
+      terrainBoundaries.forEach((boundary) => {
         const polygon = L.polygon(boundary.coordinates, {
           color: '#6c757d',
           weight: 2,
@@ -4240,18 +4534,21 @@ class TerrainEditor {
           fillOpacity: 0.3
         });
         polygon.bindPopup(`<strong>${boundary.name}</strong><br>类型: ${boundary.type}`);
-        this.layerManager.addLayer(`terrain-${boundary.id}`, polygon, 'base');
+        const layerKey = registerLayerKey(`terrain-${boundary.id}`);
+        this.layerManager.addLayer(layerKey, polygon, 'base');
         this.layers.base.terrain = polygon;
         terrainFeatures.push(boundary);
         allLayers.push(polygon);
       });
+    } else if (isEditMode && terrainBoundaries.length) {
+      console.log('编辑态跳过 terrainBoundaries 地图渲染，避免当前地形外的边界回流');
     }
 
-    if (data.riskAreas) {
+    if (!isEditMode && riskAreas.length) {
       console.log('=== 加载风险区域 ===');
-      console.log('风险区域数量:', data.riskAreas.length);
+      console.log('风险区域数量:', riskAreas.length);
 
-      data.riskAreas.forEach((zone) => {
+      riskAreas.forEach((zone) => {
         const polygon = L.polygon(zone.coordinates, {
           color: '#dc3545',
           weight: 2,
@@ -4259,17 +4556,18 @@ class TerrainEditor {
           fillOpacity: 0.3
         });
         polygon.bindPopup(`<strong>${zone.name}</strong><br>风险等级: ${zone.level}`);
-        this.layerManager.addLayer(`risk-${zone.id}`, polygon, 'base');
+        const layerKey = registerLayerKey(`risk-${zone.id}`);
+        this.layerManager.addLayer(layerKey, polygon, 'base');
         this.layers.base.risk = polygon;
         allLayers.push(polygon);
       });
     }
 
-    if (data.noFlyZones) {
+    if (!isEditMode && noFlyZones.length) {
       console.log('=== 加载禁飞区 ===');
-      console.log('禁飞区数量:', data.noFlyZones.length);
+      console.log('禁飞区数量:', noFlyZones.length);
 
-      data.noFlyZones.forEach((zone) => {
+      noFlyZones.forEach((zone) => {
         const polygon = L.polygon(zone.coordinates, {
           color: '#6f42c1',
           weight: 2,
@@ -4277,17 +4575,18 @@ class TerrainEditor {
           fillOpacity: 0.3
         });
         polygon.bindPopup(`<strong>${zone.name}</strong><br>原因: ${zone.reason}`);
-        this.layerManager.addLayer(`noFly-${zone.id}`, polygon, 'base');
+        const layerKey = registerLayerKey(`noFly-${zone.id}`);
+        this.layerManager.addLayer(layerKey, polygon, 'base');
         this.layers.base.noFly = polygon;
         allLayers.push(polygon);
       });
     }
 
-    if (data.forestAreas) {
+    if (!isEditMode && forestAreas.length) {
       console.log('=== 加载林区 ===');
-      console.log('林区数量:', data.forestAreas.length);
+      console.log('林区数量:', forestAreas.length);
 
-      data.forestAreas.forEach((area) => {
+      forestAreas.forEach((area) => {
         const polygon = L.polygon(area.coordinates, {
           color: '#198754',
           weight: 2,
@@ -4295,18 +4594,21 @@ class TerrainEditor {
           fillOpacity: 0.3
         });
         polygon.bindPopup(`<strong>${area.name}</strong><br>类型: ${area.type}`);
-        this.layerManager.addLayer(`forest-${area.id}`, polygon, 'business');
+        const layerKey = registerLayerKey(`forest-${area.id}`);
+        this.layerManager.addLayer(layerKey, polygon, 'business');
         registerBusinessLayer('forest', polygon);
         businessBoundaries.push(area);
         allLayers.push(polygon);
       });
+    } else if (isEditMode && forestAreas.length) {
+      businessBoundaries.push(...forestAreas);
     }
 
-    if (data.farmAreas) {
+    if (!isEditMode && farmAreas.length) {
       console.log('=== 加载农田 ===');
-      console.log('农田数量:', data.farmAreas.length);
+      console.log('农田数量:', farmAreas.length);
 
-      data.farmAreas.forEach((area) => {
+      farmAreas.forEach((area) => {
         const polygon = L.polygon(area.coordinates, {
           color: '#fd7e14',
           weight: 2,
@@ -4314,18 +4616,21 @@ class TerrainEditor {
           fillOpacity: 0.3
         });
         polygon.bindPopup(`<strong>${area.name}</strong><br>作物: ${area.crop}`);
-        this.layerManager.addLayer(`farm-${area.id}`, polygon, 'business');
+        const layerKey = registerLayerKey(`farm-${area.id}`);
+        this.layerManager.addLayer(layerKey, polygon, 'business');
         registerBusinessLayer('farm', polygon);
         businessBoundaries.push(area);
         allLayers.push(polygon);
       });
+    } else if (isEditMode && farmAreas.length) {
+      businessBoundaries.push(...farmAreas);
     }
 
-    if (data.existingPlots) {
+    if (!isEditMode && existingPlots.length) {
       console.log('=== 加载现有地块 ===');
-      console.log('现有地块数量:', data.existingPlots.length);
+      console.log('现有地块数量:', existingPlots.length);
 
-      data.existingPlots.forEach((plot) => {
+      existingPlots.forEach((plot) => {
         const polygon = L.polygon(plot.coordinates, {
           color: '#0d6efd',
           weight: 2,
@@ -4333,11 +4638,15 @@ class TerrainEditor {
           fillOpacity: 0.3
         });
         polygon.bindPopup(`<strong>${plot.name}</strong><br>类型: ${plot.type}<br>面积: ${plot.area} 公顷<br>风险等级: ${plot.riskLevel}`);
-        this.layerManager.addLayer(`plot-${plot.id}`, polygon, 'business');
+        const layerKey = registerLayerKey(`plot-${plot.id}`);
+        this.layerManager.addLayer(layerKey, polygon, 'business');
         registerBusinessLayer('plot', polygon);
         businessBoundaries.push(plot);
         allLayers.push(polygon);
       });
+    } else if (isEditMode && existingPlots.length) {
+      businessBoundaries.push(...existingPlots);
+      console.log('编辑态仅保留当前 area 相关 existingPlots 作为内部数据，不渲染到地图');
     }
 
     if (this.smartSelection) {
@@ -4556,13 +4865,28 @@ class TerrainEditor {
    * @param {boolean} show 是否显示
    */
   toggleOriginalBoundaryLayer(show) {
-    if (this.originalBoundaryLayer) {
-      if (show) {
-        this.layerManager.showLayer('originalBoundary');
-      } else {
-        this.layerManager.hideLayer('originalBoundary');
-      }
+    this.showOriginalBoundary = !!show;
+
+    if (!this.originalBoundaryGeoJSON) {
+      this.clearOriginalBoundaryLayer();
+      return;
     }
+
+    if (this.showOriginalBoundary) {
+      if (this.originalBoundaryLayer) {
+        if (this.layerManager?.layerGroups?.auxiliary && !this.layerManager.layerGroups.auxiliary.hasLayer(this.originalBoundaryLayer)) {
+          this.layerManager.layerGroups.auxiliary.addLayer(this.originalBoundaryLayer);
+        } else if (this.map && !this.map.hasLayer(this.originalBoundaryLayer)) {
+          this.originalBoundaryLayer.addTo(this.map);
+        }
+        return;
+      }
+
+      this.renderAreaBoundary(this.originalBoundaryGeoJSON, { visible: true });
+      return;
+    }
+
+    this.clearOriginalBoundaryLayer();
   }
   
   // 切换底图

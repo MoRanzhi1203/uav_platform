@@ -194,44 +194,6 @@ function formatCenterLabel(lat, lng) {
   return `${numericLat.toFixed(5)}, ${numericLng.toFixed(5)}`;
 }
 
-function getDataStatusMeta(item) {
-  const hasAccuracy = item.data_accuracy !== null
-    && item.data_accuracy !== undefined
-    && item.data_accuracy !== ''
-    && item.data_accuracy !== '待补充';
-  if (hasAccuracy) {
-    return {
-      label: '数据完备',
-      className: 'status-ready'
-    };
-  }
-
-  return {
-    label: '待补精度',
-    className: 'status-pending'
-  };
-}
-
-function getBoundaryStatusMeta(item) {
-  const hasBoundary = Boolean(item.has_boundary || item.boundary_geojson || item.boundary_json);
-  return {
-    label: hasBoundary ? '边界完整' : '缺少边界',
-    className: hasBoundary ? 'status-ready' : 'status-missing',
-    hasBoundary
-  };
-}
-
-function normalizeSpatialStatus(item, hasBoundary) {
-  if (item.spatial_status) {
-    return item.spatial_status;
-  }
-  const hasCenter = isValidLatLng(item.center_lat, item.center_lng);
-  if (hasBoundary && hasCenter) {
-    return '边界与中心点完整';
-  }
-  return hasBoundary ? '空间可视化就绪' : '仅中心点定位';
-}
-
 function standardizeTerrainRecord(rawItem) {
   const utils = getTerrainSpatialUtils();
   const boundaryGeoJSON = pickFirstDefined(rawItem.boundary_geojson, rawItem.boundary_json, rawItem.boundary, rawItem.geometry);
@@ -286,12 +248,6 @@ function standardizeTerrainRecord(rawItem) {
     plot_count: plotCount,
     data_accuracy: pickFirstDefined(rawItem.data_accuracy, '待补充'),
     has_boundary: hasBoundary,
-    data_status: pickFirstDefined(rawItem.data_status, hasBoundary ? '基础边界已接入' : '原始影像阶段'),
-    spatial_status: normalizeSpatialStatus({
-      spatial_status: rawItem.spatial_status,
-      center_lat: centerLat,
-      center_lng: centerLng
-    }, hasBoundary),
     center_lat: isValidLatLng(centerLat, centerLng) ? centerLat : null,
     center_lng: isValidLatLng(centerLat, centerLng) ? centerLng : null
   };
@@ -299,8 +255,6 @@ function standardizeTerrainRecord(rawItem) {
 
 function normalizeTerrainItem(item) {
   const standardized = standardizeTerrainRecord(item);
-  const boundaryMeta = getBoundaryStatusMeta(standardized);
-  const dataStatusMeta = getDataStatusMeta(standardized);
   const bbox = standardized.bbox || {
     minLng: null,
     minLat: null,
@@ -323,14 +277,8 @@ function normalizeTerrainItem(item) {
     updatedAtLabel: formatDateTime(standardized.updated_at),
     plotCount: standardized.plot_count,
     plotCountLabel: `${standardized.plot_count} 个地块`,
-    hasBoundary: boundaryMeta.hasBoundary,
-    boundaryStatusLabel: boundaryMeta.label,
-    boundaryStatusClass: boundaryMeta.className,
-    dataStatusLabel: standardized.data_status || dataStatusMeta.label,
-    dataStatusClass: dataStatusMeta.className,
+    hasBoundary: standardized.has_boundary,
     dataAccuracyLabel: standardized.data_accuracy ? `${standardized.data_accuracy}` : '待补充',
-    spatialStatusLabel: standardized.spatial_status,
-    dataStatusText: standardized.data_status || dataStatusMeta.label,
     bbox: {
       minLng: formatCoordinate(bbox.minLng),
       minLat: formatCoordinate(bbox.minLat),
@@ -879,18 +827,6 @@ function updateDetailPanel(terrain) {
   if (riskNode) {
     riskNode.textContent = terrain.riskLabel;
     riskNode.className = `fw-bold ${terrain.riskClass}`;
-  }
-
-  const boundaryNode = document.getElementById('infoBoundaryStatus');
-  if (boundaryNode) {
-    boundaryNode.textContent = terrain.boundaryStatusLabel;
-    boundaryNode.className = `badge ${terrain.boundaryStatusClass === 'status-ready' ? 'bg-success' : 'bg-warning'}`;
-  }
-
-  const dataNode = document.getElementById('infoDataStatus');
-  if (dataNode) {
-    dataNode.textContent = terrain.dataStatusLabel;
-    dataNode.className = `badge ${terrain.dataStatusClass === 'status-ready' ? 'bg-primary' : 'bg-secondary'}`;
   }
 }
 

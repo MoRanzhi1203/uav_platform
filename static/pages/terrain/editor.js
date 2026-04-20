@@ -19,8 +19,14 @@ const WORKSPACE_RIGHT_MAX = 560;
 
 // 初始化页面
 function initEditor() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const areaId = urlParams.get('area_id');
+
   // 初始化编辑器
-  terrainEditor = new TerrainEditor('editorMap');
+  terrainEditor = new TerrainEditor('editorMap', {
+    areaId: areaId || null,
+    showOriginalBoundary: false
+  });
   
   // 绑定工具按钮事件
   bindToolEvents();
@@ -50,9 +56,6 @@ function initEditor() {
 
   // 加载区域及地块数据
   if (terrainEditor) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const areaId = urlParams.get('area_id');
-    
     // 初始化时控制删除按钮可用状态（如果是新建地形，则禁用删除按钮）
     const deleteBtn = document.getElementById('deleteTerrainBtn');
     if (deleteBtn) {

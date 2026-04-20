@@ -256,6 +256,7 @@ class TerrainMap {
     this.currentTerrainHasGeometry = false;
     this.currentPlotLayerKeys = [];
     this.currentPlotLayers = [];
+    this.currentRenderableTerrainPlots = [];
     this.topicBounds = null;
     this.terrainSources = new Map();
     this.activeSelectionToken = 0;
@@ -329,13 +330,55 @@ class TerrainMap {
     return TerrainSpatialUtils.normalizeGeoJSON(value);
   }
 
-  getTerrainGeoJSON(terrain) {
+  buildTerrainGeoJSONFromPlots(plots = null) {
+    const sourcePlots = Array.isArray(plots) ? plots : this.currentRenderableTerrainPlots;
+    if (!Array.isArray(sourcePlots) || !sourcePlots.length) {
+      return null;
+    }
+
+    const features = sourcePlots
+      .map(plot => plot?.__normalizedGeoJSON || this.normalizeGeoJSON(this.getTerrainPlotGeoValue(plot)))
+      .filter(Boolean)
+      .map(geojson => {
+        if (geojson.type === 'Feature') {
+          return geojson;
+        }
+        return {
+          type: 'Feature',
+          geometry: geojson,
+          properties: {}
+        };
+      });
+
+    if (!features.length) {
+      return null;
+    }
+
+    return features.length === 1
+      ? features[0]
+      : {
+        type: 'FeatureCollection',
+        features
+      };
+  }
+
+  getTerrainGeoJSON(terrain, plots = null) {
+    const plotDerivedGeoJSON = this.buildTerrainGeoJSONFromPlots(plots);
+    if (plotDerivedGeoJSON) {
+      return plotDerivedGeoJSON;
+    }
+
     return this.normalizeGeoJSON(
       terrain?.boundary_geojson || terrain?.boundary_json || terrain?.geometry || terrain?.boundary || null
     );
   }
 
-  getTerrainBounds(terrain, layer = null) {
+  getTerrainBounds(terrain, layer = null, plots = null) {
+    const plotGeoBounds = TerrainSpatialUtils.getBoundsFromGeoJSON(this.buildTerrainGeoJSONFromPlots(plots));
+    if (plotGeoBounds) {
+      return plotGeoBounds;
+    }
+
     const bboxBounds = TerrainSpatialUtils.getBoundsFromBBox(terrain?.bbox);
     if (bboxBounds) {
       return bboxBounds;
@@ -445,6 +488,148 @@ class TerrainMap {
     `;
   }
 
+  getTerrainPlotGeoValue(plot) {
+    return plot?.boundary_geojson || plot?.boundary_json || plot?.geom_json || plot?.geometry || null;
+  }
+
+  getTerrainPlotPayloads(plot) {
+    const candidates = [
+      this.parseJson(plot?.meta_json),
+      this.parseJson(plot?.meta),
+      this.parseJson(plot?.metadata),
+      this.parseJson(plot?.style_json),
+      this.parseJson(plot?.style),
+      plot
+    ];
+
+    return candidates.filter(item => item && typeof item === 'object' && !Array.isArray(item));
+  }
+
+  getTerrainPlotExcludeReason(plot, normalizedGeoJSON = null) {
+    const normalized = normalizedGeoJSON || this.normalizeGeoJSON(this.getTerrainPlotGeoValue(plot));
+    if (!normalized) {
+      return 'missing_geometry';
+    }
+
+    const payloads = this.getTerrainPlotPayloads(plot);
+    const hiddenFlagKeys = [
+      'hidden',
+      'is_hidden',
+      'archived',
+      'is_archived',
+      'history',
+      'is_history',
+      'historical',
+      'is_historical',
+      'invalid',
+      'is_invalid',
+      'disabled',
+      'is_disabled',
+      'draft',
+      'is_draft'
+    ];
+
+    for (const key of hiddenFlagKeys) {
+      if (payloads.some(payload => payload[key] === true)) {
+        return `flag:${key}`;
+      }
+    }
+
+    if (payloads.some(payload => payload.visible === false)) {
+      return 'style_hidden';
+    }
+
+    const inactiveFlagKeys = ['active', 'is_active', 'current', 'is_current', 'latest', 'is_latest', 'enabled', 'is_enabled'];
+    for (const key of inactiveFlagKeys) {
+      if (payloads.some(payload => Object.prototype.hasOwnProperty.call(payload, key) && payload[key] === false)) {
+        return `flag:${key}=false`;
+      }
+    }
+
+    const excludedStatuses = new Set([
+      'deleted',
+      'inactive',
+      'archived',
+      'history',
+      'historical',
+      'invalid',
+      'discarded',
+      'disabled',
+      'hidden',
+      'draft'
+    ]);
+
+    for (const statusKey of ['status', 'zone_status', 'record_status', 'state']) {
+      const matchedPayload = payloads.find(payload => payload[statusKey] !== undefined && payload[statusKey] !== null);
+      if (!matchedPayload) {
+        continue;
+      }
+      const normalizedStatus = String(matchedPayload[statusKey]).trim().toLowerCase();
+      if (excludedStatuses.has(normalizedStatus)) {
+        return `status:${normalizedStatus}`;
+      }
+    }
+
+    return null;
+  }
+
+  buildTerrainPlotDedupeKey(plot, normalizedGeoJSON = null) {
+    const normalized = normalizedGeoJSON || this.normalizeGeoJSON(this.getTerrainPlotGeoValue(plot));
+    if (!normalized) {
+      return null;
+    }
+
+    const geometry = normalized.type === 'Feature' ? (normalized.geometry || {}) : normalized;
+    return JSON.stringify({
+      areaId: plot?.area_obj_id || plot?.area_id || this.currentTerrain?.id || '',
+      plotType: plot?.plot_type || plot?.category || '',
+      subType: plot?.sub_type || plot?.type || '',
+      geometry
+    });
+  }
+
+  filterRenderableTerrainPlots(plots) {
+    const sourcePlots = Array.isArray(plots) ? plots : [];
+    if (!sourcePlots.length) {
+      return [];
+    }
+
+    const filteredPlots = [];
+    const skippedPlots = [];
+    const seenKeys = new Set();
+
+    sourcePlots.forEach(plot => {
+      const normalizedGeoJSON = this.normalizeGeoJSON(this.getTerrainPlotGeoValue(plot));
+      const excludeReason = this.getTerrainPlotExcludeReason(plot, normalizedGeoJSON);
+      if (excludeReason) {
+        skippedPlots.push({ id: plot?.id, reason: excludeReason });
+        return;
+      }
+
+      const dedupeKey = this.buildTerrainPlotDedupeKey(plot, normalizedGeoJSON);
+      if (dedupeKey && seenKeys.has(dedupeKey)) {
+        skippedPlots.push({ id: plot?.id, reason: 'duplicate_geometry' });
+        return;
+      }
+
+      if (dedupeKey) {
+        seenKeys.add(dedupeKey);
+      }
+
+      filteredPlots.push({
+        ...plot,
+        __normalizedGeoJSON: normalizedGeoJSON,
+        __terrainPlotFiltered: true
+      });
+    });
+
+    if (skippedPlots.length) {
+      console.warn('管理页地块过滤后跳过部分历史/无效地块:', skippedPlots);
+    }
+
+    return filteredPlots;
+  }
+
   registerTopicBounds(layer) {
     if (!layer) {
       return;
@@ -480,10 +665,10 @@ class TerrainMap {
   clearSelectionMarker() {
   }
 
-  renderCurrentTerrainBoundary(terrain) {
+  renderCurrentTerrainBoundary(terrain, plots = null) {
     this.clearCurrentTerrainBoundary();
 
-    const normalizedGeoJSON = this.getTerrainGeoJSON(terrain);
+    const normalizedGeoJSON = this.getTerrainGeoJSON(terrain, plots);
     if (normalizedGeoJSON) {
       const layer = L.geoJSON(normalizedGeoJSON, {
         style: () => this.getTerrainBoundaryStyle(),
@@ -531,8 +716,12 @@ class TerrainMap {
       if (selectionToken !== null && selectionToken !== this.activeSelectionToken) {
         return [];
       }
-      this.renderTerrainPlots(plots);
-      return plots;
+      const renderablePlots = this.filterRenderableTerrainPlots(plots);
+      this.currentRenderableTerrainPlots = renderablePlots;
+      this.topicBounds = null;
+      this.renderCurrentTerrainBoundary(this.currentTerrain || { id: areaId }, renderablePlots);
+      this.renderTerrainPlots(renderablePlots);
+      return renderablePlots;
     } catch (error) {
       console.error('加载地形地块专题失败:', error);
       return [];
@@ -540,9 +729,12 @@ class TerrainMap {
   }
 
   renderTerrainPlots(plots) {
-    plots.forEach(plot => {
-      const geoValue = plot.boundary_geojson || plot.boundary_json || plot.geom_json || plot.geometry;
-      const normalizedGeoJSON = this.normalizeGeoJSON(geoValue);
+    const renderablePlots = Array.isArray(plots) && plots.every(plot => plot?.__terrainPlotFiltered)
+      ? plots
+      : this.filterRenderableTerrainPlots(plots);
+
+    renderablePlots.forEach(plot => {
+      const normalizedGeoJSON = plot.__normalizedGeoJSON || this.normalizeGeoJSON(this.getTerrainPlotGeoValue(plot));
       if (!normalizedGeoJSON) {
         return;
       }
@@ -589,6 +781,7 @@ class TerrainMap {
     });
     this.currentPlotLayerKeys = [];
     this.currentPlotLayers = [];
+    this.currentRenderableTerrainPlots = [];
   }
 
   clearCurrentTopic() {

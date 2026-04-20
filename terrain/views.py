@@ -6,13 +6,14 @@ from pathlib import Path
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from shapely.geometry import shape, mapping, MultiPolygon, Polygon
+from shapely.ops import unary_union
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 from .serializers import (
-    TerrainAreaSerializer, TerrainZoneSerializer, TerrainAreaPlotSerializer,
+    GeoJSONCompatibilityMixin, TerrainAreaSerializer, TerrainZoneSerializer, TerrainAreaPlotSerializer,
     TerrainElementSerializer, TerrainSubCategorySerializer
 )
 from common.responses import api_response, api_error
@@ -27,42 +28,266 @@ ADMIN_BOUNDARY_DERIVED_FILES = (
     ADMIN_BOUNDARY_DERIVED_DIR / "chongqing_township_from_source.geojson",
 )
 
+ACTIVE_PLOT_EXCLUDED_ZONE_STATUSES = {
+    "deleted",
+    "inactive",
+    "archived",
+    "history",
+    "historical",
+    "invalid",
+    "discarded",
+    "disabled",
+    "hidden",
+    "draft",
+}
 
-def build_area_spatial_from_zones(area):
-    """基于真实地形边界或关联地块，统一回写地形面积、中心点与边界。"""
-    serialized = TerrainAreaSerializer(area).data
-    boundary_geojson = serialized.get("boundary_geojson") or serialized.get("boundary_json") or None
-    center_lng = serialized.get("center_lng")
-    center_lat = serialized.get("center_lat")
-    area_ha = serialized.get("area_ha") if serialized.get("area_ha") is not None else serialized.get("area")
+SPATIAL_COMPAT = GeoJSONCompatibilityMixin()
+
+
+def _get_zone_normalized_geometry(zone):
+    normalized_geojson = SPATIAL_COMPAT._normalize_geojson(getattr(zone, "geom_json", None))
+    geometry = SPATIAL_COMPAT._geometry_from_geojson(normalized_geojson)
+    return normalized_geojson, geometry
+
+
+def build_area_spatial_from_active_plots(area, active_plots=None):
+    """基于当前有效地块重建 TerrainArea 顶层空间字段，避免旧 boundary_json 借尸还魂。"""
+    plots = list(active_plots) if active_plots is not None else list(get_area_active_plots(area))
+    geometries = []
+
+    for zone in plots:
+        _normalized_geojson, geometry = _get_zone_normalized_geometry(zone)
+        if geometry and not geometry.is_empty:
+            geometries.append(geometry)
+
+    merged_geometry = unary_union(geometries) if geometries else None
+    if merged_geometry and not merged_geometry.is_empty:
+        boundary_geojson = {
+            "type": "Feature",
+            "geometry": mapping(merged_geometry),
+            "properties": {},
+        }
+        centroid = merged_geometry.centroid
+        center_lat = SPATIAL_COMPAT._coerce_float(getattr(centroid, "y", None))
+        center_lng = SPATIAL_COMPAT._coerce_float(getattr(centroid, "x", None))
+        if not SPATIAL_COMPAT._is_valid_center(center_lat, center_lng):
+            center_lat = None
+            center_lng = None
+        area_ha = SPATIAL_COMPAT._calculate_area_ha(merged_geometry) or 0
+        bbox = merged_geometry.bounds
+    else:
+        boundary_geojson = {}
+        center_lat = None
+        center_lng = None
+        area_ha = 0
+        bbox = None
 
     update_fields = []
 
-    if boundary_geojson is not None and boundary_geojson != area.boundary_json:
-      area.boundary_json = boundary_geojson
-      update_fields.append("boundary_json")
+    if boundary_geojson != area.boundary_json:
+        area.boundary_json = boundary_geojson
+        update_fields.append("boundary_json")
 
     if center_lng != area.center_lng:
-      area.center_lng = center_lng
-      update_fields.append("center_lng")
+        area.center_lng = center_lng
+        update_fields.append("center_lng")
 
     if center_lat != area.center_lat:
-      area.center_lat = center_lat
-      update_fields.append("center_lat")
+        area.center_lat = center_lat
+        update_fields.append("center_lat")
 
-    if area_ha is not None:
-      try:
+    try:
         normalized_area = Decimal(str(round(float(area_ha), 2)))
-      except (TypeError, ValueError, InvalidOperation):
+    except (TypeError, ValueError, InvalidOperation):
         normalized_area = None
-      if normalized_area is not None and normalized_area != area.area:
+
+    if normalized_area is not None and normalized_area != area.area:
         area.area = normalized_area
         update_fields.append("area")
 
     if update_fields:
-      area.save(update_fields=update_fields)
+        area.save(update_fields=update_fields)
+
+    area.active_zones = plots
+    area.plot_count = len(plots)
+    area._active_plot_bbox = bbox
 
     return area
+
+
+def build_area_spatial_from_zones(area):
+    return build_area_spatial_from_active_plots(area)
+
+
+def _parse_json_object(value):
+    current = value
+    for _ in range(2):
+        if not isinstance(current, str):
+            break
+        try:
+            current = json.loads(current)
+        except json.JSONDecodeError:
+            return {}
+    return current if isinstance(current, dict) else {}
+
+
+def _has_coordinate_pairs(value):
+    if isinstance(value, (list, tuple)):
+        if len(value) >= 2 and all(isinstance(item, (int, float)) for item in value[:2]):
+            return True
+        return any(_has_coordinate_pairs(item) for item in value)
+    return False
+
+
+def _zone_has_renderable_geometry(zone):
+    geom_json = _parse_json_object(getattr(zone, "geom_json", None))
+    if not geom_json:
+        return False
+
+    geometry = geom_json
+    if geom_json.get("type") == "Feature":
+        geometry = geom_json.get("geometry") or {}
+    elif geom_json.get("type") == "FeatureCollection":
+        return any(
+            _has_coordinate_pairs(
+                _parse_json_object(feature).get("geometry", {}).get("coordinates")
+            )
+            for feature in geom_json.get("features", [])
+            if isinstance(feature, dict)
+        )
+
+    if not isinstance(geometry, dict):
+        return False
+
+    if geometry.get("type") == "GeometryCollection":
+        return any(
+            _has_coordinate_pairs(item.get("coordinates"))
+            for item in geometry.get("geometries", [])
+            if isinstance(item, dict)
+        )
+
+    return _has_coordinate_pairs(geometry.get("coordinates"))
+
+
+def _get_area_plot_exclude_reason(zone, area_id):
+    if getattr(zone, "is_deleted", False):
+        return "is_deleted"
+
+    if area_id and str(getattr(zone, "area_obj_id", "")) != str(area_id):
+        return "area_mismatch"
+
+    if not _zone_has_renderable_geometry(zone):
+        return "missing_geometry"
+
+    meta_json = _parse_json_object(getattr(zone, "meta_json", None))
+    style_json = _parse_json_object(getattr(zone, "style_json", None))
+
+    for key in (
+        "hidden",
+        "is_hidden",
+        "archived",
+        "is_archived",
+        "history",
+        "is_history",
+        "historical",
+        "is_historical",
+        "invalid",
+        "is_invalid",
+        "disabled",
+        "is_disabled",
+        "draft",
+        "is_draft",
+    ):
+        if meta_json.get(key) is True or style_json.get(key) is True:
+            return f"flag:{key}"
+
+    if style_json.get("visible") is False:
+        return "style_hidden"
+
+    for key in ("active", "is_active", "current", "is_current", "latest", "is_latest", "enabled", "is_enabled"):
+        if key in meta_json and meta_json.get(key) is False:
+            return f"flag:{key}=false"
+        if key in style_json and style_json.get(key) is False:
+            return f"flag:{key}=false"
+
+    for key in ("status", "zone_status", "record_status", "state"):
+        for payload in (meta_json, style_json):
+            value = payload.get(key)
+            if value is None:
+                continue
+            normalized = str(value).strip().lower()
+            if normalized in ACTIVE_PLOT_EXCLUDED_ZONE_STATUSES:
+                return f"status:{normalized}"
+
+    return None
+
+
+def _build_area_plot_dedupe_key(zone):
+    geom_json = _parse_json_object(getattr(zone, "geom_json", None))
+    geometry = geom_json.get("geometry") if geom_json.get("type") == "Feature" else geom_json
+    geometry_key = json.dumps(
+        geometry or {},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return "|".join(
+        [
+            str(getattr(zone, "area_obj_id", "") or ""),
+            str(getattr(zone, "category", "") or ""),
+            str(getattr(zone, "type", "") or ""),
+            geometry_key,
+        ]
+    )
+
+
+def get_area_active_plots(area):
+    raw_zones = list(
+        TerrainZone.objects.filter(area_obj=area, is_deleted=False)
+        .prefetch_related("elements")
+        .order_by("-updated_at", "-id")
+    )
+
+    filtered_zones = []
+    skipped_zones = []
+    seen_keys = set()
+
+    for zone in raw_zones:
+        exclude_reason = _get_area_plot_exclude_reason(zone, area.id)
+        if exclude_reason:
+            skipped_zones.append((zone.id, exclude_reason))
+            continue
+
+        dedupe_key = _build_area_plot_dedupe_key(zone)
+        if dedupe_key in seen_keys:
+            skipped_zones.append((zone.id, "duplicate_geometry"))
+            continue
+
+        seen_keys.add(dedupe_key)
+        filtered_zones.append(zone)
+
+    if skipped_zones:
+        logger.warning(
+            "区域[%s] 有效地块过滤: 原始=%s, 保留=%s, 剔除=%s, 明细=%s",
+            area.id,
+            len(raw_zones),
+            len(filtered_zones),
+            len(skipped_zones),
+            skipped_zones,
+        )
+    else:
+        logger.info(
+            "区域[%s] 有效地块过滤: 原始=%s, 保留=%s",
+            area.id,
+            len(raw_zones),
+            len(filtered_zones),
+        )
+
+    return filtered_zones
+
+
+def get_editor_active_zones(area):
+    return get_area_active_plots(area)
 
 
 def load_subcategory_config():
@@ -223,16 +448,20 @@ def delete_terrain(request, pk):
 def list_areas(request):
     """区域列表接口"""
     try:
-        queryset = TerrainArea.objects.filter(is_deleted=False).annotate(
-            plot_count=Count('zones', filter=Q(zones__is_deleted=False), distinct=True)
-        ).prefetch_related(
-            Prefetch(
-                'zones',
-                queryset=TerrainZone.objects.filter(is_deleted=False).only('id', 'geom_json'),
-                to_attr='active_zones'
-            )
-        ).order_by('-updated_at', '-id')
-        serializer = TerrainAreaSerializer(queryset, many=True)
+        queryset = list(
+            TerrainArea.objects.filter(is_deleted=False)
+            .annotate(plot_count=Count('zones', distinct=True))
+            .order_by('-updated_at', '-id')
+        )
+        for area in queryset:
+            active_plots = get_area_active_plots(area)
+            build_area_spatial_from_active_plots(area, active_plots=active_plots)
+
+        serializer = TerrainAreaSerializer(
+            queryset,
+            many=True,
+            context={'exclude_status_fields': True}
+        )
         return api_response(data=serializer.data)
     except Exception as e:
         logger.error(f"获取区域列表异常: {str(e)}")
@@ -245,10 +474,7 @@ def area_plots(request, area_id):
     """按地形加载下属混合地块专题"""
     try:
         area = get_object_or_404(TerrainArea, id=area_id, is_deleted=False)
-        plots = TerrainZone.objects.filter(
-            area_obj=area,
-            is_deleted=False
-        ).order_by('id')
+        plots = get_area_active_plots(area)
         serializer = TerrainAreaPlotSerializer(plots, many=True)
         return api_response(data=serializer.data)
     except Exception as e:
@@ -258,15 +484,16 @@ def area_plots(request, area_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def area_edit_detail(request, area_id):
-    """地块编辑页接口: 返回该区域下所有地块和 Element"""
+    """地块编辑页接口: 仅返回当前区域下可编辑的有效地块和 Element"""
     try:
         area = get_object_or_404(TerrainArea, id=area_id, is_deleted=False)
-        # 获取该区域下所有未删除的地块，并预加载 elements
-        zones = TerrainZone.objects.filter(area_obj=area, is_deleted=False).prefetch_related('elements')
-        
+        zones = get_editor_active_zones(area)
+        area.active_zones = zones
+        area.plot_count = len(zones)
+
         area_serializer = TerrainAreaSerializer(area)
         zones_serializer = TerrainZoneSerializer(zones, many=True)
-        
+
         response_data = {
             "area": area_serializer.data,
             "zones": zones_serializer.data,
@@ -275,7 +502,7 @@ def area_edit_detail(request, area_id):
                 "zones": zones_serializer.data,
                 "view_meta": {
                     "area_id": area.id,
-                    "plot_count": area_serializer.data.get("plot_count", 0),
+                    "plot_count": len(zones_serializer.data),
                 },
             },
         }
@@ -358,7 +585,7 @@ def unified_save_terrain(request):
             if deleted_count > 0:
                 logger.info(f"清理了 {deleted_count} 个未在保存列表中的旧地块")
 
-            terrain = build_area_spatial_from_zones(terrain)
+            terrain = build_area_spatial_from_active_plots(terrain)
 
             # 重新获取最新的已保存地块数据返回给前端
             final_plots = TerrainZone.objects.filter(id__in=saved_plot_ids).prefetch_related('elements')
