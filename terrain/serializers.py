@@ -3,7 +3,7 @@ import math
 
 from pyproj import Geod
 from rest_framework import serializers
-from shapely.geometry import shape
+from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
@@ -186,6 +186,42 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'bbox_max_lat',
         )
 
+    def _build_geojson_from_related_zones(self, obj):
+        zones = getattr(obj, 'active_zones', None)
+        if zones is None:
+            zones_relation = getattr(obj, 'zones', None)
+            if zones_relation is None:
+                return None
+
+            try:
+                zones = zones_relation.filter(is_deleted=False)
+            except Exception:
+                return None
+
+        geometries = []
+        for zone in zones:
+            normalized_geojson = self._normalize_geojson(getattr(zone, 'geom_json', None))
+            geometry = self._geometry_from_geojson(normalized_geojson)
+            if geometry and not geometry.is_empty:
+                geometries.append(geometry)
+
+        if not geometries:
+            return None
+
+        try:
+            merged_geometry = unary_union(geometries)
+        except Exception:
+            return None
+
+        if not merged_geometry or merged_geometry.is_empty:
+            return None
+
+        return {
+            'type': 'Feature',
+            'geometry': mapping(merged_geometry),
+            'properties': {},
+        }
+
     def _get_spatial_meta(self, obj):
         if not hasattr(self, '_spatial_meta_cache'):
             self._spatial_meta_cache = {}
@@ -195,6 +231,8 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             return self._spatial_meta_cache[cache_key]
 
         normalized_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
+        if not normalized_geojson:
+            normalized_geojson = self._build_geojson_from_related_zones(obj)
         geometry = self._geometry_from_geojson(normalized_geojson)
         bbox = geometry.bounds if geometry else None
         derived_area_ha = self._calculate_area_ha(geometry)
@@ -213,7 +251,7 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
                 center_lat = None
                 center_lng = None
 
-        area_ha = stored_area if stored_area and stored_area > 0 else derived_area_ha
+        area_ha = derived_area_ha if derived_area_ha and derived_area_ha > 0 else stored_area
         if area_ha is not None:
             area_ha = round(float(area_ha), 4)
 

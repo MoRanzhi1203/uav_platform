@@ -10,6 +10,7 @@ const terrainData = {
 
 let terrainMap;
 const vueInstances = {};
+let terrainLayoutObserver = null;
 
 function initPage() {
   if (localStorage.getItem('terrain_list_should_refresh') === '1') {
@@ -17,6 +18,8 @@ function initPage() {
   }
 
   initVue();
+  syncTerrainMainLayoutBySidebarState();
+  bindTerrainMainLayoutSidebarSync();
 
   terrainMap = new TerrainMap('terrainMap');
   terrainMap.init();
@@ -73,6 +76,66 @@ function pickFirstDefined(...values) {
     }
   }
   return null;
+}
+
+function requestTerrainMapResize() {
+  if (!terrainMap?.map) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    if (terrainMap?.map) {
+      terrainMap.map.invalidateSize();
+    }
+  });
+
+  window.setTimeout(() => {
+    if (terrainMap?.map) {
+      terrainMap.map.invalidateSize();
+    }
+  }, 260);
+}
+
+function getTerrainSidebarState() {
+  if (!document.body) {
+    return 'expanded';
+  }
+  return document.body.classList.contains('toggle-sidebar') ? 'collapsed' : 'expanded';
+}
+
+function syncTerrainMainLayoutBySidebarState() {
+  const layout = document.querySelector('.terrain-main-layout');
+  if (!layout) {
+    return;
+  }
+
+  const nextState = getTerrainSidebarState();
+  if (layout.dataset.sidebarState === nextState) {
+    return;
+  }
+
+  layout.dataset.sidebarState = nextState;
+  requestTerrainMapResize();
+}
+
+function bindTerrainMainLayoutSidebarSync() {
+  if (terrainLayoutObserver || !document.body) {
+    return;
+  }
+
+  terrainLayoutObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        syncTerrainMainLayoutBySidebarState();
+        break;
+      }
+    }
+  });
+
+  terrainLayoutObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
 }
 
 function formatCoordinate(value) {
@@ -194,9 +257,18 @@ function standardizeTerrainRecord(rawItem) {
     centerLng = (bbox.minLng + bbox.maxLng) / 2;
   }
 
-  const areaHa = coerceNumber(pickFirstDefined(rawItem.area_ha, rawItem.area));
+  let areaHa = coerceNumber(pickFirstDefined(
+    rawItem.area_ha,
+    rawItem.total_area,
+    rawItem.area,
+    rawItem.areaHa,
+    rawItem.totalArea
+  ));
+  if (!isPositiveNumber(areaHa) && normalizedBoundary && typeof utils.getAreaHaFromGeoJSON === 'function') {
+    areaHa = utils.getAreaHaFromGeoJSON(normalizedBoundary);
+  }
   const plotCount = Math.max(0, Number(pickFirstDefined(rawItem.plot_count, 0)) || 0);
-  const hasBoundary = Boolean(rawItem.has_boundary ?? normalizedBoundary);
+  const hasBoundary = Boolean(rawItem.has_boundary ?? normalizedBoundary ?? bbox);
 
   return {
     id: rawItem.id,
@@ -613,8 +685,8 @@ function initVue() {
                   <span v-if="formatAreaValue(terrain.area) !== '-'" class="terrain-area-unit">公顷</span>
                 </td>
                 <td class="terrain-actions-cell">
-                  <button class="btn btn-sm btn-outline-primary" @click.stop="editTerrain(terrain)">
-                    编辑地形地图
+                  <button class="btn btn-sm btn-outline-primary terrain-edit-btn" @click.stop="editTerrain(terrain)">
+                    编辑
                   </button>
                 </td>
               </tr>
@@ -678,11 +750,10 @@ function initVue() {
       </div>
     `,
     methods: {
-      setPage(p) {
+      async setPage(p) {
         if (p < 1 || p > this.totalPages || !this.tableInstance) return;
         this.tableInstance.currentPage = p;
-        // 切页后自动选中当前页第一条
-        syncDefaultTerrainSelection();
+        await syncDefaultTerrainSelection();
       }
     },
     mounted() {
@@ -782,6 +853,8 @@ function updatePageData() {
 
   if (vueInstances.terrainTable) {
     vueInstances.terrainTable.terrains = terrainData.filteredTerrains;
+    const totalPages = Math.max(Math.ceil(terrainData.filteredTerrains.length / vueInstances.terrainTable.pageSize), 1);
+    vueInstances.terrainTable.currentPage = Math.min(vueInstances.terrainTable.currentPage, totalPages);
   }
   if (vueInstances.riskAreasTable) {
     vueInstances.riskAreasTable.riskAreas = terrainData.riskAreas;
@@ -793,30 +866,40 @@ function updatePageData() {
 
 function updateDetailPanel(terrain) {
   if (!terrain) return;
-  
-  document.getElementById('infoName').textContent = terrain.name;
-  document.getElementById('infoArea').textContent = terrain.areaLabel;
-  
-  const riskNode = document.getElementById('infoRisk');
-  riskNode.textContent = terrain.riskLabel;
-  riskNode.className = `fw-bold ${terrain.riskClass}`;
-  
-  document.getElementById('infoAccuracy').textContent = terrain.dataAccuracyLabel;
-  document.getElementById('infoUpdatedAt').textContent = terrain.updatedAtLabel;
-  document.getElementById('infoPlotCount').textContent = terrain.plotCountLabel;
 
-  document.getElementById('infoBboxMin').textContent = `${terrain.bbox.minLng}, ${terrain.bbox.minLat}`;
-  document.getElementById('infoBboxMax').textContent = `${terrain.bbox.maxLng}, ${terrain.bbox.maxLat}`;
-  
+  const setText = (id, value) => {
+    const node = document.getElementById(id);
+    if (node) {
+      node.textContent = value;
+    }
+  };
+
+  setText('infoName', terrain.name);
+  setText('infoArea', terrain.areaLabel);
+  setText('infoAccuracy', terrain.dataAccuracyLabel);
+  setText('infoUpdatedAt', terrain.updatedAtLabel);
+  setText('infoPlotCount', terrain.plotCountLabel);
+  setText('infoBboxMin', `${terrain.bbox.minLng}, ${terrain.bbox.minLat}`);
+  setText('infoBboxMax', `${terrain.bbox.maxLng}, ${terrain.bbox.maxLat}`);
+  setText('infoDescription', terrain.description || '无补充描述');
+
+  const riskNode = document.getElementById('infoRisk');
+  if (riskNode) {
+    riskNode.textContent = terrain.riskLabel;
+    riskNode.className = `fw-bold ${terrain.riskClass}`;
+  }
+
   const boundaryNode = document.getElementById('infoBoundaryStatus');
-  boundaryNode.textContent = terrain.boundaryStatusLabel;
-  boundaryNode.className = `badge ${terrain.boundaryStatusClass === 'status-ready' ? 'bg-success' : 'bg-warning'}`;
-  
+  if (boundaryNode) {
+    boundaryNode.textContent = terrain.boundaryStatusLabel;
+    boundaryNode.className = `badge ${terrain.boundaryStatusClass === 'status-ready' ? 'bg-success' : 'bg-warning'}`;
+  }
+
   const dataNode = document.getElementById('infoDataStatus');
-  dataNode.textContent = terrain.dataStatusLabel;
-  dataNode.className = `badge ${terrain.dataStatusClass === 'status-ready' ? 'bg-primary' : 'bg-secondary'}`;
-  
-  document.getElementById('infoDescription').textContent = terrain.description || '无补充描述';
+  if (dataNode) {
+    dataNode.textContent = terrain.dataStatusLabel;
+    dataNode.className = `badge ${terrain.dataStatusClass === 'status-ready' ? 'bg-primary' : 'bg-secondary'}`;
+  }
 }
 
 window.addEventListener('DOMContentLoaded', initPage);

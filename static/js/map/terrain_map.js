@@ -1,6 +1,71 @@
 // 地形地图逻辑
 
 const TerrainSpatialUtils = window.TerrainSpatialUtils || (() => {
+  function signedRingArea(ring) {
+    if (!Array.isArray(ring) || ring.length < 3) {
+      return 0;
+    }
+
+    const earthRadius = 6378137;
+    let area = 0;
+    for (let index = 0; index < ring.length; index += 1) {
+      const current = ring[index];
+      const next = ring[(index + 1) % ring.length];
+      if (!Array.isArray(current) || !Array.isArray(next)) {
+        continue;
+      }
+
+      const lng1 = (Number(current[0]) * Math.PI) / 180;
+      const lat1 = (Number(current[1]) * Math.PI) / 180;
+      const lng2 = (Number(next[0]) * Math.PI) / 180;
+      const lat2 = (Number(next[1]) * Math.PI) / 180;
+      if (![lng1, lat1, lng2, lat2].every(Number.isFinite)) {
+        continue;
+      }
+
+      area += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+    }
+
+    return (area * earthRadius * earthRadius) / 2;
+  }
+
+  function geometryAreaSquareMeters(geojson) {
+    if (!geojson || typeof geojson !== 'object') {
+      return 0;
+    }
+
+    if (geojson.type === 'Feature') {
+      return geometryAreaSquareMeters(geojson.geometry);
+    }
+
+    if (geojson.type === 'FeatureCollection') {
+      return Array.isArray(geojson.features)
+        ? geojson.features.reduce((sum, feature) => sum + geometryAreaSquareMeters(feature), 0)
+        : 0;
+    }
+
+    if (geojson.type === 'Polygon') {
+      const rings = Array.isArray(geojson.coordinates) ? geojson.coordinates : [];
+      if (!rings.length) {
+        return 0;
+      }
+      const outerArea = Math.abs(signedRingArea(rings[0]));
+      const holeArea = rings.slice(1).reduce((sum, ring) => sum + Math.abs(signedRingArea(ring)), 0);
+      return Math.max(outerArea - holeArea, 0);
+    }
+
+    if (geojson.type === 'MultiPolygon') {
+      return Array.isArray(geojson.coordinates)
+        ? geojson.coordinates.reduce((sum, polygonCoords) => sum + geometryAreaSquareMeters({
+          type: 'Polygon',
+          coordinates: polygonCoords
+        }), 0)
+        : 0;
+    }
+
+    return 0;
+  }
+
   function parseJson(value) {
     let current = value;
     for (let index = 0; index < 3 && typeof current === 'string'; index += 1) {
@@ -148,6 +213,20 @@ const TerrainSpatialUtils = window.TerrainSpatialUtils || (() => {
     };
   }
 
+  function getAreaHaFromGeoJSON(value) {
+    const normalized = normalizeGeoJSON(value);
+    if (!normalized) {
+      return null;
+    }
+
+    const areaSqMeters = geometryAreaSquareMeters(normalized);
+    if (!Number.isFinite(areaSqMeters) || areaSqMeters <= 0) {
+      return null;
+    }
+
+    return areaSqMeters / 10000;
+  }
+
   return {
     parseJson,
     mercatorToLngLat,
@@ -157,7 +236,8 @@ const TerrainSpatialUtils = window.TerrainSpatialUtils || (() => {
     isValidLatLng,
     getBoundsFromGeoJSON,
     getBoundsFromBBox,
-    getBBoxFromGeoJSON
+    getBBoxFromGeoJSON,
+    getAreaHaFromGeoJSON
   };
 })();
 
@@ -176,7 +256,6 @@ class TerrainMap {
     this.currentTerrainHasGeometry = false;
     this.currentPlotLayerKeys = [];
     this.currentPlotLayers = [];
-    this.selectionMarker = null;
     this.topicBounds = null;
     this.terrainSources = new Map();
     this.activeSelectionToken = 0;
@@ -196,8 +275,16 @@ class TerrainMap {
   }
 
   init() {
+    this.disableDefaultInteractions();
     this.addLayerGroups();
     this.bindEvents();
+  }
+
+  disableDefaultInteractions() {
+    this.map.scrollWheelZoom.disable();
+    this.map.keyboard.disable();
+    this.map.doubleClickZoom.disable();
+    this.map.boxZoom.disable();
   }
 
   addLayerGroups() {
@@ -391,29 +478,6 @@ class TerrainMap {
   }
 
   clearSelectionMarker() {
-    if (this.selectionMarker && this.map.hasLayer(this.selectionMarker)) {
-      this.map.removeLayer(this.selectionMarker);
-    }
-    this.selectionMarker = null;
-  }
-
-  updateSelectionMarker(terrain, layer = null) {
-    this.clearSelectionMarker();
-
-    const center = this.getTerrainCenter(terrain, layer);
-    if (!center) {
-      return;
-    }
-
-    this.selectionMarker = L.marker(center, {
-      icon: L.divIcon({
-        className: 'terrain-highlight-marker',
-        html: '',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
-      }),
-      keyboard: false
-    }).addTo(this.map);
   }
 
   renderCurrentTerrainBoundary(terrain) {
@@ -442,40 +506,13 @@ class TerrainMap {
       this.currentTerrainHasGeometry = true;
       this.layerManager.addLayer(this.currentTerrainLayerKey, layer, 'terrains');
       this.registerTopicBounds(layer);
-      this.updateSelectionMarker(terrain, layer);
       return layer;
     }
 
-    const center = this.getTerrainCenter(terrain);
-    if (!center) {
-      return null;
-    }
-
-    const marker = L.circleMarker(center, {
-      radius: 10,
-      color: '#2563eb',
-      weight: 3,
-      fillColor: '#93c5fd',
-      fillOpacity: 0.75
-    });
-    marker.bindPopup(this.getTerrainPopupHtml(terrain), {
-      className: 'terrain-map-popup'
-    });
-    marker.on('click', () => {
-      this.selectTerrain(terrain, {
-        emitEvent: true,
-        fit: false,
-        openPopup: true
-      });
-    });
-
-    this.currentTerrainLayerKey = `terrain-current-${terrain.id}`;
-    this.currentTerrainLayer = marker;
+    this.currentTerrainLayerKey = null;
+    this.currentTerrainLayer = null;
     this.currentTerrainHasGeometry = false;
-    this.layerManager.addLayer(this.currentTerrainLayerKey, marker, 'terrains');
-    this.registerTopicBounds(marker);
-    this.updateSelectionMarker(terrain, marker);
-    return marker;
+    return null;
   }
 
   async fetchTerrainPlots(areaId) {
@@ -632,11 +669,6 @@ class TerrainMap {
     this.layerVisibility[layer] = visible;
     if (layer === 'terrain') {
       this.layerManager.toggleLayerGroup('terrains', visible);
-      if (!visible) {
-        this.clearSelectionMarker();
-      } else if (this.currentTerrain) {
-        this.updateSelectionMarker(this.currentTerrain, this.currentTerrainLayer);
-      }
       return;
     }
 

@@ -1,11 +1,12 @@
 import logging
 import traceback
 import json
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from shapely.geometry import shape, mapping, MultiPolygon, Polygon
@@ -25,6 +26,43 @@ ADMIN_BOUNDARY_DERIVED_FILES = (
     ADMIN_BOUNDARY_DERIVED_DIR / "chongqing_district_from_township.geojson",
     ADMIN_BOUNDARY_DERIVED_DIR / "chongqing_township_from_source.geojson",
 )
+
+
+def build_area_spatial_from_zones(area):
+    """基于真实地形边界或关联地块，统一回写地形面积、中心点与边界。"""
+    serialized = TerrainAreaSerializer(area).data
+    boundary_geojson = serialized.get("boundary_geojson") or serialized.get("boundary_json") or None
+    center_lng = serialized.get("center_lng")
+    center_lat = serialized.get("center_lat")
+    area_ha = serialized.get("area_ha") if serialized.get("area_ha") is not None else serialized.get("area")
+
+    update_fields = []
+
+    if boundary_geojson is not None and boundary_geojson != area.boundary_json:
+      area.boundary_json = boundary_geojson
+      update_fields.append("boundary_json")
+
+    if center_lng != area.center_lng:
+      area.center_lng = center_lng
+      update_fields.append("center_lng")
+
+    if center_lat != area.center_lat:
+      area.center_lat = center_lat
+      update_fields.append("center_lat")
+
+    if area_ha is not None:
+      try:
+        normalized_area = Decimal(str(round(float(area_ha), 2)))
+      except (TypeError, ValueError, InvalidOperation):
+        normalized_area = None
+      if normalized_area is not None and normalized_area != area.area:
+        area.area = normalized_area
+        update_fields.append("area")
+
+    if update_fields:
+      area.save(update_fields=update_fields)
+
+    return area
 
 
 def load_subcategory_config():
@@ -187,6 +225,12 @@ def list_areas(request):
     try:
         queryset = TerrainArea.objects.filter(is_deleted=False).annotate(
             plot_count=Count('zones', filter=Q(zones__is_deleted=False), distinct=True)
+        ).prefetch_related(
+            Prefetch(
+                'zones',
+                queryset=TerrainZone.objects.filter(is_deleted=False).only('id', 'geom_json'),
+                to_attr='active_zones'
+            )
         ).order_by('-updated_at', '-id')
         serializer = TerrainAreaSerializer(queryset, many=True)
         return api_response(data=serializer.data)
@@ -313,6 +357,8 @@ def unified_save_terrain(request):
             
             if deleted_count > 0:
                 logger.info(f"清理了 {deleted_count} 个未在保存列表中的旧地块")
+
+            terrain = build_area_spatial_from_zones(terrain)
 
             # 重新获取最新的已保存地块数据返回给前端
             final_plots = TerrainZone.objects.filter(id__in=saved_plot_ids).prefetch_related('elements')
