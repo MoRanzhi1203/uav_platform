@@ -1,1 +1,348 @@
-﻿}
+/* 地形管理页面样式增强 */
+
+/* 主业务区 动态比例布局 */
+.terrain-main-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* 默认 5:5 */
+  gap: 1.5rem;
+  align-items: stretch;
+  width: 100%;
+  min-height: clamp(700px, calc(100vh - 280px), 860px);
+  height: auto;
+  position: relative;
+  transition: grid-template-columns 0.25s ease;
+}
+
+/* 侧边导航栏开启时 (5:5) */
+.terrain-main-layout[data-sidebar-state="expanded"] {
+  grid-template-columns: 5fr 5fr;
+}
+
+/* 侧边导航栏关闭时 (4:6) */
+.terrain-main-layout[data-sidebar-state="collapsed"] {
+  grid-template-columns: 4fr 6fr;
+}
+
+.terrain-main-panel {
+  min-width: 0;
+  height: 100%; /* 确保面板占满高度 */
+  min-height: 0;
+}
+
+.terrain-list-card,
+.terrain-topic-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.terrain-list-card {
+  overflow: hidden;
+}
+
+.terrain-topic-card {
+  overflow: hidden;
+}
+
+.terrain-list-card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terrain-list-header {
+  flex: 0 0 auto;
+}
+
+.terrain-topic-map-section {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.terrain-list-card .card-body,
+.terrain-topic-card .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 1.25rem;
+}
+
+.terrain-list-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  position: relative;
+}
+
+.terrain-pagination-wrap {
+  flex: 0 0 auto;
+  min-height: 56px;
+  margin-top: 12px;
+  padding: 12px 0 4px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
+}
+
+.terrain-pagination-wrap:empty {
+  display: none;
+}
+
+.terrain-bottom-tabs {
+  margin-top: 24px;
+  position: relative;
+  clear: both;
+}
+
+.terrain-bottom-tabs .card-body {
+  position: relative;
+  z-index: 1;
+}
+
+/* 表格列宽控制 */
+.terrain-table { 
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.terrain-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8f9fa;
+  z-index: 10;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4b5563;
+  padding: 12px 8px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.terrain-table tbody td {
+  padding: 12px 8px;
+  vertical-align: middle;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.875rem;
+}
+
+.col-index { width: 52px; }
+.col-name { width: auto; }
+.col-risk { width: 92px; }
+.col-area { width: 108px; }
+.col-actions { width: 88px; }
+
+.terrain-space-coord {
+  display: grid;
+  gap: 4px;
+  font-size: 0.8125rem;
+  color: #475569;
+}
+
+.coord-label {
+  display: inline-block;
+  min-width: 44px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+/* 行选中态 */
+.terrain-table tbody tr {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.terrain-table tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+.terrain-table tbody tr.is-selected {
+  background-color: #eff6ff;
+  border-left: 3px solid #3b82f6;
+}
+
+.terrain-table tbody tr.is-selected td {
+  color: #1e40af;
+  font-weight: 500;
+}
+
+/* 风险等级 Badge */
+.terrain-risk-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.risk-high { background: #fee2e2; color: #dc2626; }
+.risk-medium { background: #ffedd5; color: #ea580c; }
+.risk-low { background: #dcfce7; color: #16a34a; }
+
+/* 地图容器 */
+.map-container {
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.terrain-topic-map {
+  flex: 1 1 auto;
+  min-height: 430px;
+}
+
+/* 地图标题与指示 */
+.terrain-map-selection-chip {
+  background: #3b82f6;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin-right: 6px;
+}
+
+/* 地图下方信息面板 */
+.terrain-info-panel {
+  flex: 0 0 auto;
+}
+
+.info-item {
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  height: 100%;
+}
+
+.info-item label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.info-description-text {
+  color: #334155;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* NiceAdmin 风格分页 */
+.pagination-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pagination {
+  margin-bottom: 0;
+}
+
+.page-item .page-link {
+  padding: 5px 12px;
+  color: #012970;
+  border: 1px solid #dee2e6;
+  font-size: 0.875rem;
+}
+
+.page-item.active .page-link {
+  background-color: #4154f1;
+  border-color: #4154f1;
+  color: #fff;
+}
+
+.page-item.disabled .page-link {
+  color: #6c757d;
+  pointer-events: none;
+  background-color: #fff;
+}
+
+.terrain-area-unit {
+  margin-left: 4px;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.terrain-name-main {
+  display: inline-block;
+  max-width: 100%;
+  font-weight: 600;
+  color: #1f2937;
+  word-break: break-word;
+}
+
+.terrain-actions-cell .btn {
+  white-space: nowrap;
+}
+
+.terrain-edit-btn {
+  min-width: 56px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.terrain-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  color: #64748b;
+  text-align: center;
+  padding: 24px;
+}
+
+.terrain-list-subtitle,
+.terrain-map-subtitle {
+  font-size: 0.875rem;
+}
+
+/* 专题地块样式 */
+.terrain-plot-layer {
+  transition: fill-opacity 0.2s;
+}
+
+@media (max-width: 1199.98px) {
+  .terrain-main-layout {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .terrain-bottom-tabs {
+    margin-top: 20px;
+  }
+
+  .terrain-topic-map {
+    min-height: 400px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .terrain-table thead th,
+  .terrain-table tbody td {
+    padding: 10px 6px;
+  }
+
+  .pagination-container {
+    justify-content: center;
+  }
+
+  .terrain-topic-map {
+    min-height: 320px;
+  }
+
+  .terrain-edit-btn {
+    min-width: 52px;
+  }
+}
