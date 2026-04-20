@@ -645,7 +645,6 @@ function initVue() {
             <colgroup>
               <col class="col-index">
               <col class="col-name">
-              <col class="col-space">
               <col class="col-risk">
               <col class="col-area">
               <col class="col-actions">
@@ -654,7 +653,6 @@ function initVue() {
               <tr>
                 <th>序号</th>
                 <th>地形名称</th>
-                <th>空间数据</th>
                 <th>风险等级</th>
                 <th>面积</th>
                 <th>操作</th>
@@ -670,12 +668,6 @@ function initVue() {
                 <td class="terrain-cell-index">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
                 <td>
                   <span class="terrain-name-main">{{ terrain.name }}</span>
-                </td>
-                <td>
-                  <div class="terrain-space-coord">
-                    <div><span class="coord-label">左下:</span>{{ terrain.bbox.minLng }}, {{ terrain.bbox.minLat }}</div>
-                    <div><span class="coord-label">右上:</span>{{ terrain.bbox.maxLng }}, {{ terrain.bbox.maxLat }}</div>
-                  </div>
                 </td>
                 <td>
                   <span class="terrain-risk-badge" :class="terrain.riskClass">{{ terrain.riskLabel }}</span>

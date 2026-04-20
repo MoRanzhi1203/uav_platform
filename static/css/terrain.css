@@ -1,4 +1,4 @@
-/* 地形管理页面样式增强 */
+﻿/* 地形管理页面样式增强 */
 
 /* 主业务区 动态比例布局 */
 .terrain-main-layout {
@@ -116,6 +116,7 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: fixed;
 }
 
 .terrain-table thead th {
@@ -137,24 +138,26 @@
   font-size: 0.875rem;
 }
 
-.col-index { width: 52px; }
+.col-index { width: 56px; }
 .col-name { width: auto; }
 .col-risk { width: 92px; }
-.col-area { width: 108px; }
-.col-actions { width: 88px; }
+.col-area { width: 110px; }
+.col-actions { width: 74px; }
 
-.terrain-space-coord {
-  display: grid;
-  gap: 4px;
-  font-size: 0.8125rem;
-  color: #475569;
+.terrain-table th:nth-child(1),
+.terrain-table td:nth-child(1),
+.terrain-table th:nth-child(3),
+.terrain-table td:nth-child(3),
+.terrain-table th:nth-child(4),
+.terrain-table td:nth-child(4),
+.terrain-table th:nth-child(5),
+.terrain-table td:nth-child(5) {
+  text-align: center;
 }
 
-.coord-label {
-  display: inline-block;
-  min-width: 44px;
-  color: #64748b;
-  font-weight: 600;
+.terrain-table th:nth-child(2),
+.terrain-table td:nth-child(2) {
+  text-align: left;
 }
 
 /* 行选中态 */
@@ -277,10 +280,19 @@
 
 .terrain-name-main {
   display: inline-block;
-  max-width: 100%;
+  width: 100%;
   font-weight: 600;
   color: #1f2937;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terrain-area-value,
+.terrain-area-unit,
+.terrain-risk-badge,
+.terrain-edit-btn {
+  white-space: nowrap;
 }
 
 .terrain-actions-cell .btn {
