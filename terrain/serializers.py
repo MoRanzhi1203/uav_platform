@@ -3,7 +3,7 @@ import math
 
 from pyproj import Geod
 from rest_framework import serializers
-from shapely.geometry import shape
+from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
@@ -148,9 +148,10 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
     boundary_json = serializers.SerializerMethodField()
     boundary_geojson = serializers.SerializerMethodField()
     has_boundary = serializers.SerializerMethodField()
-    spatial_status = serializers.SerializerMethodField()
+    has_center = serializers.SerializerMethodField()
+    has_bbox = serializers.SerializerMethodField()
+    has_area = serializers.SerializerMethodField()
     data_accuracy = serializers.SerializerMethodField()
-    data_status = serializers.SerializerMethodField()
     bbox_min_lng = serializers.SerializerMethodField()
     bbox_min_lat = serializers.SerializerMethodField()
     bbox_max_lng = serializers.SerializerMethodField()
@@ -177,14 +178,46 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'is_deleted',
             'plot_count',
             'has_boundary',
-            'spatial_status',
+            'has_center',
+            'has_bbox',
+            'has_area',
             'data_accuracy',
-            'data_status',
             'bbox_min_lng',
             'bbox_min_lat',
             'bbox_max_lng',
             'bbox_max_lat',
         )
+
+    def _build_geojson_from_related_zones(self, obj):
+        zones_manager = getattr(obj, 'zones', None)
+        if zones_manager is None:
+            return None, None
+
+        prefetched = getattr(obj, '_prefetched_objects_cache', {})
+        if 'zones' in prefetched:
+            zones = prefetched['zones']
+        else:
+            zones = zones_manager.filter(is_deleted=False).only('id', 'geom_json')
+
+        geometries = []
+        for zone in zones:
+            zone_geojson = self._normalize_geojson(getattr(zone, 'geom_json', None))
+            zone_geometry = self._geometry_from_geojson(zone_geojson)
+            if zone_geometry and not zone_geometry.is_empty:
+                geometries.append(zone_geometry)
+
+        if not geometries:
+            return None, None
+
+        try:
+            merged_geometry = unary_union(geometries)
+            merged_geojson = self._normalize_geojson(mapping(merged_geometry))
+        except Exception:
+            return None, None
+
+        if not merged_geojson:
+            return None, None
+        return merged_geojson, merged_geometry
 
     def _get_spatial_meta(self, obj):
         if not hasattr(self, '_spatial_meta_cache'):
@@ -196,6 +229,8 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
 
         normalized_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
         geometry = self._geometry_from_geojson(normalized_geojson)
+        if not geometry:
+            normalized_geojson, geometry = self._build_geojson_from_related_zones(obj)
         bbox = geometry.bounds if geometry else None
         derived_area_ha = self._calculate_area_ha(geometry)
         stored_area = self._coerce_float(getattr(obj, 'area', None))
@@ -226,6 +261,9 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'center_lat': center_lat if self._is_valid_center(center_lat, center_lng) else None,
             'center_lng': center_lng if self._is_valid_center(center_lat, center_lng) else None,
         }
+        meta['has_bbox'] = bool(bbox)
+        meta['has_area'] = area_ha is not None and area_ha > 0
+        meta['has_center'] = meta['center_lat'] is not None and meta['center_lng'] is not None
         self._spatial_meta_cache[cache_key] = meta
         return meta
 
@@ -258,33 +296,21 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
     def get_has_boundary(self, obj):
         return self._get_spatial_meta(obj)['has_boundary']
 
-    def get_spatial_status(self, obj):
-        has_boundary = self.get_has_boundary(obj)
-        meta = self._get_spatial_meta(obj)
-        has_center = meta['center_lat'] is not None and meta['center_lng'] is not None
-        if has_boundary and has_center:
-            return '边界与中心点完整'
-        if has_boundary:
-            return '边界完整，中心点待校准'
-        if has_center:
-            return '仅中心点定位'
-        return '空间数据待补采'
+    def get_has_center(self, obj):
+        return self._get_spatial_meta(obj)['has_center']
 
-    def get_data_status(self, obj):
-        has_boundary = self.get_has_boundary(obj)
-        plot_count = self.get_plot_count(obj)
-        if has_boundary and plot_count > 0:
-            return '专题数据就绪'
-        if has_boundary:
-            return '基础边界已接入'
-        return '原始影像阶段'
+    def get_has_bbox(self, obj):
+        return self._get_spatial_meta(obj)['has_bbox']
+
+    def get_has_area(self, obj):
+        return self._get_spatial_meta(obj)['has_area']
 
     def get_data_accuracy(self, obj):
         score = 60
         if obj.name:
             score += 5
         meta = self._get_spatial_meta(obj)
-        if meta['center_lat'] is not None and meta['center_lng'] is not None:
+        if meta['has_center']:
             score += 10
         if meta['has_boundary']:
             score += 15
@@ -294,19 +320,19 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
 
     def get_bbox_min_lng(self, obj):
         bbox = self._get_spatial_meta(obj)['bbox']
-        return bbox[0] if bbox else None
+        return round(bbox[0], 6) if bbox else None
 
     def get_bbox_min_lat(self, obj):
         bbox = self._get_spatial_meta(obj)['bbox']
-        return bbox[1] if bbox else None
+        return round(bbox[1], 6) if bbox else None
 
     def get_bbox_max_lng(self, obj):
         bbox = self._get_spatial_meta(obj)['bbox']
-        return bbox[2] if bbox else None
+        return round(bbox[2], 6) if bbox else None
 
     def get_bbox_max_lat(self, obj):
         bbox = self._get_spatial_meta(obj)['bbox']
-        return bbox[3] if bbox else None
+        return round(bbox[3], 6) if bbox else None
 
 
 class TerrainSubCategorySerializer(serializers.ModelSerializer):

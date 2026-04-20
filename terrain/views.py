@@ -5,13 +5,14 @@ from pathlib import Path
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from shapely.geometry import shape, mapping, MultiPolygon, Polygon
+from shapely.ops import unary_union
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 from .serializers import (
-    TerrainAreaSerializer, TerrainZoneSerializer, TerrainAreaPlotSerializer,
+    GeoJSONCompatibilityMixin, TerrainAreaSerializer, TerrainZoneSerializer, TerrainAreaPlotSerializer,
     TerrainElementSerializer, TerrainSubCategorySerializer
 )
 from common.responses import api_response, api_error
@@ -25,6 +26,56 @@ ADMIN_BOUNDARY_DERIVED_FILES = (
     ADMIN_BOUNDARY_DERIVED_DIR / "chongqing_district_from_township.geojson",
     ADMIN_BOUNDARY_DERIVED_DIR / "chongqing_township_from_source.geojson",
 )
+SPATIAL_COMPAT = GeoJSONCompatibilityMixin()
+
+
+def build_area_spatial_from_zones(zones):
+    """基于地块几何聚合地形边界、中心点和面积。"""
+    geometries = []
+    for zone in zones:
+        normalized_geojson = SPATIAL_COMPAT._normalize_geojson(getattr(zone, 'geom_json', None))
+        geometry = SPATIAL_COMPAT._geometry_from_geojson(normalized_geojson)
+        if geometry and not geometry.is_empty:
+            geometries.append(geometry)
+
+    if not geometries:
+        return {
+            'boundary_json': {},
+            'area': 0,
+            'center_lng': None,
+            'center_lat': None,
+        }
+
+    merged_geometry = unary_union(geometries)
+    normalized_boundary = SPATIAL_COMPAT._normalize_geojson(mapping(merged_geometry))
+    area_ha = SPATIAL_COMPAT._calculate_area_ha(merged_geometry) or 0
+
+    center_lng = None
+    center_lat = None
+    centroid = getattr(merged_geometry, 'centroid', None)
+    if centroid is not None:
+        candidate_lat = SPATIAL_COMPAT._coerce_float(getattr(centroid, 'y', None))
+        candidate_lng = SPATIAL_COMPAT._coerce_float(getattr(centroid, 'x', None))
+        if SPATIAL_COMPAT._is_valid_center(candidate_lat, candidate_lng):
+            center_lat = candidate_lat
+            center_lng = candidate_lng
+
+    return {
+        'boundary_json': normalized_boundary or {},
+        'area': round(float(area_ha), 2),
+        'center_lng': center_lng,
+        'center_lat': center_lat,
+    }
+
+
+def get_area_list_queryset():
+    """管理页与保存回包共用同一套真实空间字段查询。"""
+    zone_queryset = TerrainZone.objects.filter(is_deleted=False).only('id', 'area_obj_id', 'geom_json')
+    return TerrainArea.objects.filter(is_deleted=False).annotate(
+        plot_count=Count('zones', filter=Q(zones__is_deleted=False), distinct=True)
+    ).prefetch_related(
+        Prefetch('zones', queryset=zone_queryset)
+    ).order_by('-updated_at', '-id')
 
 
 def load_subcategory_config():
@@ -185,9 +236,7 @@ def delete_terrain(request, pk):
 def list_areas(request):
     """区域列表接口"""
     try:
-        queryset = TerrainArea.objects.filter(is_deleted=False).annotate(
-            plot_count=Count('zones', filter=Q(zones__is_deleted=False), distinct=True)
-        ).order_by('-updated_at', '-id')
+        queryset = get_area_list_queryset()
         serializer = TerrainAreaSerializer(queryset, many=True)
         return api_response(data=serializer.data)
     except Exception as e:
@@ -314,10 +363,21 @@ def unified_save_terrain(request):
             if deleted_count > 0:
                 logger.info(f"清理了 {deleted_count} 个未在保存列表中的旧地块")
 
+            active_plots = list(
+                TerrainZone.objects.filter(area_obj=terrain, is_deleted=False).only('id', 'geom_json')
+            )
+            spatial_payload = build_area_spatial_from_zones(active_plots)
+            terrain.boundary_json = spatial_payload['boundary_json']
+            terrain.area = spatial_payload['area']
+            terrain.center_lng = spatial_payload['center_lng']
+            terrain.center_lat = spatial_payload['center_lat']
+            terrain.save(update_fields=['boundary_json', 'area', 'center_lng', 'center_lat', 'updated_at'])
+
             # 重新获取最新的已保存地块数据返回给前端
             final_plots = TerrainZone.objects.filter(id__in=saved_plot_ids).prefetch_related('elements')
+            terrain_for_response = get_area_list_queryset().get(id=terrain.id)
             return api_response(data={
-                "terrain": TerrainAreaSerializer(terrain).data,
+                "terrain": TerrainAreaSerializer(terrain_for_response).data,
                 "plots": TerrainZoneSerializer(final_plots, many=True).data
             }, msg=msg)
 

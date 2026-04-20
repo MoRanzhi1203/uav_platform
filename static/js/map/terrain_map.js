@@ -168,7 +168,10 @@ class TerrainMap {
     const initMap = window.initMap;
     const LayerManager = window.LayerManager;
 
-    this.map = initMap(mapId);
+    this.map = initMap(mapId, {
+      scrollWheelZoom: false,
+      keyboard: false
+    });
     this.layerManager = new LayerManager(this.map);
     this.currentTerrain = null;
     this.currentTerrainLayerKey = null;
@@ -176,7 +179,6 @@ class TerrainMap {
     this.currentTerrainHasGeometry = false;
     this.currentPlotLayerKeys = [];
     this.currentPlotLayers = [];
-    this.selectionMarker = null;
     this.topicBounds = null;
     this.terrainSources = new Map();
     this.activeSelectionToken = 0;
@@ -197,7 +199,17 @@ class TerrainMap {
 
   init() {
     this.addLayerGroups();
+    this.configureInteractions();
     this.bindEvents();
+  }
+
+  configureInteractions() {
+    if (this.map.scrollWheelZoom) {
+      this.map.scrollWheelZoom.disable();
+    }
+    if (this.map.keyboard) {
+      this.map.keyboard.disable();
+    }
   }
 
   addLayerGroups() {
@@ -224,6 +236,18 @@ class TerrainMap {
     document.getElementById('fullscreenBtn').addEventListener('click', () => {
       this.toggleFullscreen();
     });
+  }
+
+  refreshLayout(options = {}) {
+    const { refit = false } = options;
+    if (!this.map) {
+      return;
+    }
+
+    this.map.invalidateSize({ pan: false });
+    if (refit && this.currentTerrain) {
+      this.focusTerrainTopic(this.currentTerrain);
+    }
   }
 
   parseJson(value) {
@@ -390,50 +414,29 @@ class TerrainMap {
     });
   }
 
-  clearSelectionMarker() {
-    if (this.selectionMarker && this.map.hasLayer(this.selectionMarker)) {
-      this.map.removeLayer(this.selectionMarker);
-    }
-    this.selectionMarker = null;
-  }
-
-  updateSelectionMarker(terrain, layer = null) {
-    this.clearSelectionMarker();
-
-    const center = this.getTerrainCenter(terrain, layer);
-    if (!center) {
-      return;
-    }
-
-    this.selectionMarker = L.marker(center, {
-      icon: L.divIcon({
-        className: 'terrain-highlight-marker',
-        html: '',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
-      }),
-      keyboard: false
-    }).addTo(this.map);
-  }
-
   renderCurrentTerrainBoundary(terrain) {
     this.clearCurrentTerrainBoundary();
 
     const normalizedGeoJSON = this.getTerrainGeoJSON(terrain);
-    if (normalizedGeoJSON) {
+    // 只渲染多边形边界，不渲染点标记 (移除蓝色小圆圈/标记)
+    if (normalizedGeoJSON && (normalizedGeoJSON.type === 'Polygon' || normalizedGeoJSON.type === 'MultiPolygon' || normalizedGeoJSON.type === 'Feature' || normalizedGeoJSON.type === 'FeatureCollection')) {
       const layer = L.geoJSON(normalizedGeoJSON, {
         style: () => this.getTerrainBoundaryStyle(),
-        onEachFeature: (_feature, featureLayer) => {
-          featureLayer.bindPopup(this.getTerrainPopupHtml(terrain), {
-            className: 'terrain-map-popup'
-          });
-          featureLayer.on('click', () => {
-            this.selectTerrain(terrain, {
-              emitEvent: true,
-              fit: false,
-              openPopup: true
+        pointToLayer: () => null, // 强制不显示点标记
+        onEachFeature: (feature, featureLayer) => {
+          // 只有非点要素才绑定弹窗和点击事件
+          if (feature.geometry.type !== 'Point') {
+            featureLayer.bindPopup(this.getTerrainPopupHtml(terrain), {
+              className: 'terrain-map-popup'
             });
-          });
+            featureLayer.on('click', () => {
+              this.selectTerrain(terrain, {
+                emitEvent: true,
+                fit: false,
+                openPopup: true
+              });
+            });
+          }
         }
       });
 
@@ -442,40 +445,9 @@ class TerrainMap {
       this.currentTerrainHasGeometry = true;
       this.layerManager.addLayer(this.currentTerrainLayerKey, layer, 'terrains');
       this.registerTopicBounds(layer);
-      this.updateSelectionMarker(terrain, layer);
       return layer;
     }
-
-    const center = this.getTerrainCenter(terrain);
-    if (!center) {
-      return null;
-    }
-
-    const marker = L.circleMarker(center, {
-      radius: 10,
-      color: '#2563eb',
-      weight: 3,
-      fillColor: '#93c5fd',
-      fillOpacity: 0.75
-    });
-    marker.bindPopup(this.getTerrainPopupHtml(terrain), {
-      className: 'terrain-map-popup'
-    });
-    marker.on('click', () => {
-      this.selectTerrain(terrain, {
-        emitEvent: true,
-        fit: false,
-        openPopup: true
-      });
-    });
-
-    this.currentTerrainLayerKey = `terrain-current-${terrain.id}`;
-    this.currentTerrainLayer = marker;
-    this.currentTerrainHasGeometry = false;
-    this.layerManager.addLayer(this.currentTerrainLayerKey, marker, 'terrains');
-    this.registerTopicBounds(marker);
-    this.updateSelectionMarker(terrain, marker);
-    return marker;
+    return null;
   }
 
   async fetchTerrainPlots(areaId) {
@@ -513,19 +485,23 @@ class TerrainMap {
       const plotStyle = this.getPlotStyle(plot);
       const plotLayer = L.geoJSON(normalizedGeoJSON, {
         style: () => plotStyle,
-        onEachFeature: (_feature, featureLayer) => {
-          featureLayer.bindPopup(this.getPlotPopupHtml(plot), {
-            className: 'terrain-map-popup'
-          });
-          featureLayer.on('mouseover', () => {
-            featureLayer.setStyle({
-              weight: plotStyle.weight + 1,
-              fillOpacity: Math.min(0.42, plotStyle.fillOpacity + 0.08)
+        pointToLayer: () => null, // 强制不显示地块的点标记
+        onEachFeature: (feature, featureLayer) => {
+          // 只有非点要素才绑定交互
+          if (feature.geometry.type !== 'Point') {
+            featureLayer.bindPopup(this.getPlotPopupHtml(plot), {
+              className: 'terrain-map-popup'
             });
-          });
-          featureLayer.on('mouseout', () => {
-            featureLayer.setStyle(plotStyle);
-          });
+            featureLayer.on('mouseover', () => {
+              featureLayer.setStyle({
+                weight: plotStyle.weight + 1,
+                fillOpacity: Math.min(0.42, plotStyle.fillOpacity + 0.08)
+              });
+            });
+            featureLayer.on('mouseout', () => {
+              featureLayer.setStyle(plotStyle);
+            });
+          }
         }
       });
 
@@ -555,7 +531,6 @@ class TerrainMap {
   }
 
   clearCurrentTopic() {
-    this.clearSelectionMarker();
     this.clearCurrentTerrainBoundary();
     this.clearTerrainPlots();
     this.topicBounds = null;
@@ -598,7 +573,6 @@ class TerrainMap {
     const selectionToken = Date.now() + Math.random();
 
     this.activeSelectionToken = selectionToken;
-    this.clearSelectionMarker();
     this.clearCurrentTerrainBoundary();
     this.clearTerrainPlots();
     this.topicBounds = null;
@@ -632,11 +606,6 @@ class TerrainMap {
     this.layerVisibility[layer] = visible;
     if (layer === 'terrain') {
       this.layerManager.toggleLayerGroup('terrains', visible);
-      if (!visible) {
-        this.clearSelectionMarker();
-      } else if (this.currentTerrain) {
-        this.updateSelectionMarker(this.currentTerrain, this.currentTerrainLayer);
-      }
       return;
     }
 

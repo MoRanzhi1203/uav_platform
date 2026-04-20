@@ -10,6 +10,21 @@ const terrainData = {
 
 let terrainMap;
 const vueInstances = {};
+let layoutRefreshTimer = null;
+
+function isAdminSidebarExpanded() {
+  return document.body && !document.body.classList.contains('toggle-sidebar');
+}
+
+function syncWorkspaceLayoutMode() {
+  const layoutNode = document.querySelector('.terrain-main-layout');
+  if (!layoutNode) {
+    return;
+  }
+  const isExpanded = isAdminSidebarExpanded();
+  layoutNode.dataset.sidebarState = isExpanded ? 'expanded' : 'collapsed';
+  console.log(`Layout mode synced: ${isExpanded ? '5:5' : '4:6'}`);
+}
 
 function initPage() {
   if (localStorage.getItem('terrain_list_should_refresh') === '1') {
@@ -17,6 +32,8 @@ function initPage() {
   }
 
   initVue();
+
+  syncWorkspaceLayoutMode();
 
   terrainMap = new TerrainMap('terrainMap');
   terrainMap.init();
@@ -122,53 +139,6 @@ function formatDateTime(value) {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
-function formatCenterLabel(lat, lng) {
-  const numericLat = coerceNumber(lat);
-  const numericLng = coerceNumber(lng);
-  if (!isValidLatLng(numericLat, numericLng)) {
-    return '待补定位';
-  }
-  return `${numericLat.toFixed(5)}, ${numericLng.toFixed(5)}`;
-}
-
-function getDataStatusMeta(item) {
-  const hasAccuracy = item.data_accuracy !== null
-    && item.data_accuracy !== undefined
-    && item.data_accuracy !== ''
-    && item.data_accuracy !== '待补充';
-  if (hasAccuracy) {
-    return {
-      label: '数据完备',
-      className: 'status-ready'
-    };
-  }
-
-  return {
-    label: '待补精度',
-    className: 'status-pending'
-  };
-}
-
-function getBoundaryStatusMeta(item) {
-  const hasBoundary = Boolean(item.has_boundary || item.boundary_geojson || item.boundary_json);
-  return {
-    label: hasBoundary ? '边界完整' : '缺少边界',
-    className: hasBoundary ? 'status-ready' : 'status-missing',
-    hasBoundary
-  };
-}
-
-function normalizeSpatialStatus(item, hasBoundary) {
-  if (item.spatial_status) {
-    return item.spatial_status;
-  }
-  const hasCenter = isValidLatLng(item.center_lat, item.center_lng);
-  if (hasBoundary && hasCenter) {
-    return '边界与中心点完整';
-  }
-  return hasBoundary ? '空间可视化就绪' : '仅中心点定位';
-}
-
 function standardizeTerrainRecord(rawItem) {
   const utils = getTerrainSpatialUtils();
   const boundaryGeoJSON = pickFirstDefined(rawItem.boundary_geojson, rawItem.boundary_json, rawItem.boundary, rawItem.geometry);
@@ -197,11 +167,14 @@ function standardizeTerrainRecord(rawItem) {
   const areaHa = coerceNumber(pickFirstDefined(rawItem.area_ha, rawItem.area));
   const plotCount = Math.max(0, Number(pickFirstDefined(rawItem.plot_count, 0)) || 0);
   const hasBoundary = Boolean(rawItem.has_boundary ?? normalizedBoundary);
+  const hasCenter = isValidLatLng(centerLat, centerLng);
+  const hasArea = isPositiveNumber(areaHa);
+  const hasBBox = Boolean(bbox);
 
   return {
     id: rawItem.id,
     name: pickFirstDefined(rawItem.name, '未命名地形'),
-    area_ha: isPositiveNumber(areaHa) ? areaHa : null,
+    area_ha: hasArea ? areaHa : null,
     risk_level: pickFirstDefined(rawItem.risk_level, 'low'),
     updated_at: rawItem.updated_at || rawItem.created_at || null,
     description: rawItem.description || '',
@@ -212,23 +185,18 @@ function standardizeTerrainRecord(rawItem) {
     bbox_max_lat: bbox?.maxLat ?? null,
     bbox,
     plot_count: plotCount,
-    data_accuracy: pickFirstDefined(rawItem.data_accuracy, '待补充'),
+    data_accuracy: pickFirstDefined(rawItem.data_accuracy, null),
     has_boundary: hasBoundary,
-    data_status: pickFirstDefined(rawItem.data_status, hasBoundary ? '基础边界已接入' : '原始影像阶段'),
-    spatial_status: normalizeSpatialStatus({
-      spatial_status: rawItem.spatial_status,
-      center_lat: centerLat,
-      center_lng: centerLng
-    }, hasBoundary),
-    center_lat: isValidLatLng(centerLat, centerLng) ? centerLat : null,
-    center_lng: isValidLatLng(centerLat, centerLng) ? centerLng : null
+    has_bbox: rawItem.has_bbox ?? hasBBox,
+    has_area: rawItem.has_area ?? hasArea,
+    has_center: rawItem.has_center ?? hasCenter,
+    center_lat: hasCenter ? centerLat : null,
+    center_lng: hasCenter ? centerLng : null
   };
 }
 
 function normalizeTerrainItem(item) {
   const standardized = standardizeTerrainRecord(item);
-  const boundaryMeta = getBoundaryStatusMeta(standardized);
-  const dataStatusMeta = getDataStatusMeta(standardized);
   const bbox = standardized.bbox || {
     minLng: null,
     minLat: null,
@@ -247,18 +215,14 @@ function normalizeTerrainItem(item) {
     center: isValidLatLng(standardized.center_lat, standardized.center_lng)
       ? [standardized.center_lat, standardized.center_lng]
       : null,
-    centerLabel: formatCenterLabel(standardized.center_lat, standardized.center_lng),
     updatedAtLabel: formatDateTime(standardized.updated_at),
     plotCount: standardized.plot_count,
     plotCountLabel: `${standardized.plot_count} 个地块`,
-    hasBoundary: boundaryMeta.hasBoundary,
-    boundaryStatusLabel: boundaryMeta.label,
-    boundaryStatusClass: boundaryMeta.className,
-    dataStatusLabel: standardized.data_status || dataStatusMeta.label,
-    dataStatusClass: dataStatusMeta.className,
-    dataAccuracyLabel: standardized.data_accuracy ? `${standardized.data_accuracy}` : '待补充',
-    spatialStatusLabel: standardized.spatial_status,
-    dataStatusText: standardized.data_status || dataStatusMeta.label,
+    hasBoundary: standardized.has_boundary,
+    hasBBox: Boolean(standardized.has_bbox),
+    hasArea: Boolean(standardized.has_area),
+    hasCenter: Boolean(standardized.has_center),
+    dataAccuracyLabel: standardized.data_accuracy ? `${standardized.data_accuracy}` : '未提供',
     bbox: {
       minLng: formatCoordinate(bbox.minLng),
       minLat: formatCoordinate(bbox.minLat),
@@ -291,16 +255,27 @@ function updateMapSelectionHint(terrain) {
 
   titleNode.textContent = `当前地形：${terrain.name}`;
   if (terrain.hasBoundary) {
-    hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 已按真实边界加载专题与混合地块`;
+    hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 已加载地形边界与混合地块专题`;
     return;
   }
 
   if (terrain.center) {
-    hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 缺少边界数据，当前仅保留中心点参考`;
+    hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 未提供边界，当前按中心坐标定位并叠加混合地块`;
     return;
   }
 
-  hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 缺少有效空间数据，地图保持当前视图`;
+  hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 未提供可用空间字段，地图保持当前视图`;
+}
+
+function resetDetailPanel() {
+  document.getElementById('infoName').textContent = '-';
+  document.getElementById('infoArea').textContent = '-';
+  document.getElementById('infoRisk').textContent = '-';
+  document.getElementById('infoRisk').className = 'fw-bold';
+  document.getElementById('infoAccuracy').textContent = '-';
+  document.getElementById('infoPlotCount').textContent = '-';
+  document.getElementById('infoBboxMin').textContent = '-';
+  document.getElementById('infoBboxMax').textContent = '-';
 }
 
 function getTerrainById(terrainId) {
@@ -338,6 +313,7 @@ async function selectTerrainRow(terrainId, options = {}) {
 
 function clearCurrentSelection() {
   terrainData.currentTerrain = null;
+  resetDetailPanel();
   updateMapSelectionHint(null);
 
   if (vueInstances.terrainTable) {
@@ -347,6 +323,29 @@ function clearCurrentSelection() {
   if (terrainMap) {
     terrainMap.clearCurrentTopic();
   }
+}
+
+function refreshTerrainWorkspaceLayout(options = {}) {
+  const { delay = 0, refit = false } = options;
+
+  if (layoutRefreshTimer) {
+    clearTimeout(layoutRefreshTimer);
+  }
+
+  layoutRefreshTimer = window.setTimeout(() => {
+    layoutRefreshTimer = null;
+    syncWorkspaceLayoutMode();
+
+    if (vueInstances.terrainTable && typeof vueInstances.terrainTable.$forceUpdate === 'function') {
+      vueInstances.terrainTable.$forceUpdate();
+    }
+    if (vueInstances.pagination && typeof vueInstances.pagination.$forceUpdate === 'function') {
+      vueInstances.pagination.$forceUpdate();
+    }
+    if (terrainMap && typeof terrainMap.refreshLayout === 'function') {
+      terrainMap.refreshLayout({ refit });
+    }
+  }, delay);
 }
 
 async function syncDefaultTerrainSelection() {
@@ -538,6 +537,17 @@ function initEvents() {
     window.location.href = `/terrain/editor/?area_id=${terrainData.currentTerrain.id}`;
   });
 
+  const sidebarBtn = document.querySelector('.toggle-sidebar-btn');
+  if (sidebarBtn) {
+    sidebarBtn.addEventListener('click', function onToggleSidebar() {
+      refreshTerrainWorkspaceLayout({ delay: 380, refit: Boolean(terrainData.currentTerrain) });
+    });
+  }
+
+  window.addEventListener('resize', function onResize() {
+    refreshTerrainWorkspaceLayout({ delay: 120, refit: false });
+  });
+
   document.addEventListener('terrainSelected', function onTerrainSelected(event) {
     const terrain = event.detail;
     selectTerrainRow(terrain.id, {
@@ -573,7 +583,6 @@ function initVue() {
             <colgroup>
               <col class="col-index">
               <col class="col-name">
-              <col class="col-space">
               <col class="col-risk">
               <col class="col-area">
               <col class="col-actions">
@@ -582,7 +591,6 @@ function initVue() {
               <tr>
                 <th>序号</th>
                 <th>地形名称</th>
-                <th>空间数据</th>
                 <th>风险等级</th>
                 <th>面积</th>
                 <th>操作</th>
@@ -600,12 +608,6 @@ function initVue() {
                   <span class="terrain-name-main">{{ terrain.name }}</span>
                 </td>
                 <td>
-                  <div class="terrain-space-coord">
-                    <div><span class="coord-label">左下:</span>{{ terrain.bbox.minLng }}, {{ terrain.bbox.minLat }}</div>
-                    <div><span class="coord-label">右上:</span>{{ terrain.bbox.maxLng }}, {{ terrain.bbox.maxLat }}</div>
-                  </div>
-                </td>
-                <td>
                   <span class="terrain-risk-badge" :class="terrain.riskClass">{{ terrain.riskLabel }}</span>
                 </td>
                 <td>
@@ -614,7 +616,7 @@ function initVue() {
                 </td>
                 <td class="terrain-actions-cell">
                   <button class="btn btn-sm btn-outline-primary" @click.stop="editTerrain(terrain)">
-                    编辑地形地图
+                    编辑
                   </button>
                 </td>
               </tr>
@@ -642,7 +644,11 @@ function initVue() {
         return numericArea.toFixed(numericArea >= 100 ? 1 : 2);
       },
       editTerrain(terrain) {
-        window.location.href = `/terrain/editor/?area_id=${terrain.id}`;
+        selectTerrainRow(terrain.id, {
+          syncMap: true,
+          fit: true,
+          openPopup: false
+        });
       }
     }
   });
@@ -655,19 +661,36 @@ function initVue() {
     },
     computed: {
       currentPage() { return this.tableInstance?.currentPage || 1; },
-      totalPages() { return this.tableInstance?.totalPages || 1; }
+      totalPages() { return this.tableInstance?.totalPages || 1; },
+      totalItems() { return this.tableInstance?.terrains?.length || 0; },
+      pageNumbers() {
+        const total = this.totalPages;
+        const current = this.currentPage;
+        const start = Math.max(1, current - 2);
+        const end = Math.min(total, start + 4);
+        const normalizedStart = Math.max(1, end - 4);
+        return Array.from({ length: end - normalizedStart + 1 }, (_, index) => normalizedStart + index);
+      },
+      pageSummary() {
+        if (!this.totalItems || !this.tableInstance) {
+          return '暂无数据';
+        }
+        const start = (this.currentPage - 1) * this.tableInstance.pageSize + 1;
+        const end = Math.min(this.totalItems, this.currentPage * this.tableInstance.pageSize);
+        return `显示 ${start}-${end} 条，共 ${this.totalItems} 条`;
+      }
     },
     template: `
       <div class="pagination-container d-flex justify-content-between align-items-center">
         <div class="text-muted small">
-          第 {{ currentPage }} / {{ totalPages }} 页
+          {{ pageSummary }}
         </div>
         <nav aria-label="Page navigation">
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item" :class="{ disabled: currentPage === 1 }">
               <a class="page-link" href="#" @click.prevent="setPage(currentPage - 1)">上一页</a>
             </li>
-            <li v-for="p in totalPages" :key="p" class="page-item" :class="{ active: p === currentPage }">
+            <li v-for="p in pageNumbers" :key="p" class="page-item" :class="{ active: p === currentPage }">
               <a class="page-link" href="#" @click.prevent="setPage(p)">{{ p }}</a>
             </li>
             <li class="page-item" :class="{ disabled: currentPage === totalPages }">
@@ -781,7 +804,14 @@ function updatePageData() {
   updateTerrainListCount(terrainData.filteredTerrains.length);
 
   if (vueInstances.terrainTable) {
+    const totalPages = Math.ceil(terrainData.filteredTerrains.length / vueInstances.terrainTable.pageSize) || 1;
+    if (vueInstances.terrainTable.currentPage > totalPages) {
+      vueInstances.terrainTable.currentPage = totalPages;
+    }
     vueInstances.terrainTable.terrains = terrainData.filteredTerrains;
+    if (typeof vueInstances.terrainTable.$forceUpdate === 'function') {
+      vueInstances.terrainTable.$forceUpdate();
+    }
   }
   if (vueInstances.riskAreasTable) {
     vueInstances.riskAreasTable.riskAreas = terrainData.riskAreas;
@@ -802,21 +832,9 @@ function updateDetailPanel(terrain) {
   riskNode.className = `fw-bold ${terrain.riskClass}`;
   
   document.getElementById('infoAccuracy').textContent = terrain.dataAccuracyLabel;
-  document.getElementById('infoUpdatedAt').textContent = terrain.updatedAtLabel;
   document.getElementById('infoPlotCount').textContent = terrain.plotCountLabel;
-
   document.getElementById('infoBboxMin').textContent = `${terrain.bbox.minLng}, ${terrain.bbox.minLat}`;
   document.getElementById('infoBboxMax').textContent = `${terrain.bbox.maxLng}, ${terrain.bbox.maxLat}`;
-  
-  const boundaryNode = document.getElementById('infoBoundaryStatus');
-  boundaryNode.textContent = terrain.boundaryStatusLabel;
-  boundaryNode.className = `badge ${terrain.boundaryStatusClass === 'status-ready' ? 'bg-success' : 'bg-warning'}`;
-  
-  const dataNode = document.getElementById('infoDataStatus');
-  dataNode.textContent = terrain.dataStatusLabel;
-  dataNode.className = `badge ${terrain.dataStatusClass === 'status-ready' ? 'bg-primary' : 'bg-secondary'}`;
-  
-  document.getElementById('infoDescription').textContent = terrain.description || '无补充描述';
 }
 
 window.addEventListener('DOMContentLoaded', initPage);
