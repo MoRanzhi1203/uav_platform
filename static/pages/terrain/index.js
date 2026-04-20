@@ -11,6 +11,8 @@ const terrainData = {
 let terrainMap;
 const vueInstances = {};
 let terrainLayoutObserver = null;
+let terrainPanelResizeObserver = null;
+let terrainElasticHeightRaf = 0;
 
 function initPage() {
   if (localStorage.getItem('terrain_list_should_refresh') === '1') {
@@ -20,6 +22,7 @@ function initPage() {
   initVue();
   syncTerrainMainLayoutBySidebarState();
   bindTerrainMainLayoutSidebarSync();
+  bindTerrainLayoutResizeSync();
 
   terrainMap = new TerrainMap('terrainMap');
   terrainMap.init();
@@ -103,19 +106,42 @@ function getTerrainSidebarState() {
   return document.body.classList.contains('toggle-sidebar') ? 'collapsed' : 'expanded';
 }
 
+function applyTerrainMainLayoutBootstrapCols(sidebarState) {
+  const listPanel = document.getElementById('terrainListPanel');
+  const topicPanel = document.getElementById('terrainTopicPanel');
+
+  if (!listPanel || !topicPanel) {
+    return;
+  }
+
+  listPanel.classList.remove('col-lg-5', 'col-lg-6', 'col-lg-7');
+  topicPanel.classList.remove('col-lg-5', 'col-lg-6', 'col-lg-7');
+
+  if (sidebarState === 'collapsed') {
+    listPanel.classList.add('col-lg-5');
+    topicPanel.classList.add('col-lg-7');
+    return;
+  }
+
+  listPanel.classList.add('col-lg-5');
+  topicPanel.classList.add('col-lg-7');
+}
+
 function syncTerrainMainLayoutBySidebarState() {
-  const layout = document.querySelector('.terrain-main-layout');
+  const layout = document.getElementById('terrainMainLayout') || document.querySelector('.terrain-main-layout');
   if (!layout) {
     return;
   }
 
   const nextState = getTerrainSidebarState();
-  if (layout.dataset.sidebarState === nextState) {
-    return;
-  }
-
+  const changed = layout.dataset.sidebarState !== nextState;
   layout.dataset.sidebarState = nextState;
-  requestTerrainMapResize();
+  applyTerrainMainLayoutBootstrapCols(nextState);
+
+  if (changed) {
+    requestTerrainMapResize();
+  }
+  scheduleTerrainDetailElasticHeightSync();
 }
 
 function bindTerrainMainLayoutSidebarSync() {
@@ -136,6 +162,85 @@ function bindTerrainMainLayoutSidebarSync() {
     attributes: true,
     attributeFilter: ['class']
   });
+}
+
+function runAfterTerrainLayoutRender(callback) {
+  const invoke = () => window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(callback);
+  });
+
+  if (window.Vue?.nextTick) {
+    window.Vue.nextTick(invoke);
+    return;
+  }
+
+  invoke();
+}
+
+function scheduleTerrainDetailElasticHeightSync() {
+  if (terrainElasticHeightRaf) {
+    window.cancelAnimationFrame(terrainElasticHeightRaf);
+  }
+
+  terrainElasticHeightRaf = window.requestAnimationFrame(() => {
+    terrainElasticHeightRaf = 0;
+    runAfterTerrainLayoutRender(syncTerrainDetailElasticHeight);
+  });
+}
+
+function syncTerrainDetailElasticHeight() {
+  const listCard = document.getElementById('terrainListCard');
+  const topicCard = document.getElementById('terrainTopicCard');
+  const descriptionBlock = document.getElementById('terrainDescriptionBlock');
+
+  if (!listCard || !topicCard || !descriptionBlock) {
+    return;
+  }
+
+  const computedStyles = window.getComputedStyle(descriptionBlock);
+  const baseMinHeight = Number(descriptionBlock.dataset.baseMinHeight)
+    || Math.max(
+      Math.ceil(parseFloat(computedStyles.minHeight) || 0),
+      0
+    );
+
+  if (!descriptionBlock.dataset.baseMinHeight) {
+    descriptionBlock.dataset.baseMinHeight = String(baseMinHeight);
+  }
+
+  descriptionBlock.style.minHeight = `${baseMinHeight}px`;
+
+  const leftHeight = Math.ceil(listCard.getBoundingClientRect().height);
+  const rightHeight = Math.ceil(topicCard.getBoundingClientRect().height);
+  const heightDiff = leftHeight - rightHeight;
+
+  if (heightDiff > 0) {
+    descriptionBlock.style.minHeight = `${baseMinHeight + heightDiff}px`;
+  }
+}
+
+function bindTerrainLayoutResizeSync() {
+  window.addEventListener('resize', scheduleTerrainDetailElasticHeightSync, { passive: true });
+
+  if (terrainPanelResizeObserver || typeof window.ResizeObserver !== 'function') {
+    return;
+  }
+
+  const resizeTargets = [
+    document.getElementById('terrainListCard'),
+    document.getElementById('terrainTopicCard'),
+    document.getElementById('terrainInfoPanel')
+  ].filter(Boolean);
+
+  if (!resizeTargets.length) {
+    return;
+  }
+
+  terrainPanelResizeObserver = new ResizeObserver(() => {
+    scheduleTerrainDetailElasticHeightSync();
+  });
+
+  resizeTargets.forEach(target => terrainPanelResizeObserver.observe(target));
 }
 
 function formatCoordinate(value) {
@@ -354,6 +459,8 @@ async function selectTerrainRow(terrainId, options = {}) {
       openPopup
     });
   }
+
+  scheduleTerrainDetailElasticHeightSync();
 }
 
 function clearCurrentSelection() {
@@ -367,6 +474,8 @@ function clearCurrentSelection() {
   if (terrainMap) {
     terrainMap.clearCurrentTopic();
   }
+
+  scheduleTerrainDetailElasticHeightSync();
 }
 
 async function syncDefaultTerrainSelection() {
@@ -417,6 +526,7 @@ async function loadRealData() {
 
     updatePageData();
     await syncDefaultTerrainSelection();
+    scheduleTerrainDetailElasticHeightSync();
   } catch (error) {
     console.error('请求区域数据异常:', error);
   }
@@ -566,6 +676,8 @@ function initEvents() {
       openPopup: false
     });
   });
+
+  window.setTimeout(scheduleTerrainDetailElasticHeightSync, 0);
 }
 
 function initVue() {
@@ -575,7 +687,7 @@ function initVue() {
       terrains: terrainData.filteredTerrains,
       selectedTerrainId: null,
       currentPage: 1,
-      pageSize: 10
+      pageSize: 15
     },
     computed: {
       pagedTerrains() {
@@ -614,7 +726,7 @@ function initVue() {
                 @click="selectTerrain(terrain)"
               >
                 <td class="terrain-cell-index">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
-                <td>
+                <td class="terrain-name-cell">
                   <span class="terrain-name-main">{{ terrain.name }}</span>
                 </td>
                 <td>
@@ -656,6 +768,12 @@ function initVue() {
       editTerrain(terrain) {
         window.location.href = `/terrain/editor/?area_id=${terrain.id}`;
       }
+    },
+    mounted() {
+      scheduleTerrainDetailElasticHeightSync();
+    },
+    updated() {
+      scheduleTerrainDetailElasticHeightSync();
     }
   });
 
@@ -694,10 +812,15 @@ function initVue() {
         if (p < 1 || p > this.totalPages || !this.tableInstance) return;
         this.tableInstance.currentPage = p;
         await syncDefaultTerrainSelection();
+        scheduleTerrainDetailElasticHeightSync();
       }
     },
     mounted() {
       this.tableInstance = vueInstances.terrainTable;
+      scheduleTerrainDetailElasticHeightSync();
+    },
+    updated() {
+      scheduleTerrainDetailElasticHeightSync();
     }
   });
 
@@ -802,6 +925,8 @@ function updatePageData() {
   if (vueInstances.surveyRecordsTable) {
     vueInstances.surveyRecordsTable.surveys = terrainData.surveys;
   }
+
+  scheduleTerrainDetailElasticHeightSync();
 }
 
 function updateDetailPanel(terrain) {
@@ -828,6 +953,8 @@ function updateDetailPanel(terrain) {
     riskNode.textContent = terrain.riskLabel;
     riskNode.className = `fw-bold ${terrain.riskClass}`;
   }
+
+  scheduleTerrainDetailElasticHeightSync();
 }
 
 window.addEventListener('DOMContentLoaded', initPage);

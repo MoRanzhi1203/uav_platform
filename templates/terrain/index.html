@@ -1,4 +1,4 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% load static %}
 
 {% block title %}地形管理 - 山地空间支撑分析页{% endblock %}
@@ -166,9 +166,9 @@
   </div>
 
   <!-- 主业务区 -->
-  <div class="terrain-main-layout" data-sidebar-state="expanded">
-    <section class="terrain-main-panel terrain-main-panel-list">
-      <div class="card h-100 terrain-list-card">
+  <div class="row g-4 terrain-main-layout" id="terrainMainLayout" data-sidebar-state="expanded">
+    <section class="col-12 col-lg-5 terrain-main-panel terrain-main-col terrain-main-col-list" id="terrainListPanel">
+      <div class="card h-100 terrain-list-card" id="terrainListCard">
         <div class="card-body terrain-list-card-body">
           <div class="terrain-list-header mb-3">
             <div>
@@ -191,8 +191,8 @@
       </div>
     </section>
 
-    <section class="terrain-main-panel terrain-main-panel-topic">
-      <div class="card h-100 terrain-topic-card">
+    <section class="col-12 col-lg-7 terrain-main-panel terrain-main-col terrain-main-col-topic" id="terrainTopicPanel">
+      <div class="card h-100 terrain-topic-card" id="terrainTopicCard">
         <div class="terrain-topic-map-section">
           <div class="terrain-map-header p-3 border-bottom d-flex justify-content-between align-items-center">
             <div>
@@ -219,7 +219,7 @@
           <div id="terrainMap" class="map-container terrain-topic-map"></div>
         </div>
 
-        <div class="terrain-info-panel border-top">
+        <div class="terrain-info-panel border-top" id="terrainInfoPanel">
           <div class="card-body">
             <div class="row align-items-center mb-3">
               <div class="col">
@@ -284,7 +284,7 @@
                   </div>
                 </div>
                 <div class="col-md-12">
-                  <div class="info-item">
+                  <div class="info-item terrain-description-block" id="terrainDescriptionBlock">
                     <label class="text-muted small">描述</label>
                     <div class="info-description-text" id="infoDescription">无补充描述</div>
                   </div>

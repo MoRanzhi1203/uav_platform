@@ -1,32 +1,19 @@
 ﻿/* 地形管理页面样式增强 */
 
-/* 主业务区 动态比例布局 */
+/* 主业务区 Bootstrap 栅格补充样式 */
 .terrain-main-layout {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)); /* 默认 5:5 */
-  gap: 1.5rem;
   align-items: stretch;
-  width: 100%;
   min-height: clamp(700px, calc(100vh - 280px), 860px);
-  height: auto;
   position: relative;
-  transition: grid-template-columns 0.25s ease;
-}
-
-/* 侧边导航栏开启时 (5:5) */
-.terrain-main-layout[data-sidebar-state="expanded"] {
-  grid-template-columns: 5fr 5fr;
-}
-
-/* 侧边导航栏关闭时 (4:6) */
-.terrain-main-layout[data-sidebar-state="collapsed"] {
-  grid-template-columns: 4fr 6fr;
 }
 
 .terrain-main-panel {
   min-width: 0;
-  height: 100%; /* 确保面板占满高度 */
   min-height: 0;
+}
+
+.terrain-main-col {
+  display: flex;
 }
 
 .terrain-list-card,
@@ -124,25 +111,32 @@
   top: 0;
   background: #f8f9fa;
   z-index: 10;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: #4b5563;
-  padding: 12px 8px;
+  padding: 12px 6px;
   border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .terrain-table tbody td {
-  padding: 12px 8px;
-  vertical-align: middle;
+  padding: 10px 6px;
+  vertical-align: top;
   border-bottom: 1px solid #f3f4f6;
   font-size: 0.875rem;
 }
 
-.col-index { width: 56px; }
+.terrain-table tbody tr {
+  min-height: 64px;
+}
+
+.col-index { width: 52px; }
 .col-name { width: auto; }
-.col-risk { width: 92px; }
-.col-area { width: 110px; }
-.col-actions { width: 74px; }
+.col-risk { width: 80px; }
+.col-area { width: 92px; }
+.col-actions { width: 70px; }
 
 .terrain-table th:nth-child(1),
 .terrain-table td:nth-child(1),
@@ -158,6 +152,11 @@
 .terrain-table th:nth-child(2),
 .terrain-table td:nth-child(2) {
   text-align: left;
+}
+
+.terrain-cell-index,
+.terrain-actions-cell {
+  white-space: nowrap;
 }
 
 /* 行选中态 */
@@ -234,10 +233,17 @@
 }
 
 .info-description-text {
+  flex: 1 1 auto;
   color: #334155;
   line-height: 1.5;
   white-space: normal;
   word-break: break-word;
+}
+
+.terrain-description-block {
+  display: flex;
+  flex-direction: column;
+  min-height: 132px;
 }
 
 /* NiceAdmin 风格分页 */
@@ -279,13 +285,22 @@
 }
 
 .terrain-name-main {
-  display: inline-block;
+  display: -webkit-box;
   width: 100%;
   font-weight: 600;
   color: #1f2937;
-  white-space: nowrap;
+  line-height: 1.4;
+  max-height: calc(1.4em * 2);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
   overflow: hidden;
+  word-break: break-word;
   text-overflow: ellipsis;
+}
+
+.terrain-name-cell {
+  min-width: 0;
 }
 
 .terrain-area-value,
@@ -300,9 +315,10 @@
 }
 
 .terrain-edit-btn {
-  min-width: 56px;
-  padding-left: 10px;
-  padding-right: 10px;
+  min-width: 48px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
 }
 
 .terrain-empty-state {
@@ -327,7 +343,6 @@
 
 @media (max-width: 1199.98px) {
   .terrain-main-layout {
-    grid-template-columns: 1fr;
     min-height: auto;
   }
 
