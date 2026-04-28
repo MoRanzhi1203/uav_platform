@@ -5,7 +5,14 @@ const terrainData = {
   filteredTerrains: [],
   riskAreas: [],
   surveys: [],
-  currentTerrain: null
+  currentTerrain: null,
+  appliedFilters: {
+    name: '',
+    riskLevel: '',
+    timeRange: 'all'
+  },
+  hasActiveFilters: false,
+  emptyStateMessage: '当前没有可展示的地形区域，请稍后刷新。'
 };
 
 let terrainMap;
@@ -13,6 +20,7 @@ const vueInstances = {};
 let terrainLayoutObserver = null;
 let terrainPanelResizeObserver = null;
 let terrainElasticHeightRaf = 0;
+let terrainFilterDebounceTimer = 0;
 
 function initPage() {
   if (localStorage.getItem('terrain_list_should_refresh') === '1') {
@@ -27,6 +35,7 @@ function initPage() {
   terrainMap = new TerrainMap('terrainMap');
   terrainMap.init();
 
+  resetDetailPanel();
   initFilterForm();
   initTables();
   initEvents();
@@ -394,14 +403,17 @@ function normalizeTerrainItem(item) {
   };
 }
 
-function updateTerrainListCount(count) {
+function updateTerrainListCount(count, total = terrainData.terrains.length) {
   const countNode = document.getElementById('terrainListCount');
   if (countNode) {
-    countNode.textContent = `${count} 条`;
+    countNode.textContent = terrainData.hasActiveFilters ? `${count} / ${total} 条` : `${count} 条`;
   }
 }
 
-function updateMapSelectionHint(terrain) {
+function updateMapSelectionHint(terrain, options = {}) {
+  const {
+    emptyMessage = '当前未选中地形，请从左侧列表选择。'
+  } = options;
   const hintNode = document.getElementById('terrainMapSelectionHint');
   const titleNode = document.getElementById('terrainMapTitle');
   if (!hintNode || !titleNode) {
@@ -410,7 +422,7 @@ function updateMapSelectionHint(terrain) {
 
   if (!terrain) {
     titleNode.textContent = '当前地形专题';
-    hintNode.textContent = '当前未选中地形，请从左侧列表选择。';
+    hintNode.textContent = emptyMessage;
     return;
   }
 
@@ -447,6 +459,7 @@ async function selectTerrainRow(terrainId, options = {}) {
   terrainData.currentTerrain = terrain;
   updateDetailPanel(terrain);
   updateMapSelectionHint(terrain);
+  setTerrainEditButtonDisabled(false);
 
   if (vueInstances.terrainTable) {
     vueInstances.terrainTable.selectedTerrainId = terrain.id;
@@ -463,25 +476,38 @@ async function selectTerrainRow(terrainId, options = {}) {
   scheduleTerrainDetailElasticHeightSync();
 }
 
-function clearCurrentSelection() {
+function clearCurrentSelection(options = {}) {
+  const {
+    preserveMap = false,
+    emptyMessage = '当前未选中地形，请从左侧列表选择。'
+  } = options;
   terrainData.currentTerrain = null;
-  updateMapSelectionHint(null);
+  updateMapSelectionHint(null, { emptyMessage });
+  resetDetailPanel();
+  setTerrainEditButtonDisabled(true);
 
   if (vueInstances.terrainTable) {
     vueInstances.terrainTable.selectedTerrainId = null;
   }
 
-  if (terrainMap) {
+  if (!preserveMap && terrainMap) {
     terrainMap.clearCurrentTopic();
   }
 
   scheduleTerrainDetailElasticHeightSync();
 }
 
-async function syncDefaultTerrainSelection() {
-  const sourceTerrains = terrainData.filteredTerrains.length ? terrainData.filteredTerrains : terrainData.terrains;
+async function syncDefaultTerrainSelection(options = {}) {
+  const {
+    preserveMapWhenEmpty = false,
+    emptyMessage = '当前未选中地形，请从左侧列表选择。'
+  } = options;
+  const sourceTerrains = terrainData.hasActiveFilters ? terrainData.filteredTerrains : terrainData.terrains;
   if (!sourceTerrains.length) {
-    clearCurrentSelection();
+    clearCurrentSelection({
+      preserveMap: preserveMapWhenEmpty,
+      emptyMessage
+    });
     return;
   }
 
@@ -490,7 +516,10 @@ async function syncDefaultTerrainSelection() {
   const pageStart = (page - 1) * pageSize;
   const currentPageTerrains = sourceTerrains.slice(pageStart, pageStart + pageSize);
   if (!currentPageTerrains.length) {
-    clearCurrentSelection();
+    clearCurrentSelection({
+      preserveMap: preserveMapWhenEmpty,
+      emptyMessage
+    });
     return;
   }
 
@@ -524,6 +553,12 @@ async function loadRealData() {
       terrainMap.loadTerrains(terrainData.terrains);
     }
 
+    updateEmptyStateMessage();
+    if (terrainData.hasActiveFilters) {
+      await applyFilters();
+      return;
+    }
+
     updatePageData();
     await syncDefaultTerrainSelection();
     scheduleTerrainDetailElasticHeightSync();
@@ -532,23 +567,79 @@ async function loadRealData() {
   }
 }
 
-function toggleCustomDateRange(show) {
-  ['startDateWrap', 'endDateWrap'].forEach(id => {
-    const node = document.getElementById(id);
-    if (node) {
-      node.classList.toggle('d-none', !show);
-    }
-  });
+function setAppliedFilters(filters) {
+  terrainData.appliedFilters = {
+    name: filters.name || '',
+    riskLevel: filters.riskLevel || '',
+    timeRange: filters.timeRange || 'all'
+  };
+  terrainData.hasActiveFilters = hasActiveFilters(terrainData.appliedFilters);
 }
 
 function getFilterValues() {
   return {
     name: document.getElementById('terrainName').value.trim().toLowerCase(),
     riskLevel: document.getElementById('filterRiskLevel').value,
-    timeRange: document.getElementById('timeRange').value,
-    startDate: document.getElementById('startDate').value,
-    endDate: document.getElementById('endDate').value
+    timeRange: document.getElementById('timeRange').value
   };
+}
+
+function hasActiveFilters(filters) {
+  return Boolean(
+    filters.name
+    || filters.riskLevel
+    || (filters.timeRange && filters.timeRange !== 'all')
+  );
+}
+
+function updateFilterSummary() {
+  const summaryNode = document.getElementById('terrainFilterSummary');
+  const badgeNode = document.getElementById('terrainFilterStateBadge');
+  if (summaryNode) {
+    summaryNode.textContent = `共 ${terrainData.terrains.length} 条，当前显示 ${terrainData.filteredTerrains.length} 条`;
+  }
+  if (badgeNode) {
+    badgeNode.classList.toggle('d-none', !terrainData.hasActiveFilters);
+  }
+}
+
+function updateEmptyStateMessage() {
+  terrainData.emptyStateMessage = terrainData.hasActiveFilters
+    ? '未找到符合条件的地形'
+    : '当前没有可展示的地形区域，请稍后刷新。';
+}
+
+function setTerrainEditButtonDisabled(disabled) {
+  const editBtn = document.getElementById('editTerrainMapBtn');
+  if (editBtn) {
+    editBtn.disabled = disabled;
+  }
+}
+
+function resetDetailPanel() {
+  const placeholders = {
+    infoName: '-',
+    infoArea: '-',
+    infoAccuracy: '-',
+    infoUpdatedAt: '-',
+    infoPlotCount: '-',
+    infoBboxMin: '-',
+    infoBboxMax: '-',
+    infoDescription: '无补充描述'
+  };
+
+  Object.entries(placeholders).forEach(([id, value]) => {
+    const node = document.getElementById(id);
+    if (node) {
+      node.textContent = value;
+    }
+  });
+
+  const riskNode = document.getElementById('infoRisk');
+  if (riskNode) {
+    riskNode.textContent = '-';
+    riskNode.className = 'fw-bold';
+  }
 }
 
 function isWithinTimeRange(updatedAt, filters) {
@@ -565,16 +656,16 @@ function isWithinTimeRange(updatedAt, filters) {
     return false;
   }
 
-  if (filters.timeRange === 'custom') {
-    const startDate = filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null;
-    const endDate = filters.endDate ? new Date(`${filters.endDate}T23:59:59`) : null;
-    if (startDate && updatedDate < startDate) {
-      return false;
-    }
-    if (endDate && updatedDate > endDate) {
-      return false;
-    }
-    return true;
+  const now = new Date();
+  if (filters.timeRange === 'month') {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    return updatedDate >= monthStart && updatedDate <= now;
+  }
+
+  if (filters.timeRange === 'quarter') {
+    const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
+    const quarterStart = new Date(now.getFullYear(), quarterStartMonth, 1);
+    return updatedDate >= quarterStart && updatedDate <= now;
   }
 
   const days = Number(filters.timeRange);
@@ -588,6 +679,7 @@ function isWithinTimeRange(updatedAt, filters) {
 
 async function applyFilters() {
   const filters = getFilterValues();
+  setAppliedFilters(filters);
   terrainData.filteredTerrains = terrainData.terrains.filter(terrain => {
     const matchesName = !filters.name || terrain.name.toLowerCase().includes(filters.name);
     const matchesRisk = !filters.riskLevel || terrain.riskLevelRaw === filters.riskLevel;
@@ -595,30 +687,58 @@ async function applyFilters() {
     return matchesName && matchesRisk && matchesTime;
   });
 
+  updateEmptyStateMessage();
   if (vueInstances.terrainTable) {
     vueInstances.terrainTable.currentPage = 1;
   }
   updatePageData();
-  await syncDefaultTerrainSelection();
+  await syncDefaultTerrainSelection({
+    preserveMapWhenEmpty: true,
+    emptyMessage: '未找到符合条件的地形，地图保留当前视图。'
+  });
+}
+
+function scheduleNameAutoFilter() {
+  window.clearTimeout(terrainFilterDebounceTimer);
+  terrainFilterDebounceTimer = window.setTimeout(() => {
+    applyFilters();
+  }, 300);
 }
 
 function initFilterForm() {
-  const timeRange = document.getElementById('timeRange');
-  const searchBtn = document.getElementById('searchBtn');
+  const filterForm = document.getElementById('terrainFilterForm');
+  const terrainName = document.getElementById('terrainName');
   const resetBtn = document.getElementById('resetBtn');
+  const filterRiskLevel = document.getElementById('filterRiskLevel');
+  const timeRange = document.getElementById('timeRange');
 
-  timeRange.addEventListener('change', function onChangeTimeRange() {
-    toggleCustomDateRange(this.value === 'custom');
+  filterForm.addEventListener('submit', function onFilterSubmit(event) {
+    event.preventDefault();
+    applyFilters();
   });
 
-  searchBtn.addEventListener('click', function onSearchClick() {
+  terrainName.addEventListener('input', function onNameInput() {
+    scheduleNameAutoFilter();
+  });
+
+  filterRiskLevel.addEventListener('change', function onRiskChange() {
+    applyFilters();
+  });
+
+  timeRange.addEventListener('change', function onTimeRangeChange() {
     applyFilters();
   });
 
   resetBtn.addEventListener('click', function onResetClick() {
-    document.getElementById('terrainFilterForm').reset();
-    toggleCustomDateRange(false);
+    window.clearTimeout(terrainFilterDebounceTimer);
+    filterForm.reset();
+    setAppliedFilters({
+      name: '',
+      riskLevel: '',
+      timeRange: 'all'
+    });
     terrainData.filteredTerrains = [...terrainData.terrains];
+    updateEmptyStateMessage();
     if (vueInstances.terrainTable) {
       vueInstances.terrainTable.currentPage = 1;
     }
@@ -687,7 +807,8 @@ function initVue() {
       terrains: terrainData.filteredTerrains,
       selectedTerrainId: null,
       currentPage: 1,
-      pageSize: 15
+      pageSize: 15,
+      emptyStateMessage: terrainData.emptyStateMessage
     },
     computed: {
       pagedTerrains() {
@@ -746,7 +867,7 @@ function initVue() {
           </table>
         </div>
         <div v-else class="terrain-empty-state">
-          当前没有可展示的地形区域，请调整筛选条件或稍后刷新。
+          {{ emptyStateMessage }}
         </div>
       </div>
     `,
@@ -912,10 +1033,12 @@ function updatePageData() {
   document.getElementById('activeTasks').textContent = terrainData.surveys.filter(survey => survey.status === '进行中').length;
   document.getElementById('dataAccuracy').textContent = averageAccuracy ? `${averageAccuracy}%` : '-';
 
-  updateTerrainListCount(terrainData.filteredTerrains.length);
+  updateTerrainListCount(terrainData.filteredTerrains.length, terrainData.terrains.length);
+  updateFilterSummary();
 
   if (vueInstances.terrainTable) {
     vueInstances.terrainTable.terrains = terrainData.filteredTerrains;
+    vueInstances.terrainTable.emptyStateMessage = terrainData.emptyStateMessage;
     const totalPages = Math.max(Math.ceil(terrainData.filteredTerrains.length / vueInstances.terrainTable.pageSize), 1);
     vueInstances.terrainTable.currentPage = Math.min(vueInstances.terrainTable.currentPage, totalPages);
   }

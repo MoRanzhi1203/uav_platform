@@ -111,20 +111,26 @@
   </div>
 
   <!-- 查询筛选区 -->
-  <div class="card mb-4">
+  <div class="card mb-4 terrain-filter-card">
     <div class="card-body">
-      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <h5 class="card-title mb-0">查询筛选</h5>
-        <span class="text-muted small">按名称、风险等级与更新时间筛选地形专题</span>
+      <div class="terrain-filter-header">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <h5 class="card-title mb-0">查询筛选</h5>
+          <span class="text-muted small">按名称、风险等级与更新时间快速筛选地形专题</span>
+        </div>
+        <div class="terrain-filter-feedback">
+          <span class="badge bg-light text-primary border d-none" id="terrainFilterStateBadge">已筛选</span>
+          <span class="text-muted small" id="terrainFilterSummary">共 0 条，当前显示 0 条</span>
+        </div>
       </div>
       <form class="terrain-filter-form" id="terrainFilterForm">
-        <div class="terrain-filter-grid">
-          <div class="terrain-filter-item terrain-filter-item-name">
-            <label for="terrainName" class="form-label">地形名称</label>
+        <div class="row g-2 align-items-end terrain-filter-toolbar">
+          <div class="col-12 col-xl-4 col-lg-5">
+            <label for="terrainName" class="form-label terrain-filter-label">地形名称</label>
             <input type="text" class="form-control" id="terrainName" placeholder="请输入地形名称">
           </div>
-          <div class="terrain-filter-item">
-            <label for="filterRiskLevel" class="form-label">风险等级</label>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterRiskLevel" class="form-label terrain-filter-label">风险等级</label>
             <select class="form-select" id="filterRiskLevel">
               <option value="">全部等级</option>
               <option value="low">低风险</option>
@@ -132,36 +138,80 @@
               <option value="high">高风险</option>
             </select>
           </div>
-          <div class="terrain-filter-item">
-            <label for="timeRange" class="form-label">时间范围</label>
+          <div class="col-sm-6 col-lg-2">
+            <label for="timeRange" class="form-label terrain-filter-label">时间范围</label>
             <select class="form-select" id="timeRange">
               <option value="all">全部时间</option>
-              <option value="7">最近7天</option>
-              <option value="30">最近30天</option>
-              <option value="90">最近90天</option>
-              <option value="custom">自定义</option>
+              <option value="7">近7天</option>
+              <option value="30">近30天</option>
+              <option value="90">近90天</option>
+              <option value="month">本月</option>
+              <option value="quarter">本季度</option>
             </select>
           </div>
-          <div class="terrain-filter-item d-none" id="startDateWrap">
-            <label for="startDate" class="form-label">开始日期</label>
-            <input type="date" class="form-control" id="startDate">
-          </div>
-          <div class="terrain-filter-item d-none" id="endDateWrap">
-            <label for="endDate" class="form-label">结束日期</label>
-            <input type="date" class="form-control" id="endDate">
-          </div>
-          <div class="terrain-filter-item terrain-filter-item-actions">
-            <button type="button" class="btn btn-success w-100" id="searchBtn">
-              <i class="bi bi-search"></i> 查询
-            </button>
-          </div>
-          <div class="terrain-filter-item terrain-filter-item-actions">
-            <button type="button" class="btn btn-outline-secondary w-100" id="resetBtn">
-              <i class="bi bi-arrow-counterclockwise"></i> 重置
-            </button>
+          <div class="col-12 col-lg-auto">
+            <div class="terrain-filter-actions">
+              <button type="submit" class="btn btn-success terrain-filter-btn" id="searchBtn">
+                <i class="bi bi-search"></i> 查询
+              </button>
+              <button type="button" class="btn btn-outline-secondary terrain-filter-btn" id="resetBtn">
+                <i class="bi bi-arrow-counterclockwise"></i> 重置
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline-primary terrain-filter-btn"
+                data-bs-toggle="collapse"
+                data-bs-target="#terrainAdvancedFilters"
+                aria-expanded="false"
+                aria-controls="terrainAdvancedFilters"
+              >
+                <i class="bi bi-sliders"></i> 高级筛选
+              </button>
+            </div>
           </div>
         </div>
       </form>
+
+      <div class="collapse terrain-advanced-filters" id="terrainAdvancedFilters">
+        <div class="terrain-advanced-filters-inner">
+          <!-- 高级筛选为后续业务字段预留，当前先完成前端布局，不接入现有查询逻辑。 -->
+          <div class="row g-3">
+            <div class="col-12 col-lg-4">
+              <label for="advancedTerrainType" class="form-label terrain-filter-label">地形类型</label>
+              <select class="form-select" id="advancedTerrainType" disabled>
+                <option value="">全部</option>
+                <option value="forest">林区</option>
+                <option value="farm">农田</option>
+                <option value="water">水域</option>
+                <option value="building">建筑</option>
+                <option value="road">道路</option>
+                <option value="bare">空地</option>
+              </select>
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label terrain-filter-label">面积范围</label>
+              <div class="input-group">
+                <input type="number" class="form-control" id="advancedMinArea" placeholder="最小面积" disabled>
+                <span class="input-group-text">-</span>
+                <input type="number" class="form-control" id="advancedMaxArea" placeholder="最大面积" disabled>
+                <span class="input-group-text">公顷</span>
+              </div>
+            </div>
+            <div class="col-12 col-lg-4">
+              <label for="advancedDataStatus" class="form-label terrain-filter-label">数据状态</label>
+              <select class="form-select" id="advancedDataStatus" disabled>
+                <option value="">全部</option>
+                <option value="drawn">已绘制</option>
+                <option value="pending">待完善</option>
+                <option value="survey">有测绘任务</option>
+              </select>
+            </div>
+          </div>
+          <div class="terrain-advanced-note text-muted small">
+            当前高级筛选控件仅作为布局与业务预留，待后续字段和接口确认后接入筛选逻辑。
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

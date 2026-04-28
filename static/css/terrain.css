@@ -1,4 +1,78 @@
-﻿/* 地形管理页面样式增强 */
+/* 地形管理页面样式增强 */
+
+/* 紧凑型筛选工具栏 */
+.terrain-filter-card .card-body {
+  padding: 1rem 1.25rem;
+}
+
+.terrain-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.terrain-filter-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.terrain-filter-label {
+  margin-bottom: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.terrain-filter-toolbar .form-control,
+.terrain-filter-toolbar .form-select,
+.terrain-filter-toolbar .btn,
+.terrain-advanced-filters .form-control,
+.terrain-advanced-filters .form-select,
+.terrain-advanced-filters .input-group-text {
+  min-height: 38px;
+}
+
+.terrain-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.terrain-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: auto;
+  min-width: 88px;
+  padding-inline: 0.9rem;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.terrain-filter-toolbar > [class*="col-"] {
+  min-width: 0;
+}
+
+.terrain-advanced-filters {
+  margin-top: 0.75rem;
+}
+
+.terrain-advanced-filters-inner {
+  padding-top: 0.75rem;
+  border-top: 1px dashed #dee2e6;
+}
+
+.terrain-advanced-note {
+  margin-top: 0.75rem;
+}
 
 /* 主业务区 Bootstrap 栅格补充样式 */
 .terrain-main-layout {
@@ -346,6 +420,10 @@
     min-height: auto;
   }
 
+  .terrain-filter-feedback {
+    justify-content: flex-start;
+  }
+
   .terrain-bottom-tabs {
     margin-top: 20px;
   }
@@ -356,6 +434,18 @@
 }
 
 @media (max-width: 767.98px) {
+  .terrain-filter-card .card-body {
+    padding: 0.9rem;
+  }
+
+  .terrain-filter-actions {
+    width: 100%;
+  }
+
+  .terrain-filter-btn {
+    min-width: 96px;
+  }
+
   .terrain-table thead th,
   .terrain-table tbody td {
     padding: 10px 6px;
