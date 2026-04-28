@@ -161,15 +161,199 @@
   display: none;
 }
 
-.terrain-bottom-tabs {
+.terrain-bottom-insights {
   margin-top: 24px;
   position: relative;
   clear: both;
 }
 
-.terrain-bottom-tabs .card-body {
+.terrain-bottom-insights .card-body {
   position: relative;
   z-index: 1;
+}
+
+.terrain-bottom-header,
+.terrain-module-header,
+.terrain-analysis-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+}
+
+.terrain-bottom-header {
+  margin-bottom: 1.25rem;
+}
+
+.terrain-bottom-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.terrain-module-card {
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+.terrain-module-meta {
+  font-size: 0.8125rem;
+  color: #64748b;
+}
+
+.terrain-module-list {
+  min-height: 320px;
+}
+
+.terrain-module-empty,
+.terrain-module-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: 1rem;
+  border: 1px dashed #dbe4f0;
+  border-radius: 10px;
+  color: #64748b;
+  text-align: center;
+  background: #fbfdff;
+}
+
+.terrain-module-item {
+  border: 1px solid #e9eef5;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.terrain-module-item + .terrain-module-item {
+  margin-top: 0.85rem;
+}
+
+.terrain-module-item:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.08);
+}
+
+.terrain-module-item-header,
+.terrain-module-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.terrain-module-item-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.terrain-module-item-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.terrain-module-item-subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.terrain-module-item-footer {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.terrain-module-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.terrain-module-item-detail {
+  display: none;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #dbe4f0;
+  color: #4b5563;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.terrain-module-item.is-expanded .terrain-module-item-detail {
+  display: block;
+}
+
+.terrain-module-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid #eef2f7;
+}
+
+.terrain-module-pagination-info {
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.terrain-module-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.terrain-analysis-card .card-body {
+  min-height: 420px;
+}
+
+.terrain-analysis-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.terrain-analysis-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.9rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.terrain-analysis-summary-item {
+  border: 1px solid #e9eef5;
+  border-radius: 12px;
+  padding: 0.95rem 1rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.terrain-analysis-summary-label {
+  display: block;
+  font-size: 0.8125rem;
+  color: #64748b;
+}
+
+.terrain-analysis-summary-value {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.terrain-analysis-chart {
+  width: 100%;
+  min-height: 320px;
 }
 
 /* 表格列宽控制 */
@@ -424,8 +608,12 @@
     justify-content: flex-start;
   }
 
-  .terrain-bottom-tabs {
+  .terrain-bottom-insights {
     margin-top: 20px;
+  }
+
+  .terrain-analysis-card .card-body {
+    min-height: 380px;
   }
 
   .terrain-topic-map {
@@ -461,6 +649,14 @@
 
   .terrain-edit-btn {
     min-width: 52px;
+  }
+
+  .terrain-module-list {
+    min-height: auto;
+  }
+
+  .terrain-analysis-chart {
+    min-height: 280px;
   }
 }
 

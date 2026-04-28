@@ -3,14 +3,17 @@ import traceback
 import json
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Case, Count, IntegerField, When
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from shapely.geometry import shape, mapping, MultiPolygon, Polygon
 from shapely.ops import unary_union
+from tasking.models import GlobalTask
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 from .serializers import (
     GeoJSONCompatibilityMixin, TerrainAreaSerializer, TerrainZoneSerializer, TerrainAreaPlotSerializer,
@@ -73,6 +76,140 @@ PLOT_TYPE_ALIASES = {
     "空地": "bare_land",
     "开敞地": "bare_land",
 }
+
+RISK_LEVEL_LABELS = {
+    "low": "低风险",
+    "medium": "中风险",
+    "high": "高风险",
+}
+
+TASK_STATUS_LABELS = {
+    "pending": "未开始",
+    "created": "未开始",
+    "queued": "未开始",
+    "running": "进行中",
+    "in_progress": "进行中",
+    "processing": "进行中",
+    "completed": "已完成",
+    "done": "已完成",
+    "finished": "已完成",
+    "success": "已完成",
+    "failed": "异常",
+    "error": "异常",
+    "cancelled": "已取消",
+}
+
+TASK_SCENE_LABELS = {
+    "forest": "林业区域",
+    "agri": "农业区域",
+    "mixed": "综合区域",
+}
+
+
+def _parse_positive_int(value, default, *, minimum=1, maximum=None):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    if number < minimum:
+        number = minimum
+    if maximum is not None:
+        number = min(number, maximum)
+    return number
+
+
+def _format_datetime_label(value):
+    if not value:
+        return ""
+    dt_value = value
+    if timezone.is_aware(dt_value):
+        dt_value = timezone.localtime(dt_value)
+    return dt_value.strftime("%Y-%m-%d %H:%M")
+
+
+def _build_pagination_payload(page_obj):
+    return {
+        "page": page_obj.number,
+        "page_size": page_obj.paginator.per_page,
+        "total": page_obj.paginator.count,
+        "total_pages": page_obj.paginator.num_pages,
+        "has_previous": page_obj.has_previous(),
+        "has_next": page_obj.has_next(),
+    }
+
+
+def _paginate_queryset(queryset_or_items, page, page_size):
+    paginator = Paginator(queryset_or_items, page_size)
+    page_obj = paginator.get_page(page)
+    return page_obj, _build_pagination_payload(page_obj)
+
+
+def _get_zone_area_ha(zone):
+    try:
+        return round(float(getattr(zone, "area", 0) or 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _serialize_risk_zone(zone):
+    area_ha = _get_zone_area_ha(zone)
+    risk_level = str(getattr(zone, "risk_level", "") or "low")
+    return {
+        "id": zone.id,
+        "terrain_id": getattr(zone, "area_obj_id", None),
+        "terrain_name": getattr(getattr(zone, "area_obj", None), "name", "") or "未绑定地形",
+        "plot_name": getattr(zone, "name", "") or f"地块 {zone.id}",
+        "risk_level": risk_level,
+        "risk_level_label": RISK_LEVEL_LABELS.get(risk_level, "未评估"),
+        "area_ha": area_ha,
+        "area_label": f"{area_ha:.2f} 公顷" if area_ha > 0 else "-",
+        "updated_at": zone.updated_at.isoformat() if getattr(zone, "updated_at", None) else None,
+        "updated_at_label": _format_datetime_label(getattr(zone, "updated_at", None)),
+        "description": getattr(zone, "description", "") or "",
+        "detail_text": (
+            getattr(zone, "description", "") or
+            f"{getattr(getattr(zone, 'area_obj', None), 'name', '未绑定地形')} / "
+            f"{RISK_LEVEL_LABELS.get(risk_level, '未评估')} / "
+            f"{area_ha:.2f} 公顷"
+        ),
+    }
+
+
+def _match_task_terrain_name(task, terrain_names):
+    combined_text = " ".join(
+        [
+            str(getattr(task, "task_name", "") or ""),
+            str(getattr(task, "description", "") or ""),
+        ]
+    ).strip().lower()
+    if combined_text:
+        for terrain_name in terrain_names:
+            if terrain_name.lower() in combined_text:
+                return terrain_name
+    return TASK_SCENE_LABELS.get(getattr(task, "scene_type", ""), "未绑定地形")
+
+
+def _serialize_survey_task(task, terrain_names):
+    raw_status = str(getattr(task, "status", "") or "pending").strip().lower()
+    status_label = TASK_STATUS_LABELS.get(raw_status, "未开始")
+    return {
+        "id": task.id,
+        "terrain_name": _match_task_terrain_name(task, terrain_names),
+        "task_name": getattr(task, "task_name", "") or getattr(task, "task_code", "") or f"任务 {task.id}",
+        "status": raw_status,
+        "status_label": status_label,
+        "updated_at": task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
+        "updated_at_label": _format_datetime_label(getattr(task, "updated_at", None)),
+        "planned_start": task.planned_start.isoformat() if getattr(task, "planned_start", None) else None,
+        "planned_end": task.planned_end.isoformat() if getattr(task, "planned_end", None) else None,
+        "planned_start_label": _format_datetime_label(getattr(task, "planned_start", None)),
+        "planned_end_label": _format_datetime_label(getattr(task, "planned_end", None)),
+        "description": getattr(task, "description", "") or "",
+        "detail_url": f"/tasking/detail/?task_id={task.id}",
+        "api_detail_url": f"/api/tasking/global-tasks/{task.id}/",
+        "scene_type": getattr(task, "scene_type", "") or "mixed",
+        "scene_label": TASK_SCENE_LABELS.get(getattr(task, "scene_type", ""), "综合区域"),
+    }
 
 
 def normalize_plot_type_key(value, for_storage=False):
@@ -759,6 +896,111 @@ def area_edit_detail(request, area_id):
         return api_response(data=response_data)
     except Exception as e:
         logger.error(f"获取区域编辑详情异常: {str(e)}")
+        return api_error(msg=str(e), status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def terrain_risk_area_list(request):
+    """底部模块: 风险区域列表"""
+    try:
+        page = _parse_positive_int(request.GET.get("page"), 1)
+        page_size = _parse_positive_int(request.GET.get("page_size"), 10, maximum=50)
+        queryset = (
+            TerrainZone.objects.select_related("area_obj")
+            .filter(
+                is_deleted=False,
+                area_obj__is_deleted=False,
+                risk_level__in=["high", "medium"],
+            )
+            .annotate(
+                risk_sort=Case(
+                    When(risk_level="high", then=0),
+                    When(risk_level="medium", then=1),
+                    default=2,
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by("risk_sort", "-updated_at", "-id")
+        )
+        page_obj, pagination = _paginate_queryset(queryset, page, page_size)
+        items = [_serialize_risk_zone(zone) for zone in page_obj.object_list]
+        return api_response(
+            data={
+                "items": items,
+                "pagination": pagination,
+                "refreshed_at": timezone.now().isoformat(),
+            }
+        )
+    except Exception as e:
+        logger.error("获取风险区域列表异常: %s", str(e))
+        return api_error(msg=str(e), status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def terrain_survey_record_list(request):
+    """底部模块: 最近测绘记录"""
+    try:
+        page = _parse_positive_int(request.GET.get("page"), 1)
+        page_size = _parse_positive_int(request.GET.get("page_size"), 10, maximum=50)
+        terrain_names = list(
+            TerrainArea.objects.filter(is_deleted=False)
+            .order_by("-updated_at", "-id")
+            .values_list("name", flat=True)
+        )
+        terrain_names.sort(key=len, reverse=True)
+        queryset = GlobalTask.objects.all().order_by("-updated_at", "-id")
+        page_obj, pagination = _paginate_queryset(queryset, page, page_size)
+        items = [_serialize_survey_task(task, terrain_names) for task in page_obj.object_list]
+        return api_response(
+            data={
+                "items": items,
+                "pagination": pagination,
+                "refreshed_at": timezone.now().isoformat(),
+            }
+        )
+    except Exception as e:
+        logger.error("获取测绘记录列表异常: %s", str(e))
+        return api_error(msg=str(e), status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def terrain_risk_analysis(request):
+    """底部模块: 风险等级统计分析"""
+    try:
+        active_zones = list(
+            TerrainZone.objects.filter(
+                is_deleted=False,
+                area_obj__is_deleted=False,
+            ).only("risk_level")
+        )
+        counts = {"low": 0, "medium": 0, "high": 0}
+        for zone in active_zones:
+            risk_level = str(getattr(zone, "risk_level", "") or "low")
+            if risk_level not in counts:
+                counts[risk_level] = 0
+            counts[risk_level] += 1
+
+        items = [
+            {
+                "risk_level": risk_level,
+                "risk_level_label": RISK_LEVEL_LABELS[risk_level],
+                "count": counts.get(risk_level, 0),
+            }
+            for risk_level in ("low", "medium", "high")
+        ]
+        return api_response(
+            data={
+                "items": items,
+                "counts": counts,
+                "total": sum(counts.values()),
+                "refreshed_at": timezone.now().isoformat(),
+            }
+        )
+    except Exception as e:
+        logger.error("获取风险分析数据异常: %s", str(e))
         return api_error(msg=str(e), status=500)
 
 @api_view(['GET'])

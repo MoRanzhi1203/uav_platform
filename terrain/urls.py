@@ -7,6 +7,9 @@ urlpatterns = [
     
     # TerrainArea API
     path('api/areas/', views.list_areas, name='list_areas'),
+    path('api/dashboard/risk-areas/', views.terrain_risk_area_list, name='terrain_risk_area_list'),
+    path('api/dashboard/survey-records/', views.terrain_survey_record_list, name='terrain_survey_record_list'),
+    path('api/dashboard/risk-analysis/', views.terrain_risk_analysis, name='terrain_risk_analysis'),
     path('api/areas/import/', views.import_areas, name='import_areas'),
     path('api/areas/import-template/', views.import_template, name='import_template'),
     path('api/areas/<int:area_id>/plots/', views.area_plots, name='area_plots'),

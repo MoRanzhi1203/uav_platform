@@ -351,96 +351,79 @@
 
   <!-- 移除详情抽屉 -->
 
-  <!-- 底部 tab 业务区 -->
-  <div class="card terrain-bottom-tabs">
+  <!-- 底部业务模块 -->
+  <section class="card terrain-bottom-insights" id="terrainBottomInsights">
     <div class="card-body">
-      <ul class="nav nav-tabs" id="terrainTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="risk-tab" data-bs-toggle="tab" data-bs-target="#risk" type="button" role="tab" aria-controls="risk" aria-selected="true">
-            风险区域
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="survey-tab" data-bs-toggle="tab" data-bs-target="#survey" type="button" role="tab" aria-controls="survey" aria-selected="false">
-            测绘记录
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis" type="button" role="tab" aria-controls="analysis" aria-selected="false">
-            数据分析
-          </button>
-        </li>
-      </ul>
-      <div class="tab-content mt-3" id="terrainTabsContent">
-        <!-- 风险区域 -->
-        <div class="tab-pane fade show active" id="risk" role="tabpanel" aria-labelledby="risk-tab">
-          <div class="table-responsive">
-            <table class="table table-hover" id="riskAreasTable">
-              <thead>
-                <tr>
-                  <th scope="col">#</th>
-                  <th scope="col">风险区域</th>
-                  <th scope="col">所属地形</th>
-                  <th scope="col">风险等级</th>
-                  <th scope="col">面积(公顷)</th>
-                  <th scope="col">发现时间</th>
-                  <th scope="col">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <!-- 数据将由 Vue 动态填充 -->
-              </tbody>
-            </table>
-          </div>
+      <div class="terrain-bottom-header">
+        <div>
+          <h5 class="card-title mb-1">地形底部业务模块</h5>
+          <p class="text-muted mb-0">沿用当前页面大框架，展示风险区域、测绘记录与风险统计分析，支持自动刷新与详情展开。</p>
         </div>
-        
-        <!-- 测绘记录 -->
-        <div class="tab-pane fade" id="survey" role="tabpanel" aria-labelledby="survey-tab">
-          <div class="table-responsive">
-            <table class="table table-hover" id="surveyRecordsTable">
-              <thead>
-                <tr>
-                  <th scope="col">#</th>
-                  <th scope="col">测绘任务</th>
-                  <th scope="col">无人机</th>
-                  <th scope="col">开始时间</th>
-                  <th scope="col">结束时间</th>
-                  <th scope="col">数据精度</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <!-- 数据将由 Vue 动态填充 -->
-              </tbody>
-            </table>
-          </div>
+        <div class="terrain-bottom-actions">
+          <span class="badge bg-light text-primary border" id="terrainBottomRefreshHint">自动刷新：5 分钟</span>
+          <span class="text-muted small" id="terrainBottomLastUpdated">最近更新：--</span>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="terrainBottomRefreshBtn">
+            <i class="bi bi-arrow-clockwise"></i> 刷新模块
+          </button>
         </div>
-        
-        <!-- 数据分析 -->
-        <div class="tab-pane fade" id="analysis" role="tabpanel" aria-labelledby="analysis-tab">
-          <div class="row">
-            <div class="col-md-6">
-              <div class="card">
-                <div class="card-body">
-                  <h6 class="card-title">风险等级分布</h6>
-                  <div id="riskChart" style="height: 200px;"></div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-12 col-xxl-6">
+          <div class="card terrain-module-card h-100">
+            <div class="card-body">
+              <div class="terrain-module-header">
+                <div>
+                  <h6 class="card-title mb-1">风险区域</h6>
+                  <p class="text-muted mb-0">展示当前项目中高风险和中风险地块，支持分页、展开详情和定位到对应地形。</p>
                 </div>
+                <span class="terrain-module-meta" id="terrainRiskModuleMeta">每页 10 条</span>
               </div>
+              <div class="terrain-module-list" id="terrainRiskModuleList"></div>
+              <div class="terrain-module-pagination" id="terrainRiskModulePagination"></div>
             </div>
-            <div class="col-md-6">
-              <div class="card">
-                <div class="card-body">
-                  <h6 class="card-title">混合地块构成</h6>
-                  <div id="plotMixChart" style="height: 200px;"></div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xxl-6">
+          <div class="card terrain-module-card h-100">
+            <div class="card-body">
+              <div class="terrain-module-header">
+                <div>
+                  <h6 class="card-title mb-1">测绘记录</h6>
+                  <p class="text-muted mb-0">展示最近测绘任务执行情况，支持分页、自动刷新与跳转任务详情。</p>
+                </div>
+                <span class="terrain-module-meta" id="terrainSurveyModuleMeta">最近任务</span>
+              </div>
+              <div class="terrain-module-list" id="terrainSurveyModuleList"></div>
+              <div class="terrain-module-pagination" id="terrainSurveyModulePagination"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="card terrain-module-card terrain-analysis-card">
+            <div class="card-body">
+              <div class="terrain-module-header terrain-analysis-header">
+                <div>
+                  <h6 class="card-title mb-1">数据分析</h6>
+                  <p class="text-muted mb-0">统计当前地块风险等级分布，支持柱状图与饼图切换，并提供悬停查看具体数据。</p>
+                </div>
+                <div class="terrain-analysis-toolbar">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="图表类型切换">
+                    <button type="button" class="btn btn-outline-primary active" data-chart-type="bar">柱状图</button>
+                    <button type="button" class="btn btn-outline-primary" data-chart-type="pie">饼图</button>
+                  </div>
                 </div>
               </div>
+              <div class="terrain-analysis-summary" id="terrainAnalysisSummary"></div>
+              <div id="terrainAnalysisChart" class="terrain-analysis-chart"></div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
+  </section>
 </div>
 
 <!-- 编辑弹窗 -->
