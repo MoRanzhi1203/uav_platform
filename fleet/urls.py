@@ -2,6 +2,7 @@ from django.urls import path
 
 from fleet.views import (
     drone_detail,
+    drone_history,
     drone_group_detail,
     drone_group_list_create,
     drone_group_member_detail,
@@ -18,6 +19,7 @@ urlpatterns = [
     path("overview/", overview, name="fleet-overview"),
     path("pilots/", pilot_list_create, name="fleet-pilot-list-create"),
     path("pilots/<int:pk>/", pilot_detail, name="fleet-pilot-detail"),
+    path("drone-history/", drone_history, name="fleet-drone-history"),
     path("launch-sites/", launch_site_list_create, name="fleet-launch-site-list-create"),
     path("launch-sites/<int:pk>/", launch_site_detail, name="fleet-launch-site-detail"),
     path("drones/", drone_list_create, name="fleet-drone-list-create"),

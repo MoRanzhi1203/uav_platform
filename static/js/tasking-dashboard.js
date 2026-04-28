@@ -1,0 +1,622 @@
+(function () {
+    const state = {
+        taskPage: 1,
+        taskPageSize: 10,
+        assignmentPage: 1,
+        assignmentPageSize: 8,
+        selectedTaskId: null,
+        replayDate: "",
+        filters: {
+            keyword: "",
+            status: "",
+            type: "",
+            region: "",
+            drone: "",
+            pilot: "",
+            grain: "day",
+            start_date: "",
+            end_date: "",
+        },
+    };
+
+    let chart = null;
+    let map = null;
+    let trackLayer = null;
+    let heatLayer = null;
+
+    function init() {
+        setDefaultDates();
+        bindEvents();
+        initMap();
+        loadDashboard();
+        window.setInterval(refreshRealtime, 60000);
+    }
+
+    function setDefaultDates() {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - 29);
+        state.filters.start_date = formatInputDate(start);
+        state.filters.end_date = formatInputDate(end);
+        document.getElementById("tasking-start-date").value = state.filters.start_date;
+        document.getElementById("tasking-end-date").value = state.filters.end_date;
+    }
+
+    function bindEvents() {
+        document.getElementById("tasking-query-btn").addEventListener("click", function () {
+            syncFiltersFromForm();
+            state.taskPage = 1;
+            state.assignmentPage = 1;
+            loadDashboard();
+        });
+        document.getElementById("tasking-reset-btn").addEventListener("click", function () {
+            document.getElementById("tasking-filter-form").reset();
+            setDefaultDates();
+            state.filters.keyword = "";
+            state.filters.status = "";
+            state.filters.type = "";
+            state.filters.region = "";
+            state.filters.drone = "";
+            state.filters.pilot = "";
+            state.filters.grain = "day";
+            state.selectedTaskId = null;
+            state.taskPage = 1;
+            state.assignmentPage = 1;
+            state.replayDate = "";
+            loadDashboard();
+        });
+        document.getElementById("tasking-export-task-btn").addEventListener("click", function () {
+            exportData("/tasking/api/tasks/", buildTaskQuery(true));
+        });
+        document.getElementById("tasking-export-history-btn").addEventListener("click", function () {
+            exportData("/tasking/api/task-history/", buildHistoryQuery(true));
+        });
+        document.getElementById("tasking-task-page-size").addEventListener("change", function (event) {
+            state.taskPageSize = Number(event.target.value);
+            state.taskPage = 1;
+            loadTasks();
+        });
+        document.getElementById("tasking-assignment-page-size").addEventListener("change", function (event) {
+            state.assignmentPageSize = Number(event.target.value);
+            state.assignmentPage = 1;
+            loadAssignments();
+        });
+        document.getElementById("tasking-prev-page").addEventListener("click", function () {
+            if (state.taskPage > 1) {
+                state.taskPage -= 1;
+                loadTasks();
+            }
+        });
+        document.getElementById("tasking-next-page").addEventListener("click", function () {
+            const totalPages = Number(document.getElementById("tasking-next-page").dataset.totalPages || 1);
+            if (state.taskPage < totalPages) {
+                state.taskPage += 1;
+                loadTasks();
+            }
+        });
+        document.getElementById("tasking-assignment-prev-page").addEventListener("click", function () {
+            if (state.assignmentPage > 1) {
+                state.assignmentPage -= 1;
+                loadAssignments();
+            }
+        });
+        document.getElementById("tasking-assignment-next-page").addEventListener("click", function () {
+            const totalPages = Number(document.getElementById("tasking-assignment-next-page").dataset.totalPages || 1);
+            if (state.assignmentPage < totalPages) {
+                state.assignmentPage += 1;
+                loadAssignments();
+            }
+        });
+        document.getElementById("tasking-replay-date").addEventListener("change", function (event) {
+            state.replayDate = event.target.value;
+            renderMap(window.__taskingHistoryDetail || null);
+        });
+    }
+
+    function syncFiltersFromForm() {
+        state.filters.keyword = document.getElementById("tasking-keyword").value.trim();
+        state.filters.status = document.getElementById("tasking-status").value;
+        state.filters.type = document.getElementById("tasking-type").value;
+        state.filters.region = document.getElementById("tasking-region").value;
+        state.filters.drone = document.getElementById("tasking-drone").value;
+        state.filters.pilot = document.getElementById("tasking-pilot").value;
+        state.filters.grain = document.getElementById("tasking-grain").value;
+        state.filters.start_date = document.getElementById("tasking-start-date").value;
+        state.filters.end_date = document.getElementById("tasking-end-date").value;
+    }
+
+    function initMap() {
+        map = L.map("tasking-map", { zoomControl: true }).setView([29.56301, 106.55156], 10);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "&copy; OpenStreetMap contributors",
+        }).addTo(map);
+        trackLayer = L.layerGroup().addTo(map);
+        heatLayer = L.layerGroup().addTo(map);
+    }
+
+    function fetchJson(url, params) {
+        const search = new URLSearchParams();
+        Object.keys(params || {}).forEach(function (key) {
+            if (params[key] !== "" && params[key] !== null && params[key] !== undefined) {
+                search.append(key, params[key]);
+            }
+        });
+        const requestUrl = search.toString() ? url + "?" + search.toString() : url;
+        return fetch(requestUrl, { credentials: "same-origin" }).then(function (response) {
+            return response.json().then(function (payload) {
+                if (!response.ok || payload.code !== 0) {
+                    throw new Error(payload.msg || "请求失败");
+                }
+                return payload.data;
+            });
+        });
+    }
+
+    function buildTaskQuery(isExport) {
+        const params = {
+            page: state.taskPage,
+            page_size: state.taskPageSize,
+            keyword: state.filters.keyword,
+            status: state.filters.status,
+            type: state.filters.type,
+            region: state.filters.region,
+            drone: state.filters.drone,
+            pilot: state.filters.pilot,
+            start_date: state.filters.start_date,
+            end_date: state.filters.end_date,
+        };
+        if (isExport) {
+            params.export = "csv";
+        }
+        return params;
+    }
+
+    function buildAssignmentQuery() {
+        return {
+            page: state.assignmentPage,
+            page_size: state.assignmentPageSize,
+            status: state.filters.status,
+            region: state.filters.region,
+            drone: state.filters.drone,
+            pilot: state.filters.pilot,
+        };
+    }
+
+    function buildHistoryQuery(isExport) {
+        const params = {
+            keyword: state.filters.keyword,
+            status: state.filters.status,
+            type: state.filters.type,
+            region: state.filters.region,
+            drone: state.filters.drone,
+            pilot: state.filters.pilot,
+            grain: state.filters.grain,
+            start_date: state.filters.start_date,
+            end_date: state.filters.end_date,
+        };
+        if (state.selectedTaskId) {
+            params.task_id = state.selectedTaskId;
+        }
+        if (isExport) {
+            params.export = "csv";
+        }
+        return params;
+    }
+
+    function loadDashboard() {
+        return Promise.all([loadTasks(), loadAssignments(), loadHistory()]).catch(handleError);
+    }
+
+    function refreshRealtime() {
+        Promise.all([loadTasks(true), loadAssignments(true), loadHistory(true)]).catch(function () {});
+    }
+
+    function loadTasks(silent) {
+        return fetchJson("/tasking/api/tasks/", buildTaskQuery(false)).then(function (data) {
+            renderFilters(data.filters || {});
+            renderTaskStats(data.summary || {});
+            renderTaskTable(data.items || []);
+            renderPagination("tasking", data.pagination || {});
+            if (!silent && !state.selectedTaskId && data.items && data.items.length) {
+                state.selectedTaskId = data.items[0].id;
+                return loadHistory();
+            }
+            return data;
+        }).catch(function (error) {
+            if (!silent) {
+                handleError(error);
+            }
+        });
+    }
+
+    function loadAssignments(silent) {
+        return fetchJson("/tasking/api/assignments/", buildAssignmentQuery()).then(function (data) {
+            renderAssignmentTable(data.items || []);
+            renderPagination("tasking-assignment", data.pagination || {});
+            return data;
+        }).catch(function (error) {
+            if (!silent) {
+                handleError(error);
+            }
+        });
+    }
+
+    function loadHistory(silent) {
+        return fetchJson("/tasking/api/task-history/", buildHistoryQuery(false)).then(function (data) {
+            window.__taskingHistoryDetail = data.detail || null;
+            if (data.detail && data.detail.selected_task) {
+                state.selectedTaskId = data.detail.selected_task.id;
+            }
+            renderTaskStats(data.summary || {});
+            renderChart(data.chart || {});
+            renderTaskDetail(data.detail || {});
+            renderReplayDates(data.detail || {});
+            renderMap(data.detail || {});
+            renderFilters(data.filters || {});
+            highlightSelectedRow();
+            return data;
+        }).catch(function (error) {
+            if (!silent) {
+                handleError(error);
+            }
+        });
+    }
+
+    function renderFilters(filters) {
+        fillSelect("tasking-status", (filters.statuses || []).map(mapStringOption), "value", "label", true);
+        fillSelect("tasking-type", (filters.types || []).map(mapStringOption), "value", "label", true);
+        fillSelect("tasking-region", (filters.regions || []).map(mapStringOption), "value", "label", true);
+        fillSelect("tasking-drone", filters.drones || [], "id", "name", true);
+        fillSelect("tasking-pilot", filters.pilots || [], "id", "name", true);
+        document.getElementById("tasking-status").value = state.filters.status;
+        document.getElementById("tasking-type").value = state.filters.type;
+        document.getElementById("tasking-region").value = state.filters.region;
+        document.getElementById("tasking-drone").value = state.filters.drone;
+        document.getElementById("tasking-pilot").value = state.filters.pilot;
+        document.getElementById("tasking-grain").value = state.filters.grain;
+    }
+
+    function renderTaskStats(summary) {
+        setText("tasking-stat-total", summary.task_total || 0);
+        setText("tasking-stat-running", summary.running_total || 0);
+        setText("tasking-stat-completed", summary.completed_total || 0);
+        setText("tasking-stat-abnormal", summary.abnormal_total || summary.delay_total || 0);
+    }
+
+    function renderTaskTable(items) {
+        const tbody = document.getElementById("tasking-task-tbody");
+        if (!items.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">暂无任务数据</td></tr>';
+            return;
+        }
+        tbody.innerHTML = items.map(function (item) {
+            return '' +
+                '<tr data-task-id="' + item.id + '">' +
+                '<td>' + escapeHtml(item.name) + '</td>' +
+                '<td>' + escapeHtml(item.type) + '</td>' +
+                '<td><span class="ops-badge status-' + normalizeStatusClass(item.status) + '">' + formatStatus(item.status) + '</span></td>' +
+                '<td>' + escapeHtml(item.assigned_drone_name || "-") + '</td>' +
+                '<td>' + escapeHtml(item.assigned_pilot_name || "-") + '</td>' +
+                '<td>' + escapeHtml(formatDateTime(item.start_time)) + '</td>' +
+                '<td>' + escapeHtml(formatDateTime(item.end_time)) + '</td>' +
+                '<td><button class="btn btn-sm btn-primary tasking-detail-btn" data-task-id="' + item.id + '">详情</button></td>' +
+                '</tr>';
+        }).join("");
+
+        Array.from(tbody.querySelectorAll("tr")).forEach(function (row) {
+            row.addEventListener("click", function () {
+                state.selectedTaskId = row.dataset.taskId;
+                loadHistory();
+            });
+        });
+        Array.from(document.querySelectorAll(".tasking-detail-btn")).forEach(function (button) {
+            button.addEventListener("click", function (event) {
+                event.stopPropagation();
+                state.selectedTaskId = button.dataset.taskId;
+                loadHistory();
+            });
+        });
+        highlightSelectedRow();
+    }
+
+    function renderAssignmentTable(items) {
+        const tbody = document.getElementById("tasking-assignment-tbody");
+        if (!items.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">暂无分派记录</td></tr>';
+            return;
+        }
+        tbody.innerHTML = items.map(function (item) {
+            return '' +
+                '<tr>' +
+                '<td>' + escapeHtml(item.task_name || "-") + '</td>' +
+                '<td>' + escapeHtml(item.drone_name || "-") + '</td>' +
+                '<td>' + escapeHtml(item.pilot_name || "-") + '</td>' +
+                '<td><span class="ops-badge status-' + normalizeStatusClass(item.status) + '">' + formatStatus(item.status) + '</span></td>' +
+                '<td>' + escapeHtml(formatDateTime(item.timestamp)) + '</td>' +
+                '<td>' + escapeHtml(item.region || "-") + '</td>' +
+                '</tr>';
+        }).join("");
+    }
+
+    function renderPagination(prefix, pagination) {
+        const totalPages = pagination.total_pages || 1;
+        const pageInfo = document.getElementById(prefix + "-page-info");
+        const prevButton = document.getElementById(prefix + "-prev-page");
+        const nextButton = document.getElementById(prefix + "-next-page");
+        if (pageInfo) {
+            pageInfo.textContent =
+                "第 " + (pagination.page || 1) + " / " + totalPages + " 页，共 " + (pagination.total || 0) + " 条";
+        }
+        if (prevButton) {
+            prevButton.disabled = !pagination.has_previous;
+        }
+        if (nextButton) {
+            nextButton.disabled = !pagination.has_next;
+            nextButton.dataset.totalPages = totalPages;
+        }
+    }
+
+    function renderChart(chartData) {
+        const chartDom = document.getElementById("tasking-history-chart");
+        chart = chart || echarts.init(chartDom);
+        chart.setOption({
+            tooltip: { trigger: "axis" },
+            legend: { data: ["已完成", "执行中", "待执行"] },
+            grid: { left: 40, right: 20, top: 40, bottom: 30 },
+            xAxis: { type: "category", data: chartData.labels || [] },
+            yAxis: { type: "value" },
+            series: [
+                {
+                    name: "已完成",
+                    type: "line",
+                    smooth: true,
+                    data: (chartData.series || {}).completed || [],
+                    lineStyle: { color: "#0d6efd" },
+                    itemStyle: { color: "#0d6efd" },
+                },
+                {
+                    name: "执行中",
+                    type: "line",
+                    smooth: true,
+                    data: (chartData.series || {}).running || [],
+                    lineStyle: { color: "#198754" },
+                    itemStyle: { color: "#198754" },
+                },
+                {
+                    name: "待执行",
+                    type: "line",
+                    smooth: true,
+                    data: (chartData.series || {}).pending || [],
+                    lineStyle: { color: "#fd7e14" },
+                    itemStyle: { color: "#fd7e14" },
+                },
+            ],
+        });
+    }
+
+    function renderTaskDetail(detail) {
+        const target = document.getElementById("tasking-detail-panel");
+        const assignmentTarget = document.getElementById("tasking-detail-assignments");
+        const task = detail.selected_task;
+        if (!task) {
+            target.innerHTML = '<div class="text-muted">请选择任务查看详情</div>';
+            assignmentTarget.innerHTML = '<div class="text-muted">暂无分派记录</div>';
+            return;
+        }
+        target.innerHTML = '' +
+            '<div class="ops-detail-grid">' +
+            detailItem("任务名称", task.name) +
+            detailItem("任务类型", task.type) +
+            detailItem("当前状态", '<span class="ops-badge status-' + normalizeStatusClass(task.status) + '">' + formatStatus(task.status) + '</span>') +
+            detailItem("分配无人机", task.assigned_drone_name || "-") +
+            detailItem("分配飞手", task.assigned_pilot_name || "-") +
+            detailItem("任务区域", task.region || "-") +
+            detailItem("开始时间", formatDateTime(task.start_time)) +
+            detailItem("结束时间", formatDateTime(task.end_time)) +
+            detailItem("优先级", task.priority || "-") +
+            detailItem("延误状态", task.delayed ? "已延误" : "正常") +
+            '</div>' +
+            '<div class="mt-3 small text-muted">' + escapeHtml(task.description || "暂无任务描述") + '</div>';
+
+        const assignments = detail.assignments || [];
+        assignmentTarget.innerHTML = assignments.length ? '' +
+            '<div class="ops-mini-table">' +
+            '<table class="table table-sm align-middle">' +
+            '<thead><tr><th>无人机</th><th>飞手</th><th>状态</th><th>时间</th></tr></thead>' +
+            '<tbody>' + assignments.map(function (item) {
+                return '' +
+                    '<tr>' +
+                    '<td>' + escapeHtml(item.drone_name || "-") + '</td>' +
+                    '<td>' + escapeHtml(item.pilot_name || "-") + '</td>' +
+                    '<td><span class="ops-badge status-' + normalizeStatusClass(item.status) + '">' + formatStatus(item.status) + '</span></td>' +
+                    '<td>' + escapeHtml(formatDateTime(item.timestamp)) + '</td>' +
+                    '</tr>';
+            }).join("") + '</tbody></table></div>' : '<div class="text-muted">暂无分派记录</div>';
+    }
+
+    function renderReplayDates(detail) {
+        const replayDates = detail.replay_dates || [];
+        fillSelect(
+            "tasking-replay-date",
+            replayDates.map(function (item) {
+                return { value: item, label: item };
+            }),
+            "value",
+            "label",
+            true,
+            "全部日期"
+        );
+        if (replayDates.indexOf(state.replayDate) === -1) {
+            state.replayDate = "";
+        }
+        document.getElementById("tasking-replay-date").value = state.replayDate;
+    }
+
+    function renderMap(detail) {
+        if (!map) {
+            return;
+        }
+        trackLayer.clearLayers();
+        heatLayer.clearLayers();
+        const trajectories = (detail.trajectories || []).filter(function (item) {
+            return !state.replayDate || item.date === state.replayDate;
+        });
+        const heatPoints = detail.heat_points || [];
+        const bounds = [];
+
+        trajectories.forEach(function (segment) {
+            const latLngs = segment.points.map(function (point) {
+                const latLng = [point.lat, point.lng];
+                bounds.push(latLng);
+                return latLng;
+            });
+            if (!latLngs.length) {
+                return;
+            }
+            L.polyline(latLngs, {
+                color: segment.color,
+                weight: 4,
+                opacity: 0.85,
+            }).bindPopup(segment.task_name + " | " + formatStatus(segment.status)).addTo(trackLayer);
+            const lastPoint = segment.points[segment.points.length - 1];
+            L.circleMarker([lastPoint.lat, lastPoint.lng], {
+                radius: 6,
+                color: segment.color,
+                fillColor: segment.color,
+                fillOpacity: 0.9,
+            }).addTo(trackLayer);
+        });
+
+        heatPoints.forEach(function (item) {
+            const radius = 8 + Math.round((item.intensity || 0.3) * 18);
+            L.circleMarker([item.lat, item.lng], {
+                radius: radius,
+                color: "rgba(220, 53, 69, 0.35)",
+                fillColor: "rgba(220, 53, 69, 0.35)",
+                fillOpacity: 0.28,
+                weight: 1,
+            }).addTo(heatLayer);
+            bounds.push([item.lat, item.lng]);
+        });
+
+        if (bounds.length) {
+            map.fitBounds(bounds, { padding: [24, 24] });
+        } else {
+            map.setView([29.56301, 106.55156], 10);
+        }
+    }
+
+    function detailItem(label, value) {
+        return '' +
+            '<div>' +
+            '<label class="form-label mb-1">' + escapeHtml(label) + '</label>' +
+            '<p class="ops-detail-value">' + value + '</p>' +
+            '</div>';
+    }
+
+    function fillSelect(id, items, valueKey, labelKey, keepEmpty, emptyLabel) {
+        const target = document.getElementById(id);
+        const currentValue = target.value;
+        const options = [];
+        if (keepEmpty) {
+            options.push('<option value="">' + (emptyLabel || "全部") + "</option>");
+        }
+        items.forEach(function (item) {
+            options.push('<option value="' + escapeHtml(String(item[valueKey])) + '">' + escapeHtml(String(item[labelKey])) + "</option>");
+        });
+        target.innerHTML = options.join("");
+        if (Array.from(target.options).some(function (option) { return option.value === currentValue; })) {
+            target.value = currentValue;
+        }
+    }
+
+    function mapStringOption(item) {
+        return { value: item, label: item };
+    }
+
+    function exportData(url, params) {
+        const search = new URLSearchParams();
+        Object.keys(params).forEach(function (key) {
+            if (params[key] !== "" && params[key] !== null && params[key] !== undefined) {
+                search.append(key, params[key]);
+            }
+        });
+        window.open(url + "?" + search.toString(), "_blank");
+    }
+
+    function highlightSelectedRow() {
+        Array.from(document.querySelectorAll("#tasking-task-tbody tr")).forEach(function (row) {
+            row.classList.toggle("table-active", String(row.dataset.taskId) === String(state.selectedTaskId));
+        });
+    }
+
+    function normalizeStatusClass(status) {
+        const value = String(status || "").toLowerCase();
+        if (value === "completed" || value === "done" || value === "finished" || value === "success") {
+            return "completed";
+        }
+        if (value === "running" || value === "executing" || value === "in_progress" || value === "online" || value === "active" || value === "created") {
+            return "running";
+        }
+        if (value === "failed" || value === "error" || value === "abnormal" || value === "timeout" || value === "delayed") {
+            return "abnormal";
+        }
+        return "pending";
+    }
+
+    function formatStatus(status) {
+        const value = normalizeStatusClass(status);
+        return {
+            completed: "已完成",
+            running: "执行中",
+            pending: "待执行",
+            abnormal: "异常",
+        }[value];
+    }
+
+    function formatInputDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return year + "-" + month + "-" + day;
+    }
+
+    function formatDateTime(value) {
+        if (!value) {
+            return "-";
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return value;
+        }
+        return date.toLocaleString("zh-CN", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    }
+
+    function setText(id, value) {
+        document.getElementById(id).textContent = value;
+    }
+
+    function escapeHtml(text) {
+        return String(text)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;");
+    }
+
+    function handleError(error) {
+        const message = error && error.message ? error.message : "加载失败";
+        if (window.Common && Common.showMessage) {
+            Common.showMessage(message, "error");
+        }
+        window.console.error(error);
+    }
+
+    document.addEventListener("DOMContentLoaded", init);
+})();

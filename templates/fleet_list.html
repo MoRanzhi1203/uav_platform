@@ -5,63 +5,232 @@
 {% block breadcrumb_items %}
     <li class="breadcrumb-item active">机群管理</li>
 {% endblock %}
+{% block extra_css %}
+    <link href="{% static 'css/uav-ops.css' %}" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+{% endblock %}
 {% block content %}
 <section class="section">
     <div class="row">
-        <div class="col-lg-12">
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card ops-stat-card">
+                <div class="card-body">
+                    <h5 class="card-title">无人机总数 <span>| Fleet</span></h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-airplane-engines text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 id="fleet-stat-total">0</h6>
+                            <div class="trend-text">无人机资产总量</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card ops-stat-card">
+                <div class="card-body">
+                    <h5 class="card-title">在线率 <span>| 实时</span></h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-broadcast text-success"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 id="fleet-stat-online">0%</h6>
+                            <div class="trend-text">自动刷新在线状态与电量</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card ops-stat-card">
+                <div class="card-body">
+                    <h5 class="card-title">飞手总数 <span>| Crew</span></h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-person-badge text-warning"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 id="fleet-stat-pilot">0</h6>
+                            <div class="trend-text">关联飞手资质与执飞机型</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card ops-stat-card">
+                <div class="card-body">
+                    <h5 class="card-title">活跃任务数 <span>| 今日</span></h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-list-task text-danger"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 id="fleet-stat-active">0</h6>
+                            <div class="trend-text">任务执行链路联动调度模块</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card ops-filter-card">
+        <div class="card-body">
+            <div class="ops-toolbar mb-3">
+                <h5 class="card-title mb-0">历史数据筛选与导出</h5>
+                <div class="ops-toolbar-actions">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="fleet-export-list-btn">
+                        <i class="bi bi-download"></i> 导出无人机 CSV
+                    </button>
+                    <button type="button" class="btn btn-outline-success btn-sm" id="fleet-export-history-btn">
+                        <i class="bi bi-file-earmark-bar-graph"></i> 导出历史 CSV
+                    </button>
+                    <a class="btn btn-outline-secondary btn-sm" href="/fleet/detail/">
+                        <i class="bi bi-eye"></i> 详情页
+                    </a>
+                </div>
+            </div>
+            <form id="fleet-filter-form" class="row g-3">
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">开始日期</label>
+                    <input id="fleet-start-date" type="date" class="form-control">
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">结束日期</label>
+                    <input id="fleet-end-date" type="date" class="form-control">
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">聚合方式</label>
+                    <select id="fleet-grain" class="form-select">
+                        <option value="day">按日</option>
+                        <option value="week">按周</option>
+                        <option value="month">按月</option>
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">状态</label>
+                    <select id="fleet-status" class="form-select">
+                        <option value="">全部状态</option>
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">区域</label>
+                    <select id="fleet-region" class="form-select">
+                        <option value="">全部区域</option>
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">飞手</label>
+                    <select id="fleet-pilot" class="form-select">
+                        <option value="">全部飞手</option>
+                    </select>
+                </div>
+                <div class="col-lg-6 col-md-8">
+                    <label class="form-label">关键字</label>
+                    <input id="fleet-keyword" type="text" class="form-control" placeholder="名称、型号、编码、序列号">
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">每页条数</label>
+                    <select id="fleet-page-size" class="form-select">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+                <div class="col-lg-4 d-flex align-items-end gap-2">
+                    <button id="fleet-query-btn" type="button" class="btn btn-primary">
+                        <i class="bi bi-search"></i> 查询
+                    </button>
+                    <button id="fleet-reset-btn" type="button" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-clockwise"></i> 重置
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-7">
             <div class="card">
                 <div class="card-body">
-                    <!-- 模块工具栏 -->
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h5 class="card-title">机群资源管理 <span>| 飞手、起降点、无人机、编队与编队成员总览</span></h5>
-                        <a class="btn btn-primary" href="/fleet/detail/">
-                            <i class="bi bi-eye"></i> 查看实体详情演示页
-                        </a>
+                    <h5 class="card-title">历史任务趋势 <span>| 完成 / 执行中 / 待执行</span></h5>
+                    <div id="fleet-history-chart" class="ops-chart"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <div class="ops-toolbar mb-3">
+                        <h5 class="card-title mb-0">无人机列表</h5>
+                        <div class="ops-legend">
+                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#0d6efd;"></span> 已完成</span>
+                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#198754;"></span> 执行中</span>
+                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#fd7e14;"></span> 待执行</span>
+                        </div>
                     </div>
-
-                    <!-- 标签页 -->
-                    <div class="mb-4">
-                        <ul class="nav nav-tabs" id="fleetTabs" role="tablist">
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="pilots-tab" data-bs-toggle="tab" data-bs-target="#pilots" type="button" role="tab" aria-controls="pilots" aria-selected="true" data-endpoint="/api/fleet/pilots/">飞手</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="launch-sites-tab" data-bs-toggle="tab" data-bs-target="#launch-sites" type="button" role="tab" aria-controls="launch-sites" aria-selected="false" data-endpoint="/api/fleet/launch-sites/">起降点</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="drones-tab" data-bs-toggle="tab" data-bs-target="#drones" type="button" role="tab" aria-controls="drones" aria-selected="false" data-endpoint="/api/fleet/drones/">无人机</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="drone-groups-tab" data-bs-toggle="tab" data-bs-target="#drone-groups" type="button" role="tab" aria-controls="drone-groups" aria-selected="false" data-endpoint="/api/fleet/drone-groups/">编队</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="drone-group-members-tab" data-bs-toggle="tab" data-bs-target="#drone-group-members" type="button" role="tab" aria-controls="drone-group-members" aria-selected="false" data-endpoint="/api/fleet/drone-group-members/">编队成员</button>
-                            </li>
-                        </ul>
+                    <div class="table-responsive ops-table-wrap">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>无人机名称</th>
+                                    <th>状态</th>
+                                    <th>电量</th>
+                                    <th>所属区域</th>
+                                    <th>最近活动</th>
+                                    <th>任务数</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fleet-drone-tbody"></tbody>
+                        </table>
                     </div>
+                    <div class="ops-pagination mt-3">
+                        <div id="fleet-page-info" class="page-info">第 1 / 1 页，共 0 条</div>
+                        <div class="d-flex gap-2">
+                            <button id="fleet-prev-page" type="button" class="btn btn-outline-secondary btn-sm">上一页</button>
+                            <button id="fleet-next-page" type="button" class="btn btn-outline-secondary btn-sm">下一页</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-                    <!-- 标签页内容 -->
-                    <div class="tab-content" id="fleetTabsContent">
-                        <div class="tab-pane fade show active" id="pilots" role="tabpanel" aria-labelledby="pilots-tab">
-                            <div id="module-summary" class="module-summary mb-4"></div>
-                            <div id="data-table" class="table-shell"></div>
+        <div class="col-xl-5">
+            <div class="card">
+                <div class="card-body">
+                    <div class="ops-toolbar mb-3">
+                        <h5 class="card-title mb-0">GIS 历史轨迹与热力</h5>
+                        <div class="ops-toolbar-actions">
+                            <select id="fleet-replay-date" class="form-select form-select-sm">
+                                <option value="">全部日期</option>
+                            </select>
+                            <button id="fleet-replay-play" type="button" class="btn btn-outline-primary btn-sm">轨迹回放</button>
                         </div>
-                        <div class="tab-pane fade" id="launch-sites" role="tabpanel" aria-labelledby="launch-sites-tab">
-                            <div class="module-summary mb-4"></div>
-                            <div class="table-shell"></div>
-                        </div>
-                        <div class="tab-pane fade" id="drones" role="tabpanel" aria-labelledby="drones-tab">
-                            <div class="module-summary mb-4"></div>
-                            <div class="table-shell"></div>
-                        </div>
-                        <div class="tab-pane fade" id="drone-groups" role="tabpanel" aria-labelledby="drone-groups-tab">
-                            <div class="module-summary mb-4"></div>
-                            <div class="table-shell"></div>
-                        </div>
-                        <div class="tab-pane fade" id="drone-group-members" role="tabpanel" aria-labelledby="drone-group-members-tab">
-                            <div class="module-summary mb-4"></div>
-                            <div class="table-shell"></div>
-                        </div>
+                    </div>
+                    <div id="fleet-map" class="ops-map"></div>
+                </div>
+            </div>
+            <div class="card ops-detail-card">
+                <div class="card-body">
+                    <h5 class="card-title">无人机详细历史数据</h5>
+                    <div id="fleet-detail-panel" class="mb-3"></div>
+                    <div class="table-responsive ops-mini-table">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>周期</th>
+                                    <th>电量</th>
+                                    <th>完成/总数</th>
+                                    <th>飞行时长</th>
+                                    <th>耗电</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fleet-history-tbody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -70,18 +239,6 @@
 </section>
 {% endblock %}
 {% block extra_js %}
-<script src="{% static 'js/module-list.js' %}"></script>
-<script>
-    // 初始化标签页切换事件
-    document.addEventListener('DOMContentLoaded', function() {
-        const tabButtons = document.querySelectorAll('.nav-link');
-        tabButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                const endpoint = this.getAttribute('data-endpoint');
-                // 这里可以添加加载对应数据的逻辑
-                console.log('切换到标签页，请求端点:', endpoint);
-            });
-        });
-    });
-</script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="{% static 'js/fleet-dashboard.js' %}"></script>
 {% endblock %}
