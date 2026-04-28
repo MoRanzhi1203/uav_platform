@@ -274,6 +274,7 @@ class TerrainMap {
     this.topicBounds = null;
     this.terrainSources = new Map();
     this.activeSelectionToken = 0;
+    this.activeLayerMode = 'plots';
     this.layerVisibility = {
       boundary: false,
       plots: true
@@ -303,33 +304,28 @@ class TerrainMap {
   }
 
   addLayerGroups() {
-    this.layerManager.addLayerGroup('terrains');
+    this.layerManager.addLayerGroup('terrainBoundaries');
     this.layerManager.addLayerGroup('terrainPlots');
   }
 
   bindEvents() {
-    const layerButtons = Array.from(document.querySelectorAll('[data-layer]'));
-    const syncLayerButtons = (activeLayer) => {
-      layerButtons.forEach(button => {
-        const layerName = button.getAttribute('data-layer');
-        const isActive = layerName === activeLayer;
-        button.classList.toggle('active', isActive);
-        this.toggleLayer(layerName, isActive);
-      });
-    };
+    const boundaryButton = document.getElementById('btn-boundary');
+    const plotButton = document.getElementById('btn-plot');
+    const initialActiveLayer = this.layerVisibility.boundary ? 'boundary' : 'plots';
+    this.setActiveLayerMode(initialActiveLayer);
 
-    const initialActiveLayer = layerButtons.find(button => this.layerVisibility[button.getAttribute('data-layer')] !== false)
-      ?.getAttribute('data-layer') || 'plots';
-    syncLayerButtons(initialActiveLayer);
+    boundaryButton?.addEventListener('click', () => {
+      if (this.activeLayerMode === 'boundary') {
+        return;
+      }
+      this.setActiveLayerMode('boundary');
+    });
 
-    layerButtons.forEach(button => {
-      const layerName = button.getAttribute('data-layer');
-      button.addEventListener('click', () => {
-        if (button.classList.contains('active')) {
-          return;
-        }
-        syncLayerButtons(layerName);
-      });
+    plotButton?.addEventListener('click', () => {
+      if (this.activeLayerMode === 'plots') {
+        return;
+      }
+      this.setActiveLayerMode('plots');
     });
 
     document.getElementById('resetMapBtn').addEventListener('click', () => {
@@ -539,12 +535,30 @@ class TerrainMap {
   getTerrainBoundaryStyle() {
     return {
       color: '#2563eb',
-      weight: 4,
+      weight: 2,
       opacity: 0.95,
       fillColor: '#60a5fa',
+      fill: false,
       fillOpacity: 0,
       className: 'terrain-current-boundary'
     };
+  }
+
+  setActiveButton(buttonId) {
+    const boundaryButton = document.getElementById('btn-boundary');
+    const plotButton = document.getElementById('btn-plot');
+    const buttonStates = [
+      [boundaryButton, buttonId === 'btn-boundary'],
+      [plotButton, buttonId === 'btn-plot']
+    ];
+
+    buttonStates.forEach(([button, isActive]) => {
+      if (!button) {
+        return;
+      }
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
   }
 
   getTerrainPopupHtml(terrain) {
@@ -790,10 +804,38 @@ class TerrainMap {
 
   renderCurrentTerrainBoundary(terrain, plots = null) {
     this.clearCurrentTerrainBoundary();
-    this.currentTerrainLayerKey = null;
-    this.currentTerrainLayer = null;
-    this.currentTerrainHasGeometry = false;
-    return null;
+    const plotBoundaryGeoJSON = this.buildTerrainGeoJSONFromPlots(plots);
+    const boundarySource = terrain?.boundary || terrain?.geojson || terrain?.boundary_geojson || terrain?.boundary_json || null;
+    const normalizedGeoJSON = plotBoundaryGeoJSON || this.normalizeGeoJSON(boundarySource) || this.getTerrainGeoJSON(terrain, plots);
+    if (!normalizedGeoJSON) {
+      return null;
+    }
+
+    const boundaryStyle = this.getTerrainBoundaryStyle();
+    const boundaryLayer = L.geoJSON(normalizedGeoJSON, {
+      style: () => boundaryStyle,
+      onEachFeature: (_feature, featureLayer) => {
+        featureLayer.bindPopup(this.getTerrainPopupHtml(terrain), {
+          className: 'terrain-map-popup'
+        });
+        featureLayer.on('mouseover', () => {
+          featureLayer.setStyle({
+            weight: boundaryStyle.weight + 1
+          });
+        });
+        featureLayer.on('mouseout', () => {
+          featureLayer.setStyle(boundaryStyle);
+        });
+      }
+    });
+
+    const layerKey = `terrain-boundary-${terrain?.id ?? Date.now()}`;
+    this.currentTerrainLayerKey = layerKey;
+    this.currentTerrainLayer = boundaryLayer;
+    this.currentTerrainHasGeometry = true;
+    this.layerManager.addLayer(layerKey, boundaryLayer, 'terrainBoundaries');
+    this.registerTopicBounds(boundaryLayer);
+    return boundaryLayer;
   }
 
   async fetchTerrainPlots(areaId) {
@@ -935,12 +977,14 @@ class TerrainMap {
     this.topicBounds = null;
     this.currentTerrain = sourceTerrain;
 
-    // 管理页预览仅绘制地块，TerrainArea 边界数据仍保留给导入导出和校验逻辑使用。
     await this.loadTerrainPlots(sourceTerrain.id, selectionToken);
 
     if (selectionToken !== this.activeSelectionToken) {
       return;
     }
+
+    this.renderCurrentTerrainBoundary(sourceTerrain, this.currentRenderableTerrainPlots);
+    this.setActiveLayerMode(this.activeLayerMode);
 
     // 自动缩放优先跟随可渲染地块。
     if (fit) {
@@ -958,9 +1002,23 @@ class TerrainMap {
 
   toggleLayer(layer, visible) {
     this.layerVisibility[layer] = visible;
+    if (layer === 'boundary') {
+      this.layerManager.toggleLayerGroup('terrainBoundaries', visible);
+    }
     if (layer === 'plots') {
       this.layerManager.toggleLayerGroup('terrainPlots', visible);
     }
+  }
+
+  setActiveLayerMode(layerName) {
+    const activeLayer = layerName === 'boundary' ? 'boundary' : 'plots';
+    const showBoundary = activeLayer === 'boundary';
+    const showPlots = activeLayer === 'plots';
+
+    this.activeLayerMode = activeLayer;
+    this.toggleLayer('boundary', showBoundary);
+    this.toggleLayer('plots', showPlots);
+    this.setActiveButton(showBoundary ? 'btn-boundary' : 'btn-plot');
   }
 
   resetView() {

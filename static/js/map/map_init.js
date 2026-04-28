@@ -235,6 +235,11 @@ class LayerManager {
   // 移除图层
   removeLayer(name) {
     if (this.layers[name]) {
+      Object.values(this.layerGroups).forEach(group => {
+        if (group?.hasLayer?.(this.layers[name])) {
+          group.removeLayer(this.layers[name]);
+        }
+      });
       this.map.removeLayer(this.layers[name]);
       delete this.layers[name];
     }

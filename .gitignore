@@ -1,71 +1,95 @@
-# Django
-*.log
-*.pot
-*.pyc
+# Python
 __pycache__/
-local_settings.py
-.env
-db.sqlite3
-db.sqlite3-journal
-
-# Python artifacts
+*.py[cod]
 *.pyo
 *.pyd
+.Python
+.python-version
+
+# Django
+local_settings.py
+.env
+.env.*
+db.sqlite3
+*.sqlite3
+db.sqlite3-journal
+*.log
+media/
+staticfiles/
+
+# Virtual environment
 venv/
 env/
 .venv/
-.python-version
+ENV/
+env.bak/
+venv.bak/
+
+# Python tooling / tests
 .pytest_cache/
 .coverage
 htmlcov/
 .mypy_cache/
 .tox/
+.ruff_cache/
 
-# IDE & Editor
-.vscode/
+# IDE / editor
 .idea/
+.vscode/
 *.swp
 *.swo
 *.sublime-project
 *.sublime-workspace
 
-# OS
-Thumbs.db
+# System
 .DS_Store
+Thumbs.db
+desktop.ini
 ehthumbs.db
 Icon?
 
-# Media & Static files
-media/
-staticfiles/
-
-# Test & Debug
-all_dbs_check.txt
-all_zone.txt
-check_all_zone.py
-check_session.py
-debug_error.py
-error_page.html
-import_terrain_data.py
-
-# Data files (Exclude large raw data if necessary, keep essential ones)
-data/shp/*.shp
-data/shp/*.dbf
-data/shp/*.shx
-data/shp/*.prj
-# data/geojson/ # Optional: exclude if very large
-
-# Documentation artifacts
-# instructions/ # Keep as it contains dev info
-# *.md # Usually keep MD files
-
-# Other
+# Node / frontend
 node_modules/
 dist/
 build/
-.DS_Store
+.cache/
+.vite/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 .eslintcache
 
+# Temporary files
+*.tmp
+*.bak
+*.old
+*_backup.*
+*_bak.*
+*_old.*
+copy_*
+复制*
+.tmp-edge-profile/
+
+# AI editor cache
+.trae/
+.cursor/
+.continue/
+.codex/
+
+# Coverage / reports
+coverage.xml
+
+# Large raw GIS files
+*.shp.xml
+*.qix
+*.cpg
+*.lock
+
+# Raw data archives (keep lightweight runtime data under static/)
+data/shp/**/*.shp
+data/shp/**/*.dbf
+data/shp/**/*.shx
+data/shp/**/*.prj
+data/shp/**/*.cpg
+data/shp/**/*.qix
