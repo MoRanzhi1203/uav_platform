@@ -71,6 +71,11 @@ copy_*
 复制*
 .tmp-edge-profile/
 
+# Keep exported SQL dumps under version control when explicitly generated
+!db_dumps/
+!db_dumps/*.sql
+!db_dumps/.gitkeep
+
 # AI editor cache
 .trae/
 .cursor/
