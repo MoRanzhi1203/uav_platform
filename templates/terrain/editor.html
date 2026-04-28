@@ -991,10 +991,10 @@
     display: grid;
     grid-template-columns: 20px 20px 14px minmax(0, 1fr) auto;
     grid-template-areas: "check visibility color name actions";
-    align-items: center;
+    align-items: start;
     width: 100%;
-    min-height: 32px;
-    padding: 4px 6px;
+    min-height: 42px;
+    padding: 6px 6px;
     column-gap: 4px;
   }
 
@@ -1032,6 +1032,17 @@
     text-overflow: ellipsis;
   }
 
+  #selectedAreas .layer-meta {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    line-height: 1.2;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   #selectedAreas .layer-actions {
     grid-area: actions;
     display: inline-flex;
@@ -1064,7 +1075,7 @@
     #selectedAreas .layer-item-content {
       grid-template-columns: 18px 18px 14px minmax(0, 1fr) auto;
       grid-template-areas: "check visibility color name actions";
-      align-items: center;
+      align-items: start;
       column-gap: 4px;
       row-gap: 0;
     }
@@ -2097,7 +2108,7 @@
                       class="layer-color me-2" style="background-color: #3498db;"></span>水域</a></li>
                 <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="road"><span
                       class="layer-color me-2" style="background-color: #9CA3AF;"></span>道路</a></li>
-                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="bare"><span
+                <li><a class="dropdown-item d-flex align-items-center" href="#" data-value="bare_land"><span
                       class="layer-color me-2" style="background-color: #D97706;"></span>裸地</a></li>
               </ul>
               <input type="hidden" id="plotType" value="forest">
@@ -2249,7 +2260,7 @@
                 <option value="building">建筑</option>
                 <option value="water">水域</option>
                 <option value="road">道路</option>
-                <option value="bare">裸地</option>
+                <option value="bare_land">裸地</option>
               </select>
             </div>
             <div class="mb-3">

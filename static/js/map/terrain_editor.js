@@ -134,7 +134,7 @@ class TerrainEditor {
     this.areaData = null; // 区域基础信息
     this.originalBoundaryLayer = null; // 原始边界参考图层
     this.originalBoundaryGeoJSON = null; // 原始边界参考数据，默认仅作隐藏兜底
-    this.showOriginalBoundary = Boolean(options.showOriginalBoundary);
+    this.showOriginalBoundary = false;
     this.backgroundLayerKeys = []; // 管理 dataManager 注入的业务/历史背景图层
     this.subcategoryOptionsByCategory = {};
     this._disjointSplitModalBound = false;
@@ -172,7 +172,7 @@ class TerrainEditor {
       building: '#475569',    // 建筑 - 深灰蓝
       water: '#3498db',       // 水域 - 蓝色
       road: '#9CA3AF',        // 道路 - 灰色
-      bare: '#D97706',        // 裸地 - 橙褐
+      bare_land: '#D97706',   // 裸地 - 橙褐
       selected: '#0d6efd',    // 选中 - 蓝色
       editing: '#ffc107',     // 编辑中 - 黄色
       highlight: '#198754'    // 高亮 - 绿色
@@ -225,6 +225,32 @@ class TerrainEditor {
     
     // 初始化
     this.init();
+  }
+
+  normalizePlotTypeKey(type) {
+    const rawType = String(type || '').trim();
+    const aliasMap = {
+      forest: 'forest',
+      '林区': 'forest',
+      farmland: 'farmland',
+      '农田': 'farmland',
+      building: 'building',
+      '建筑': 'building',
+      water: 'water',
+      '水域': 'water',
+      road: 'road',
+      '道路': 'road',
+      bare: 'bare_land',
+      bare_land: 'bare_land',
+      '裸地': 'bare_land',
+      open: 'bare_land',
+      open_land: 'bare_land',
+      empty_land: 'bare_land',
+      unused_land: 'bare_land',
+      '空地': 'bare_land',
+      '开敞地': 'bare_land'
+    };
+    return aliasMap[rawType] || aliasMap[rawType.toLowerCase?.()] || 'bare_land';
   }
   
   // 初始化
@@ -1399,14 +1425,9 @@ class TerrainEditor {
     this.originalBoundaryLayer = null;
   }
 
-  setOriginalBoundaryReference(geojson, options = {}) {
-    const { visible = this.showOriginalBoundary } = options;
+  setOriginalBoundaryReference(geojson) {
     this.originalBoundaryGeoJSON = geojson || null;
     this.clearOriginalBoundaryLayer();
-
-    if (this.originalBoundaryGeoJSON && visible) {
-      this.renderAreaBoundary(this.originalBoundaryGeoJSON, { visible: true });
-    }
   }
 
   clearManagedBackgroundLayers() {
@@ -1521,7 +1542,7 @@ class TerrainEditor {
 
     return JSON.stringify({
       areaId: areaIds[0] ?? null,
-      category: zoneData?.category || zoneData?.type || '',
+      category: this.normalizePlotTypeKey(zoneData?.category || zoneData?.type || ''),
       subType: zoneData?.subcategory || zoneData?.sub_type || zoneData?.type || '',
       geometry: geometry || {}
     });
@@ -1922,6 +1943,8 @@ class TerrainEditor {
   rebuildPlotLayer(plot) {
     if (!plot) return;
 
+    this.syncPlotArea(plot);
+
     if (plot.layer) {
       this.layerManager.layerGroups.working.removeLayer(plot.layer);
     }
@@ -2180,6 +2203,9 @@ class TerrainEditor {
       }
       
       const name = this.getPlotDisplayName(plot, `地块 ${index + 1}`);
+      const typeLabel = this.getPlotTypeLabel(plot.properties?.type);
+      const subtypeLabel = this.getPlotSubtypeLabel(plot);
+      const metaLabel = subtypeLabel ? `${typeLabel} / ${subtypeLabel}` : typeLabel;
       item.title = name;
       const isLocked = !!plot.locked;
       const isVisible = plot.visible !== false;
@@ -2198,6 +2224,7 @@ class TerrainEditor {
           </div>
           <div class="layer-name-area" title="${name}">
             <span class="layer-name text-truncate" title="${name}">${name}</span>
+            <span class="layer-meta text-truncate" title="${metaLabel}">${metaLabel}</span>
           </div>
           <div class="layer-actions">
             <i class="bi ${isLocked ? 'bi-lock-fill text-danger' : 'bi-unlock'} layer-lock" title="${isLocked ? '解锁图层' : '锁定图层'}"></i>
@@ -2295,6 +2322,28 @@ class TerrainEditor {
       return name.trim();
     }
     return fallback;
+  }
+
+  getPlotTypeLabel(type) {
+    const normalizedType = this.normalizePlotTypeKey(type);
+    const labels = {
+      forest: '林区',
+      farmland: '农田',
+      building: '建筑',
+      water: '水域',
+      road: '道路',
+      bare_land: '裸地'
+    };
+    return labels[normalizedType] || '未分类';
+  }
+
+  getPlotSubtypeLabel(plot) {
+    return String(
+      plot?.properties?.subcategoryName
+      || plot?.properties?.subtype_label
+      || plot?.properties?.subType
+      || ''
+    ).trim();
   }
 
   updateCurrentPlotTitle() {
@@ -3372,20 +3421,37 @@ class TerrainEditor {
       return;
     }
 
+    // 3. 校验地块不得越出当前 TerrainArea 边界
+    const boundaryIssues = this.checkPlotsOutsideBoundary(validPlots);
+    if (boundaryIssues.length > 0) {
+      let message = '检测到地块超出当前地形边界，请调整后再保存：<br><br>';
+      boundaryIssues.forEach((issue, index) => {
+        message += `${index + 1}. <b>${issue.plotName}</b> 超出边界约 ${issue.outsideRatio}% 。<br>`;
+      });
+      message += '<br><i>提示：请使用移动、裁剪或重绘工具，将所有地块控制在 TerrainArea 蓝色边界内。</i>';
+      this.showAlert(message, '地块越界检测', 'danger');
+      return;
+    }
+
     // 构建地形数据
     const terrainPayload = {
       terrain: {
         id: terrainId || null,
         name: terrainName,
-        description: terrainDesc
+        description: terrainDesc,
+        area: 0
       },
       plots: [] // 收集所有地块
     };
+    let totalPlotArea = 0;
 
     // 收集所有有效图层地块
     for (const plot of validPlots) {
       const properties = plot.properties || this.getCurrentPlotPropertiesFromForm();
-      let landType = properties.type || 'forest';
+      let landType = this.normalizePlotTypeKey(properties.type || 'forest');
+      const plotAreaHa = this.calculateGeoJSONAreaHa(plot.geojson, properties.areaHa || 0);
+      properties.areaHa = plotAreaHa;
+      totalPlotArea += plotAreaHa;
 
       terrainPayload.plots.push({
         id: plot.db_id || null,
@@ -3394,7 +3460,7 @@ class TerrainEditor {
         category: landType,
         type: properties.subType || '', // 子类别
         risk_level: properties.riskLevel || 'low',
-        area: properties.areaHa || 0,
+        area: plotAreaHa,
         description: properties.description || '',
         geom_json: plot.geojson,
         grid_json: plot.gridData || { grid_size: 10, cells: [] },
@@ -3408,10 +3474,15 @@ class TerrainEditor {
         meta_json: {
           source: 'manual_draw',
           editor_mode: 'pixel_brush',
-          sub_type: properties.subType || ''
+          sub_type: properties.subType || '',
+          type_label: this.getPlotTypeLabel(landType),
+          subtype_label: properties.subcategoryName || properties.subType || '',
+          standard_type: landType,
+          area: plotAreaHa
         }
       });
     }
+    terrainPayload.terrain.area = Number(totalPlotArea.toFixed(2));
 
     console.log('--- 准备保存地形数据 ---', terrainPayload);
 
@@ -3501,6 +3572,82 @@ class TerrainEditor {
     return issues;
   }
 
+  getAreaBoundaryConstraint() {
+    const parseJson = (value) => {
+      let current = value;
+      for (let i = 0; i < 3 && typeof current === 'string'; i += 1) {
+        try {
+          current = JSON.parse(current);
+        } catch (_) {
+          return null;
+        }
+      }
+      return current;
+    };
+
+    const rawBoundary = this.originalBoundaryGeoJSON || this.areaData?.boundary_json || this.areaData?.boundary || null;
+    const boundary = parseJson(rawBoundary);
+    if (!boundary || typeof boundary !== 'object') {
+      return null;
+    }
+
+    if (boundary.type === 'Feature') {
+      return boundary;
+    }
+
+    if (boundary.type === 'Polygon' || boundary.type === 'MultiPolygon') {
+      return {
+        type: 'Feature',
+        geometry: boundary,
+        properties: {}
+      };
+    }
+
+    return null;
+  }
+
+  checkPlotsOutsideBoundary(plots) {
+    if (!Array.isArray(plots) || !plots.length || typeof turf === 'undefined') {
+      return [];
+    }
+
+    const boundaryFeature = this.getAreaBoundaryConstraint();
+    if (!boundaryFeature) {
+      return [];
+    }
+
+    const issues = [];
+    plots.forEach((plot, index) => {
+      const plotFeature = plot?.geojson?.geometry
+        ? plot.geojson
+        : (plot?.geojson ? { type: 'Feature', geometry: plot.geojson, properties: {} } : null);
+      if (!plotFeature) {
+        return;
+      }
+
+      try {
+        const plotArea = turf.area(plotFeature);
+        const intersection = turf.intersect(boundaryFeature, plotFeature);
+        const coveredArea = intersection ? turf.area(intersection) : 0;
+        const outsideRatio = plotArea > 0
+          ? Math.max(0, ((plotArea - coveredArea) / plotArea) * 100)
+          : 0;
+
+        if (!intersection || outsideRatio > 0.1) {
+          issues.push({
+            plotId: plot.id,
+            plotName: plot.properties?.name || `地块 ${index + 1}`,
+            outsideRatio: outsideRatio.toFixed(2)
+          });
+        }
+      } catch (error) {
+        console.warn('地块边界校验出错:', error);
+      }
+    });
+
+    return issues;
+  }
+
 
   // 加载区域编辑详情 (包括区域边界、地块及其附加记录)
   async loadAreaEditDetail(areaId) {
@@ -3545,7 +3692,12 @@ class TerrainEditor {
 
     const payload = result.data.editor_payload || result.data;
     const area = payload.area || result.data.area || {};
-    const rawZones = Array.isArray(payload.zones) ? payload.zones : (Array.isArray(result.data.zones) ? result.data.zones : []);
+    const rawZones = [
+      ...(Array.isArray(payload.plots) ? payload.plots : []),
+      ...(Array.isArray(payload.zones) ? payload.zones : []),
+      ...(Array.isArray(result.data.plots) ? result.data.plots : []),
+      ...(Array.isArray(result.data.zones) ? result.data.zones : [])
+    ];
     const viewMeta = payload.view_meta || result.data.view_meta || {};
     const boundaryGeoJSON = area.boundary_json || area.boundary || payload.boundary_json || null;
 
@@ -3574,10 +3726,8 @@ class TerrainEditor {
     if (terrainDescInput) terrainDescInput.value = area.description || '';
     if (terrainIdInput) terrainIdInput.value = area.id || '';
 
-    // 原始 boundary_json 仅保留为内部参考数据，默认不直接渲染到地图。
-    this.setOriginalBoundaryReference(boundaryGeoJSON, {
-      visible: this.showOriginalBoundary
-    });
+    // 原始 boundary_json 仅保留为内部参考数据，用于越界校验与导出，不直接渲染到地图。
+    this.setOriginalBoundaryReference(boundaryGeoJSON);
 
     const zones = this.filterRenderableZones(rawZones, { areaId });
 
@@ -3623,10 +3773,8 @@ class TerrainEditor {
     console.log(`成功加载地形 "${area.name || areaId}", 原始地块 ${rawZones.length} 个，实际渲染 ${zones.length} 个`);
   }
 
-  // 渲染区域边界 (作为背景参考)
-  renderAreaBoundary(geojson, options = {}) {
-    // 优化目的: boundary_json 仅作为可选参考层，默认隐藏，仅在显式启用时渲染。
-    const { visible = this.showOriginalBoundary } = options;
+  // 仅缓存区域边界，用于校验和导出，不在编辑器默认绘制。
+  renderAreaBoundary(geojson) {
     const parseJson = (value) => {
       let current = value;
       for (let i = 0; i < 3 && typeof current === 'string'; i += 1) {
@@ -3691,33 +3839,7 @@ class TerrainEditor {
     const normalizedGeoJSON = normalizeGeoJSON(geojson);
     this.originalBoundaryGeoJSON = normalizedGeoJSON;
     this.clearOriginalBoundaryLayer();
-    if (!normalizedGeoJSON) return null;
-
-    try {
-      this.originalBoundaryLayer = L.geoJSON(normalizedGeoJSON, {
-        style: {
-          color: '#666',
-          weight: 2,
-          dashArray: '5, 10',
-          fillOpacity: 0.05,
-          interactive: false
-        }
-      });
-
-      if (visible) {
-        if (this.layerManager?.layerGroups?.auxiliary) {
-          this.layerManager.layerGroups.auxiliary.addLayer(this.originalBoundaryLayer);
-        } else {
-          this.originalBoundaryLayer.addTo(this.map);
-        }
-      }
-
-      return this.originalBoundaryLayer;
-    } catch (err) {
-      console.warn('渲染区域边界失败，GeoJSON 可能不完整:', err, normalizedGeoJSON);
-      this.originalBoundaryLayer = null;
-      return null;
-    }
+    return null;
   }
 
   // 从数据库数据渲染地块 (Zone) 到地图
@@ -3805,8 +3927,15 @@ class TerrainEditor {
       return null;
     }
 
-    const category = data?.category || data?.type || meta?.category || '';
-    const subType = data?.subcategory || data?.sub_type || data?.type || meta?.sub_type || meta?.subcategory || '';
+    const category = this.normalizePlotTypeKey(
+      data?.category
+      || data?.type
+      || meta?.standard_type
+      || meta?.category
+      || meta?.type
+      || data?.type_label
+    );
+    const subType = data?.subcategory || data?.subtype || data?.sub_type || meta?.sub_type || meta?.subcategory || '';
     const visible = styleData?.visible !== false;
     const locked = !!styleData?.locked;
 
@@ -3816,11 +3945,12 @@ class TerrainEditor {
       category: category,
       riskLevel: data?.risk_level || meta?.risk_level || 'low',
       description: data?.description || meta?.description || '',
-      areaHa: data?.area || meta?.area || 0,
+      areaHa: 0,
       subType: subType,
       subcategory: subType,
-      subcategoryName: data?.subcategory_name || meta?.subcategory_name || subType
+      subcategoryName: data?.subtype_label || data?.subcategory_name || meta?.subtype_label || meta?.subcategory_name || subType
     };
+    properties.areaHa = this.calculateGeoJSONAreaHa(normalizedGeoJSON, data?.area || meta?.area || 0);
 
     const baseStyle = this.getPlotStyle(properties.type, false, false);
     const layerStyle = {
@@ -3885,36 +4015,119 @@ class TerrainEditor {
    }
 
   exportGeoJSON() {
-    const features = this.userPlots.map((plot) => ({
-      type: 'Feature',
-      geometry: plot.geojson?.geometry,
-      properties: {
-        ...plot.properties,
-        id: plot.id
+    const ensureFeature = (geojson, properties = {}) => {
+      if (!geojson || typeof geojson !== 'object') {
+        return null;
       }
-    })).filter(f => !!f.geometry);
-
-    const geojson = {
-      type: 'FeatureCollection',
-      features
+      if (geojson.type === 'Feature') {
+        return {
+          ...geojson,
+          properties: {
+            ...(geojson.properties || {}),
+            ...properties
+          }
+        };
+      }
+      if (geojson.type === 'Polygon' || geojson.type === 'MultiPolygon') {
+        return {
+          type: 'Feature',
+          geometry: geojson,
+          properties: { ...properties }
+        };
+      }
+      return null;
     };
 
-    const geojsonString = JSON.stringify(geojson, null, 2);
+    const buildBoundsFromGeoJSON = (geojson) => {
+      if (!geojson) {
+        return null;
+      }
+      try {
+        const layer = L.geoJSON(geojson);
+        const bounds = layer.getBounds();
+        if (!bounds?.isValid?.()) {
+          return null;
+        }
+        return {
+          south_west: [bounds.getWest(), bounds.getSouth()],
+          north_east: [bounds.getEast(), bounds.getNorth()]
+        };
+      } catch (_) {
+        return null;
+      }
+    };
+
+    const terrainName = document.getElementById('terrainName')?.value?.trim() || this.areaData?.name || '未命名地形';
+    const terrainDesc = document.getElementById('terrainDesc')?.value?.trim() || this.areaData?.description || '';
+    const boundarySource = this.originalBoundaryGeoJSON || this.areaData?.boundary_json || this.areaData?.boundary || null;
+    const boundaryFeature = ensureFeature(boundarySource);
+
+    const plots = this.userPlots.map((plot) => {
+      const landType = this.normalizePlotTypeKey(plot?.properties?.type);
+      const subtype = String(plot?.properties?.subType || plot?.properties?.subcategory || '').trim();
+      const subtypeLabel = String(
+        plot?.properties?.subcategoryName
+        || plot?.properties?.subtype_label
+        || subtype
+      ).trim();
+      const areaHa = this.calculateGeoJSONAreaHa(plot?.geojson, plot?.properties?.areaHa || 0);
+      if (plot?.properties) {
+        plot.properties.areaHa = areaHa;
+      }
+      const geometry = ensureFeature(plot.geojson, {
+        id: plot.db_id || plot.id || null,
+        name: plot?.properties?.name || '未命名地块',
+        type: landType,
+        type_label: this.getPlotTypeLabel(landType),
+        subtype: subtype,
+        subtype_label: subtypeLabel,
+        area: areaHa
+      });
+      if (!geometry) {
+        return null;
+      }
+      return {
+        id: plot.db_id || null,
+        name: plot?.properties?.name || '未命名地块',
+        type: landType,
+        type_label: this.getPlotTypeLabel(landType),
+        subtype: subtype,
+        subtype_label: subtypeLabel,
+        area: areaHa,
+        geometry
+      };
+    }).filter(Boolean);
+
+    const totalPlotArea = plots.reduce((sum, plot) => sum + (Number(plot.area) || 0), 0);
+    const exportPayload = {
+      id: this.areaId || this.areaData?.id || null,
+      name: terrainName,
+      risk_level: this.areaData?.risk_level || 'low',
+      area: Number(this.areaData?.area) || Number(totalPlotArea.toFixed(4)),
+      accuracy: this.areaData?.accuracy || 98,
+      description: terrainDesc,
+      bounds: buildBoundsFromGeoJSON(boundaryFeature),
+      geometry: boundaryFeature,
+      plots
+    };
+
+    const geojsonString = JSON.stringify(exportPayload, null, 2);
     const blob = new Blob([geojsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `uav_plots_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.geojson`;
+    a.download = `terrain_export_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    alert('GeoJSON 导出成功（仅包含用户绘制地块）');
+    alert(`地形 JSON 导出成功，已包含 ${plots.length} 个地块`);
   }
 
   getPlotColor(type) {
-    if (type && this.colorScheme[type]) return this.colorScheme[type];
+    const normalizedType = this.normalizePlotTypeKey(type);
+    if (normalizedType && this.colorScheme[normalizedType]) return this.colorScheme[normalizedType];
     return this.colorScheme.selected;
   }
 
@@ -3972,9 +4185,13 @@ class TerrainEditor {
 
   // 创建地块对象
   createPlotFromGeoJSON(geojson, properties, gridData = null, db_id = null) {
+    const nextProperties = {
+      ...(properties || {})
+    };
+    nextProperties.areaHa = this.calculateGeoJSONAreaHa(geojson, nextProperties.areaHa || 0);
     const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const layer = L.geoJSON(geojson, {
-      style: this.getPlotStyle(properties.type, false, false),
+      style: this.getPlotStyle(nextProperties.type, false, false),
       interactive: this.currentTool === 'move-layer',
       renderer: this.canvasRenderer
     });
@@ -3985,7 +4202,7 @@ class TerrainEditor {
       db_id, // 允许传入数据库 ID
       geojson,
       gridData: gridData || { grid_size: 10, cells: [] },
-      properties,
+      properties: nextProperties,
       visible: true,
       locked: false,
       layer
@@ -4865,27 +5082,7 @@ class TerrainEditor {
    * @param {boolean} show 是否显示
    */
   toggleOriginalBoundaryLayer(show) {
-    this.showOriginalBoundary = !!show;
-
-    if (!this.originalBoundaryGeoJSON) {
-      this.clearOriginalBoundaryLayer();
-      return;
-    }
-
-    if (this.showOriginalBoundary) {
-      if (this.originalBoundaryLayer) {
-        if (this.layerManager?.layerGroups?.auxiliary && !this.layerManager.layerGroups.auxiliary.hasLayer(this.originalBoundaryLayer)) {
-          this.layerManager.layerGroups.auxiliary.addLayer(this.originalBoundaryLayer);
-        } else if (this.map && !this.map.hasLayer(this.originalBoundaryLayer)) {
-          this.originalBoundaryLayer.addTo(this.map);
-        }
-        return;
-      }
-
-      this.renderAreaBoundary(this.originalBoundaryGeoJSON, { visible: true });
-      return;
-    }
-
+    this.showOriginalBoundary = false;
     this.clearOriginalBoundaryLayer();
   }
   
@@ -5286,28 +5483,29 @@ class TerrainEditor {
   }
 
   async fetchSubCategories(category, forceRefresh = false) {
-    if (!category) return [];
-    if (!forceRefresh && Array.isArray(this.subcategoryOptionsByCategory[category])) {
-      return this.subcategoryOptionsByCategory[category];
+    const normalizedCategory = this.normalizePlotTypeKey(category);
+    if (!normalizedCategory) return [];
+    if (!forceRefresh && Array.isArray(this.subcategoryOptionsByCategory[normalizedCategory])) {
+      return this.subcategoryOptionsByCategory[normalizedCategory];
     }
 
     try {
-      const response = await fetch(`/terrain/api/zones/subcategories/?category=${category}&area_id=${this.areaId || ''}`);
+      const response = await fetch(`/terrain/api/zones/subcategories/?category=${normalizedCategory}&area_id=${this.areaId || ''}`);
       const result = await response.json();
       if (result.code === 0 && result.data) {
-        this.subcategoryOptionsByCategory[category] = result.data.subcategories || [];
-        return this.subcategoryOptionsByCategory[category];
+        this.subcategoryOptionsByCategory[normalizedCategory] = result.data.subcategories || [];
+        return this.subcategoryOptionsByCategory[normalizedCategory];
       }
     } catch (e) {
       console.error('加载子类别失败:', e);
     }
 
-    this.subcategoryOptionsByCategory[category] = [];
+    this.subcategoryOptionsByCategory[normalizedCategory] = [];
     return [];
   }
 
   async loadSubCategories(selectedValue = null, categoryOverride = null) {
-    const category = categoryOverride || document.getElementById('plotType')?.value;
+    const category = this.normalizePlotTypeKey(categoryOverride || document.getElementById('plotType')?.value);
     if (!category) return;
 
     const subcategories = await this.fetchSubCategories(category);
@@ -5316,6 +5514,7 @@ class TerrainEditor {
 
   // 统一地块类型和子类型联动设置方法
   async setPlotCategoryAndLoadSubcategories(category, selectedSubcategory = '') {
+    category = this.normalizePlotTypeKey(category);
     const plotTypeInput = document.getElementById('plotType');
     const subTypeGroup = document.getElementById('subTypeGroup');
     
@@ -5336,6 +5535,7 @@ class TerrainEditor {
    * @param {string} category 选中的地块类型值
    */
   updatePlotTypeUI(category) {
+    category = this.normalizePlotTypeKey(category);
     const dropdownMenu = document.getElementById('plotTypeDropdownMenu');
     const selectedNameSpan = document.getElementById('selectedPlotTypeName');
     if (!dropdownMenu || !selectedNameSpan) return;
@@ -5896,9 +6096,9 @@ class TerrainEditor {
       building: '建筑',
       water: '水域',
       road: '道路',
-      bare: '裸地'
+      bare_land: '裸地'
     };
-    return categoryMap[category] || category;
+    return categoryMap[this.normalizePlotTypeKey(category)] || category;
   }
 
   getCurrentCategoryDisplayName(category) {
@@ -5942,7 +6142,7 @@ class TerrainEditor {
         name: '主干道',
         description: '承担主要交通组织功能的道路，通行等级和承载能力较高。'
       },
-      bare: {
+      bare_land: {
         name: '施工裸地',
         description: '受施工、堆放或临时扰动影响形成的裸露地表区域，植被覆盖较少。'
       }
@@ -6115,6 +6315,41 @@ class TerrainEditor {
       const result = prompt(message, defaultValue);
       if (onConfirm) onConfirm(result);
     }
+  }
+
+  calculateGeoJSONAreaHa(geojson, fallback = 0) {
+    const fallbackValue = Number(fallback) || 0;
+    if (!geojson || typeof turf === 'undefined') {
+      return fallbackValue;
+    }
+
+    const feature = geojson?.geometry
+      ? geojson
+      : ((geojson?.type === 'Polygon' || geojson?.type === 'MultiPolygon')
+        ? { type: 'Feature', geometry: geojson, properties: {} }
+        : null);
+
+    if (!feature?.geometry) {
+      return fallbackValue;
+    }
+
+    try {
+      return Number((turf.area(feature) / 10000).toFixed(2));
+    } catch (error) {
+      console.warn('地块面积计算失败，回退到现有面积值:', error);
+      return fallbackValue;
+    }
+  }
+
+  syncPlotArea(plot) {
+    if (!plot) return 0;
+    if (!plot.properties) {
+      plot.properties = {};
+    }
+
+    const areaHa = this.calculateGeoJSONAreaHa(plot.geojson, plot.properties.areaHa || 0);
+    plot.properties.areaHa = areaHa;
+    return areaHa;
   }
 
   // 计算面积（公顷）

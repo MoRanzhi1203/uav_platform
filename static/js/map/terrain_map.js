@@ -184,10 +184,24 @@ const TerrainSpatialUtils = window.TerrainSpatialUtils || (() => {
       return null;
     }
 
-    const minLng = coerceNumber(bbox.minLng ?? bbox.bbox_min_lng ?? bbox[0]);
-    const minLat = coerceNumber(bbox.minLat ?? bbox.bbox_min_lat ?? bbox[1]);
-    const maxLng = coerceNumber(bbox.maxLng ?? bbox.bbox_max_lng ?? bbox[2]);
-    const maxLat = coerceNumber(bbox.maxLat ?? bbox.bbox_max_lat ?? bbox[3]);
+    let minLng, minLat, maxLng, maxLat;
+
+    if (bbox.south_west && bbox.north_east) {
+      minLng = coerceNumber(bbox.south_west[0]);
+      minLat = coerceNumber(bbox.south_west[1]);
+      maxLng = coerceNumber(bbox.north_east[0]);
+      maxLat = coerceNumber(bbox.north_east[1]);
+    } else if (bbox.southWest && bbox.northEast) {
+      minLng = coerceNumber(bbox.southWest[0]);
+      minLat = coerceNumber(bbox.southWest[1]);
+      maxLng = coerceNumber(bbox.northEast[0]);
+      maxLat = coerceNumber(bbox.northEast[1]);
+    } else {
+      minLng = coerceNumber(bbox.minLng ?? bbox.bbox_min_lng ?? bbox[0]);
+      minLat = coerceNumber(bbox.minLat ?? bbox.bbox_min_lat ?? bbox[1]);
+      maxLng = coerceNumber(bbox.maxLng ?? bbox.bbox_max_lng ?? bbox[2]);
+      maxLat = coerceNumber(bbox.maxLat ?? bbox.bbox_max_lat ?? bbox[3]);
+    }
 
     if (!isValidLatLng(minLat, minLng) || !isValidLatLng(maxLat, maxLng)) {
       return null;
@@ -261,17 +275,17 @@ class TerrainMap {
     this.terrainSources = new Map();
     this.activeSelectionToken = 0;
     this.layerVisibility = {
-      terrain: true,
+      boundary: false,
       plots: true
     };
 
     this.plotTypeMeta = {
-      forest: { label: '林地', color: '#2ecc71' },
+      forest: { label: '林区', color: '#2ecc71' },
       farmland: { label: '农田', color: '#f39c12' },
       building: { label: '建筑', color: '#475569' },
       water: { label: '水域', color: '#3498db' },
       road: { label: '道路', color: '#9CA3AF' },
-      bare: { label: '裸地', color: '#D97706' }
+      bare_land: { label: '裸地', color: '#D97706' }
     };
   }
 
@@ -294,14 +308,27 @@ class TerrainMap {
   }
 
   bindEvents() {
-    document.querySelectorAll('[data-layer]').forEach(button => {
+    const layerButtons = Array.from(document.querySelectorAll('[data-layer]'));
+    const syncLayerButtons = (activeLayer) => {
+      layerButtons.forEach(button => {
+        const layerName = button.getAttribute('data-layer');
+        const isActive = layerName === activeLayer;
+        button.classList.toggle('active', isActive);
+        this.toggleLayer(layerName, isActive);
+      });
+    };
+
+    const initialActiveLayer = layerButtons.find(button => this.layerVisibility[button.getAttribute('data-layer')] !== false)
+      ?.getAttribute('data-layer') || 'plots';
+    syncLayerButtons(initialActiveLayer);
+
+    layerButtons.forEach(button => {
       const layerName = button.getAttribute('data-layer');
-      const visible = this.layerVisibility[layerName] !== false;
-      button.classList.toggle('active', visible);
       button.addEventListener('click', () => {
-        const nextVisible = !button.classList.contains('active');
-        button.classList.toggle('active', nextVisible);
-        this.toggleLayer(layerName, nextVisible);
+        if (button.classList.contains('active')) {
+          return;
+        }
+        syncLayerButtons(layerName);
       });
     });
 
@@ -328,6 +355,63 @@ class TerrainMap {
 
   normalizeGeoJSON(value) {
     return TerrainSpatialUtils.normalizeGeoJSON(value);
+  }
+
+  normalizePlotTypeKey(typeKey) {
+    const rawType = String(typeKey || '').trim();
+    const normalized = {
+      forest: 'forest',
+      '林区': 'forest',
+      farmland: 'farmland',
+      '农田': 'farmland',
+      building: 'building',
+      '建筑': 'building',
+      water: 'water',
+      '水域': 'water',
+      road: 'road',
+      '道路': 'road',
+      bare: 'bare_land',
+      bare_land: 'bare_land',
+      '裸地': 'bare_land',
+      open: 'bare_land',
+      open_land: 'bare_land',
+      empty_land: 'bare_land',
+      unused_land: 'bare_land',
+      '空地': 'bare_land',
+      '开敞地': 'bare_land'
+    }[rawType] || {
+      forest: 'forest',
+      farmland: 'farmland',
+      building: 'building',
+      water: 'water',
+      road: 'road',
+      bare: 'bare_land',
+      bare_land: 'bare_land',
+      open: 'bare_land',
+      open_land: 'bare_land',
+      empty_land: 'bare_land',
+      unused_land: 'bare_land'
+    }[rawType.toLowerCase()];
+    return normalized || 'bare_land';
+  }
+
+  getTerrainPlotCandidates(terrain) {
+    if (!terrain || typeof terrain !== 'object') {
+      return [];
+    }
+    const candidates = [
+      terrain.plots,
+      terrain.blocks,
+      terrain.layers,
+      terrain.features,
+      terrain.plot_data
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate) && candidate.length) {
+        return candidate;
+      }
+    }
+    return [];
   }
 
   buildTerrainGeoJSONFromPlots(plots = null) {
@@ -363,20 +447,40 @@ class TerrainMap {
   }
 
   getTerrainGeoJSON(terrain, plots = null) {
-    const plotDerivedGeoJSON = this.buildTerrainGeoJSONFromPlots(plots);
-    if (plotDerivedGeoJSON) {
-      return plotDerivedGeoJSON;
+    let geojson = this.buildTerrainGeoJSONFromPlots(plots);
+
+    if (!geojson) {
+      geojson = terrain?.boundary || terrain?.geojson || terrain?.boundary_geojson || terrain?.boundary_json || null;
     }
 
-    return this.normalizeGeoJSON(
-      terrain?.boundary_geojson || terrain?.boundary_json || terrain?.geometry || terrain?.boundary || null
-    );
+    if (!geojson && terrain?.bounds) {
+      const bounds = TerrainSpatialUtils.getBoundsFromBBox(terrain.bounds);
+      if (bounds) {
+        geojson = {
+          type: "Polygon",
+          coordinates: [[
+            [bounds.getWest(), bounds.getSouth()],
+            [bounds.getEast(), bounds.getSouth()],
+            [bounds.getEast(), bounds.getNorth()],
+            [bounds.getWest(), bounds.getNorth()],
+            [bounds.getWest(), bounds.getSouth()]
+          ]]
+        };
+      }
+    }
+
+    const normalizedTerrainGeoJSON = this.normalizeGeoJSON(geojson);
+    if (normalizedTerrainGeoJSON) {
+      return normalizedTerrainGeoJSON;
+    }
+    return null;
   }
 
   getTerrainBounds(terrain, layer = null, plots = null) {
-    const plotGeoBounds = TerrainSpatialUtils.getBoundsFromGeoJSON(this.buildTerrainGeoJSONFromPlots(plots));
-    if (plotGeoBounds) {
-      return plotGeoBounds;
+    const plotGeoJSON = this.buildTerrainGeoJSONFromPlots(plots);
+    const plotBounds = TerrainSpatialUtils.getBoundsFromGeoJSON(plotGeoJSON);
+    if (plotBounds) {
+      return plotBounds;
     }
 
     const bboxBounds = TerrainSpatialUtils.getBoundsFromBBox(terrain?.bbox);
@@ -385,7 +489,7 @@ class TerrainMap {
     }
 
     const geoBounds = TerrainSpatialUtils.getBoundsFromGeoJSON(
-      terrain?.boundary_geojson || terrain?.boundary_json || terrain?.geometry || terrain?.boundary || null
+      terrain?.boundary || terrain?.geojson || terrain?.boundary_geojson || terrain?.boundary_json || null
     );
     if (geoBounds) {
       return geoBounds;
@@ -408,7 +512,7 @@ class TerrainMap {
       return [lat, lng];
     }
 
-    const terrainBounds = this.getTerrainBounds(terrain, layer);
+    const terrainBounds = this.getTerrainBounds(terrain, layer, this.currentRenderableTerrainPlots);
     if (terrainBounds) {
       const center = terrainBounds.getCenter();
       return [center.lat, center.lng];
@@ -438,29 +542,48 @@ class TerrainMap {
       weight: 4,
       opacity: 0.95,
       fillColor: '#60a5fa',
-      fillOpacity: 0.08,
+      fillOpacity: 0,
       className: 'terrain-current-boundary'
     };
   }
 
   getTerrainPopupHtml(terrain) {
+    const areaValue = terrain?.area ?? terrain?.area_ha ?? null;
+    const areaLabel = Number.isFinite(Number(areaValue))
+      ? `${Number(areaValue).toFixed(2)} 公顷`
+      : (terrain?.areaLabel || '-');
+    const riskLabel = terrain?.risk_label || terrain?.riskLabel || terrain?.risk_level || '-';
+    const plotCount = Array.isArray(terrain?.plots)
+      ? terrain.plots.length
+      : (terrain?.plot_count ?? terrain?.plotCountLabel ?? '-');
     return `
       <div class="terrain-map-popup">
         <strong>${terrain.name}</strong><br>
-        面积：${terrain.areaLabel || '-'}<br>
-        风险：${terrain.riskLabel || '-'}<br>
-        地块数量：${terrain.plotCountLabel || '-'}
+        面积：${areaLabel}<br>
+        风险：${riskLabel}<br>
+        地块数量：${plotCount}
       </div>
     `;
   }
 
   getPlotTypeKey(plot) {
-    return plot.plot_type || plot.category || plot.type || 'bare';
+    return this.normalizePlotTypeKey(
+      plot?.plot_type
+      || plot?.category
+      || plot?.type
+      || plot?.properties?.type
+      || plot?.type_label
+    );
   }
 
   getPlotTypeLabel(plot) {
+    if (plot?.type_label) {
+      return this.normalizePlotTypeKey(plot.type_label) === 'bare_land'
+        ? '裸地'
+        : (plot.type_label || '未分类');
+    }
     const typeKey = this.getPlotTypeKey(plot);
-    return this.plotTypeMeta[typeKey]?.label || typeKey || '未分类';
+    return this.plotTypeMeta[typeKey]?.label || '未分类';
   }
 
   getPlotStyle(plot) {
@@ -481,7 +604,7 @@ class TerrainMap {
       <div class="terrain-map-popup">
         <strong>${plot.name || '未命名地块'}</strong><br>
         地块类型：${this.getPlotTypeLabel(plot)}<br>
-        子类：${plot.sub_type || plot.type || '-'}<br>
+        子类：${plot.subtype_label || plot.subtype || plot.sub_type || '-'}<br>
         面积：${plot.area || '-'} 公顷<br>
         风险：${plot.risk_level || '-'}
       </div>
@@ -667,33 +790,6 @@ class TerrainMap {
 
   renderCurrentTerrainBoundary(terrain, plots = null) {
     this.clearCurrentTerrainBoundary();
-
-    const normalizedGeoJSON = this.getTerrainGeoJSON(terrain, plots);
-    if (normalizedGeoJSON) {
-      const layer = L.geoJSON(normalizedGeoJSON, {
-        style: () => this.getTerrainBoundaryStyle(),
-        onEachFeature: (_feature, featureLayer) => {
-          featureLayer.bindPopup(this.getTerrainPopupHtml(terrain), {
-            className: 'terrain-map-popup'
-          });
-          featureLayer.on('click', () => {
-            this.selectTerrain(terrain, {
-              emitEvent: true,
-              fit: false,
-              openPopup: true
-            });
-          });
-        }
-      });
-
-      this.currentTerrainLayerKey = `terrain-current-${terrain.id}`;
-      this.currentTerrainLayer = layer;
-      this.currentTerrainHasGeometry = true;
-      this.layerManager.addLayer(this.currentTerrainLayerKey, layer, 'terrains');
-      this.registerTopicBounds(layer);
-      return layer;
-    }
-
     this.currentTerrainLayerKey = null;
     this.currentTerrainLayer = null;
     this.currentTerrainHasGeometry = false;
@@ -712,14 +808,16 @@ class TerrainMap {
   async loadTerrainPlots(areaId, selectionToken = null) {
     this.clearTerrainPlots();
     try {
-      const plots = await this.fetchTerrainPlots(areaId);
+      let plots = this.getTerrainPlotCandidates(this.currentTerrain);
+      if (!plots.length) {
+        plots = await this.fetchTerrainPlots(areaId);
+      }
       if (selectionToken !== null && selectionToken !== this.activeSelectionToken) {
         return [];
       }
       const renderablePlots = this.filterRenderableTerrainPlots(plots);
       this.currentRenderableTerrainPlots = renderablePlots;
       this.topicBounds = null;
-      this.renderCurrentTerrainBoundary(this.currentTerrain || { id: areaId }, renderablePlots);
       this.renderTerrainPlots(renderablePlots);
       return renderablePlots;
     } catch (error) {
@@ -801,7 +899,7 @@ class TerrainMap {
       return;
     }
 
-    const terrainBounds = this.getTerrainBounds(terrain, this.currentTerrainLayer);
+    const terrainBounds = this.getTerrainBounds(terrain, this.currentTerrainLayer, this.currentRenderableTerrainPlots);
     if (terrainBounds) {
       this.map.fitBounds(terrainBounds, {
         padding: [30, 30],
@@ -819,7 +917,10 @@ class TerrainMap {
       return;
     }
 
-    console.warn('当前地形缺少可用的 bbox、边界和中心点，保持当前地图视图不变:', terrain?.id);
+    console.warn('缺少有效空间数据，地图保持当前视图', terrain?.id);
+    if (typeof window.showToast === 'function') {
+      window.showToast('缺少有效空间数据，地图保持当前视图', 'warning');
+    }
   }
 
   async selectTerrain(terrain, options = {}) {
@@ -834,17 +935,14 @@ class TerrainMap {
     this.topicBounds = null;
     this.currentTerrain = sourceTerrain;
 
-    // 1. 渲染边界
-    this.renderCurrentTerrainBoundary(sourceTerrain);
-    
-    // 2. 加载地块
+    // 管理页预览仅绘制地块，TerrainArea 边界数据仍保留给导入导出和校验逻辑使用。
     await this.loadTerrainPlots(sourceTerrain.id, selectionToken);
 
     if (selectionToken !== this.activeSelectionToken) {
       return;
     }
 
-    // 3. 自动缩放
+    // 自动缩放优先跟随可渲染地块。
     if (fit) {
       this.focusTerrainTopic(sourceTerrain);
     }
@@ -860,11 +958,6 @@ class TerrainMap {
 
   toggleLayer(layer, visible) {
     this.layerVisibility[layer] = visible;
-    if (layer === 'terrain') {
-      this.layerManager.toggleLayerGroup('terrains', visible);
-      return;
-    }
-
     if (layer === 'plots') {
       this.layerManager.toggleLayerGroup('terrainPlots', visible);
     }

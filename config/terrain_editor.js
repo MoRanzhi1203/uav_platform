@@ -1013,7 +1013,7 @@ class TerrainEditor {
           changed = true;
         } else {
           // 如果完全被擦除，后续可能需要处理删除逻辑
-          // 这里简单做法是保留空地块，或者直接调用 removePlot
+          // 这里简单做法是保留空白地块，或者直接调用 removePlot
           this.removePlot(plot.id);
           changed = true;
         }

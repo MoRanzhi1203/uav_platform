@@ -22,6 +22,37 @@ let terrainPanelResizeObserver = null;
 let terrainElasticHeightRaf = 0;
 let terrainFilterDebounceTimer = 0;
 
+const TERRAIN_PLOT_TYPE_LABELS = {
+  forest: '林区',
+  farmland: '农田',
+  building: '建筑',
+  water: '水域',
+  road: '道路',
+  bare_land: '裸地'
+};
+
+const TERRAIN_PLOT_TYPE_ALIASES = {
+  forest: 'forest',
+  '林区': 'forest',
+  farmland: 'farmland',
+  '农田': 'farmland',
+  building: 'building',
+  '建筑': 'building',
+  water: 'water',
+  '水域': 'water',
+  road: 'road',
+  '道路': 'road',
+  bare: 'bare_land',
+  bare_land: 'bare_land',
+  '裸地': 'bare_land',
+  open: 'bare_land',
+  open_land: 'bare_land',
+  empty_land: 'bare_land',
+  unused_land: 'bare_land',
+  '空地': 'bare_land',
+  '开敞地': 'bare_land'
+};
+
 function initPage() {
   if (localStorage.getItem('terrain_list_should_refresh') === '1') {
     localStorage.removeItem('terrain_list_should_refresh');
@@ -88,6 +119,105 @@ function pickFirstDefined(...values) {
     }
   }
   return null;
+}
+
+function normalizeTerrainPlotTypeKey(value) {
+  const rawValue = String(value || '').trim();
+  return TERRAIN_PLOT_TYPE_ALIASES[rawValue] || TERRAIN_PLOT_TYPE_ALIASES[rawValue.toLowerCase?.()] || '';
+}
+
+function getTerrainPlotTypeLabel(value) {
+  const typeKey = normalizeTerrainPlotTypeKey(value);
+  return TERRAIN_PLOT_TYPE_LABELS[typeKey] || String(value || '').trim() || '未分类';
+}
+
+function parseTerrainJson(value) {
+  let current = value;
+  for (let i = 0; i < 3 && typeof current === 'string'; i += 1) {
+    try {
+      current = JSON.parse(current);
+    } catch (_) {
+      return value;
+    }
+  }
+  return current;
+}
+
+function normalizeTerrainPlotGeometry(geometry, extraProperties = {}) {
+  const parsedGeometry = parseTerrainJson(geometry);
+  if (!parsedGeometry || typeof parsedGeometry !== 'object') {
+    return null;
+  }
+
+  if (parsedGeometry.type === 'Feature') {
+    return {
+      ...parsedGeometry,
+      properties: {
+        ...(parsedGeometry.properties || {}),
+        ...extraProperties
+      }
+    };
+  }
+
+  if (parsedGeometry.type === 'Polygon' || parsedGeometry.type === 'MultiPolygon') {
+    return {
+      type: 'Feature',
+      geometry: parsedGeometry,
+      properties: { ...extraProperties }
+    };
+  }
+
+  return null;
+}
+
+function normalizeTerrainPlots(rawItem) {
+  const rawPlots = [
+    rawItem?.plots,
+    rawItem?.blocks,
+    rawItem?.layers,
+    rawItem?.features,
+    rawItem?.plot_data
+  ].find(candidate => Array.isArray(parseTerrainJson(candidate)) && parseTerrainJson(candidate).length) || [];
+
+  const parsedPlots = parseTerrainJson(rawPlots);
+  if (!Array.isArray(parsedPlots)) {
+    return [];
+  }
+
+  return parsedPlots.map((plot, index) => {
+    const typeKey = normalizeTerrainPlotTypeKey(
+      plot?.type
+      || plot?.plot_type
+      || plot?.category
+      || plot?.properties?.type
+      || plot?.type_label
+    );
+    const geometry = normalizeTerrainPlotGeometry(
+      plot?.geometry || plot?.geom_json || plot?.boundary_geojson || plot?.boundary_json,
+      {
+        name: plot?.name || plot?.properties?.name || `地块 ${index + 1}`,
+        type: typeKey || 'bare_land',
+        type_label: getTerrainPlotTypeLabel(typeKey || plot?.type_label),
+        subtype: plot?.subtype || plot?.sub_type || plot?.subcategory || '',
+        subtype_label: plot?.subtype_label || plot?.subcategory_name || plot?.sub_type || plot?.subcategory || ''
+      }
+    );
+
+    if (!geometry || !typeKey) {
+      return null;
+    }
+
+    return {
+      id: plot?.id ?? null,
+      name: plot?.name || plot?.properties?.name || `地块 ${index + 1}`,
+      type: typeKey,
+      type_label: getTerrainPlotTypeLabel(plot?.type_label || typeKey),
+      subtype: plot?.subtype || plot?.sub_type || plot?.subcategory || '',
+      subtype_label: plot?.subtype_label || plot?.subcategory_name || plot?.sub_type || plot?.subcategory || '',
+      area: coerceNumber(plot?.area) ?? 0,
+      geometry
+    };
+  }).filter(Boolean);
 }
 
 function requestTerrainMapResize() {
@@ -310,6 +440,7 @@ function formatCenterLabel(lat, lng) {
 
 function standardizeTerrainRecord(rawItem) {
   const utils = getTerrainSpatialUtils();
+  const plots = normalizeTerrainPlots(rawItem);
   const boundaryGeoJSON = pickFirstDefined(rawItem.boundary_geojson, rawItem.boundary_json, rawItem.boundary, rawItem.geometry);
   const normalizedBoundary = typeof utils.normalizeGeoJSON === 'function'
     ? utils.normalizeGeoJSON(boundaryGeoJSON)
@@ -343,7 +474,7 @@ function standardizeTerrainRecord(rawItem) {
   if (!isPositiveNumber(areaHa) && normalizedBoundary && typeof utils.getAreaHaFromGeoJSON === 'function') {
     areaHa = utils.getAreaHaFromGeoJSON(normalizedBoundary);
   }
-  const plotCount = Math.max(0, Number(pickFirstDefined(rawItem.plot_count, 0)) || 0);
+  const plotCount = Math.max(plots.length, Number(pickFirstDefined(rawItem.plot_count, 0)) || 0);
   const hasBoundary = Boolean(rawItem.has_boundary ?? normalizedBoundary ?? bbox);
 
   return {
@@ -359,6 +490,7 @@ function standardizeTerrainRecord(rawItem) {
     bbox_max_lng: bbox?.maxLng ?? null,
     bbox_max_lat: bbox?.maxLat ?? null,
     bbox,
+    plots,
     plot_count: plotCount,
     data_accuracy: pickFirstDefined(rawItem.data_accuracy, '待补充'),
     has_boundary: hasBoundary,
@@ -384,6 +516,7 @@ function normalizeTerrainItem(item) {
     riskLevelRaw: standardized.risk_level,
     riskClass: getRiskBadgeClass(standardized.risk_level),
     boundary_json: standardized.boundary_geojson,
+    plots: standardized.plots,
     center: isValidLatLng(standardized.center_lat, standardized.center_lng)
       ? [standardized.center_lat, standardized.center_lng]
       : null,
@@ -762,10 +895,6 @@ function initEvents() {
     window.location.href = '/terrain/editor/';
   });
 
-  document.getElementById('refreshBtn').addEventListener('click', function onRefresh() {
-    loadRealData();
-  });
-
   document.getElementById('saveTerrainBtn').addEventListener('click', function onSaveTerrain() {
     const formData = {
       id: document.getElementById('terrainId').value,
@@ -797,7 +926,397 @@ function initEvents() {
     });
   });
 
+  initToolbarActions();
+
   window.setTimeout(scheduleTerrainDetailElasticHeightSync, 0);
+}
+
+// ==================== 新增功能：批量导入、导出数据、刷新 ====================
+
+function showToast(message, type = 'success') {
+  // 简单的 Toast 提示实现
+  const toastContainer = document.getElementById('toast-container') || (() => {
+    const div = document.createElement('div');
+    div.id = 'toast-container';
+    div.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
+    document.body.appendChild(div);
+    return div;
+  })();
+
+  const toast = document.createElement('div');
+  const bgClass = type === 'success' ? 'bg-success' : (type === 'warning' ? 'bg-warning text-dark' : 'bg-danger');
+  toast.className = `toast align-items-center text-white ${bgClass} border-0 mb-2`;
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'assertive');
+  toast.setAttribute('aria-atomic', 'true');
+  toast.style.opacity = 0;
+  toast.style.transition = 'opacity 0.3s ease-in-out';
+  
+  toast.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body">${message}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  `;
+  
+  toastContainer.appendChild(toast);
+  
+  // 初始化 Bootstrap Toast
+  const bsToast = new bootstrap.Toast(toast, { autohide: true, delay: 2500 });
+  bsToast.show();
+  toast.style.opacity = 1;
+  
+  toast.addEventListener('hidden.bs.toast', () => {
+    toast.remove();
+  });
+}
+
+function getCSRFToken() {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, 10) === 'csrftoken=') {
+        cookieValue = decodeURIComponent(cookie.substring(10));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+function initToolbarActions() {
+  const btnImportTerrain = document.getElementById('btnImportTerrain');
+  const btnExportTerrain = document.getElementById('btnExportTerrain');
+  const btnRefreshTerrain = document.getElementById('btnRefreshTerrain');
+  const btnDownloadImportTemplate = document.getElementById('btnDownloadImportTemplate');
+  const btnStartImportTerrain = document.getElementById('btnStartImportTerrain');
+
+  if (btnImportTerrain) {
+    btnImportTerrain.addEventListener('click', openImportModal);
+  }
+
+  if (btnExportTerrain) {
+    btnExportTerrain.addEventListener('click', exportTerrainData);
+  }
+
+  if (btnRefreshTerrain) {
+    btnRefreshTerrain.addEventListener('click', refreshTerrainData);
+  }
+
+  if (btnDownloadImportTemplate) {
+    btnDownloadImportTemplate.addEventListener('click', downloadImportTemplate);
+  }
+
+  if (btnStartImportTerrain) {
+    btnStartImportTerrain.addEventListener('click', startImportTerrain);
+  }
+}
+
+function openImportModal() {
+  const fileInput = document.getElementById('terrainImportFile');
+  const errorArea = document.getElementById('terrainImportError');
+  
+  if (fileInput) fileInput.value = '';
+  if (errorArea) {
+    errorArea.classList.add('d-none');
+    errorArea.innerHTML = '';
+  }
+  
+  const modalEl = document.getElementById('terrainImportModal');
+  if (modalEl) {
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+  }
+}
+
+async function startImportTerrain() {
+  const fileInput = document.getElementById('terrainImportFile');
+  const btnStart = document.getElementById('btnStartImportTerrain');
+  const errorArea = document.getElementById('terrainImportError');
+
+  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    showToast('请先选择要导入的文件', 'warning');
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const validExts = ['.json', '.geojson', '.csv'];
+  const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+  
+  if (!validExts.includes(ext)) {
+    showToast('仅支持 .json, .geojson, .csv 格式', 'warning');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    if (btnStart) {
+      btnStart.disabled = true;
+      btnStart.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 导入中...';
+    }
+    
+    if (errorArea) {
+      errorArea.classList.add('d-none');
+      errorArea.innerHTML = '';
+    }
+
+    const response = await fetch('/terrain/api/areas/import/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCSRFToken()
+      },
+      body: formData
+    });
+
+    const result = await response.json();
+
+    if (result.success || result.code === 0) {
+      // 兼容两种格式，如果是 views 返回的 success
+      const isSuccess = result.success || result.code === 0;
+      if (isSuccess) {
+        const msg = result.message || '导入成功';
+        showToast(`${msg} (新增:${result.created || 0}, 更新:${result.updated || 0})`, 'success');
+        
+        // 成功后关闭弹窗
+        const modalEl = document.getElementById('terrainImportModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+        
+        // 刷新列表
+        await refreshTerrainData();
+      } else {
+        throw new Error(result.message || '导入失败');
+      }
+    } else {
+      // 显示错误
+      if (errorArea) {
+        errorArea.classList.remove('d-none');
+        let errorHtml = `<strong>${result.message || '导入失败'}</strong><br/>`;
+        if (result.errors && result.errors.length > 0) {
+          errorHtml += '<ul class="mb-0 ps-3">';
+          result.errors.forEach(err => {
+            errorHtml += `<li>${err}</li>`;
+          });
+          errorHtml += '</ul>';
+        }
+        errorArea.innerHTML = errorHtml;
+      }
+      showToast('导入遇到错误，请查看详情', 'danger');
+    }
+  } catch (error) {
+    console.error('导入异常:', error);
+    showToast('网络请求或解析异常，请重试', 'danger');
+  } finally {
+    if (btnStart) {
+      btnStart.disabled = false;
+      btnStart.innerHTML = '开始导入';
+    }
+  }
+}
+
+function normalizeTerrainExportItem(item) {
+  const normalizedPlots = normalizeTerrainPlots(item);
+  return {
+    "id": item.id,
+    "name": item.name,
+    "risk_level": item.riskLevelRaw || item.risk_level,
+    "area": item.area || item.area_ha || 0,
+    "accuracy": item.accuracy || (item.dataAccuracyLabel !== '待补充' ? parseFloat(item.dataAccuracyLabel) : 0) || 0,
+    "description": item.description || '',
+    "bounds": item.bbox && item.bbox.raw ? {
+      "south_west": [item.bbox.raw.minLng, item.bbox.raw.minLat],
+      "north_east": [item.bbox.raw.maxLng, item.bbox.raw.maxLat]
+    } : (item.bounds || null),
+    "geometry": item.geometry || item.boundary_json || item.boundary_geojson || null,
+    "plots": normalizedPlots
+  };
+}
+
+function exportTerrainData() {
+  const dataToExport = terrainData.filteredTerrains && terrainData.filteredTerrains.length > 0 
+    ? terrainData.filteredTerrains 
+    : terrainData.terrains;
+
+  if (!dataToExport || dataToExport.length === 0) {
+    showToast('暂无可导出的地形数据', 'warning');
+    return;
+  }
+
+  const exportList = dataToExport.map(normalizeTerrainExportItem);
+  const jsonStr = JSON.stringify(exportList, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const min = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  const filename = `terrain_export_${yyyy}${mm}${dd}_${hh}${min}${ss}.json`;
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast(`已导出 ${exportList.length} 条地形数据`, 'success');
+}
+
+async function refreshTerrainData() {
+  const btnRefresh = document.getElementById('btnRefreshTerrain');
+  const originalHtml = btnRefresh ? btnRefresh.innerHTML : '';
+  
+  if (btnRefresh) {
+    btnRefresh.disabled = true;
+    btnRefresh.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 刷新中...';
+  }
+
+  try {
+    await loadRealData(); // 内部已包含应用筛选条件和更新页面逻辑
+    showToast('刷新成功', 'success');
+  } catch (error) {
+    console.error('刷新失败:', error);
+    showToast('刷新失败，请重试', 'danger');
+  } finally {
+    if (btnRefresh) {
+      btnRefresh.disabled = false;
+      btnRefresh.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function downloadImportTemplate() {
+  try {
+    const response = await fetch('/terrain/api/areas/import-template/');
+    if (response.ok) {
+      const data = await response.json();
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'terrain_import_template.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      throw new Error('接口请求失败');
+    }
+  } catch (error) {
+    console.error('获取模板失败，使用默认模板:', error);
+    // 前端生成默认模板
+    const defaultTemplate = [
+      {
+        "name": "示例地形区域",
+        "risk_level": "low",
+        "area": 120.5,
+        "accuracy": 98,
+        "description": "示例导入数据",
+        "bounds": {
+          "south_west": [106.09, 29.09],
+          "north_east": [106.11, 29.11]
+        },
+        "geometry": {
+          "type": "Feature",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [106.09, 29.09],
+                [106.11, 29.09],
+                [106.11, 29.11],
+                [106.09, 29.11],
+                [106.09, 29.09]
+              ]
+            ]
+          },
+          "properties": {}
+        },
+        "plots": [
+          {
+            "name": "示例农田地块",
+            "type": "farmland",
+            "type_label": "农田",
+            "subtype": "dry_field",
+            "subtype_label": "旱地",
+            "area": 35.2,
+            "geometry": {
+              "type": "Feature",
+              "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                  [
+                    [106.094, 29.094],
+                    [106.102, 29.094],
+                    [106.102, 29.101],
+                    [106.094, 29.101],
+                    [106.094, 29.094]
+                  ]
+                ]
+              },
+              "properties": {
+                "name": "示例农田地块",
+                "type": "farmland",
+                "type_label": "农田",
+                "subtype": "dry_field",
+                "subtype_label": "旱地"
+              }
+            }
+          },
+          {
+            "name": "示例林区地块",
+            "type": "forest",
+            "type_label": "林区",
+            "subtype": "mixed_forest",
+            "subtype_label": "混交林",
+            "area": 42.6,
+            "geometry": {
+              "type": "Feature",
+              "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                  [
+                    [106.102, 29.101],
+                    [106.108, 29.101],
+                    [106.108, 29.108],
+                    [106.102, 29.108],
+                    [106.102, 29.101]
+                  ]
+                ]
+              },
+              "properties": {
+                "name": "示例林区地块",
+                "type": "forest",
+                "type_label": "林区",
+                "subtype": "mixed_forest",
+                "subtype_label": "混交林"
+              }
+            }
+          }
+        ]
+      }
+    ];
+    const jsonStr = JSON.stringify(defaultTemplate, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'terrain_import_template.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 }
 
 function initVue() {

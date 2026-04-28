@@ -7,6 +7,8 @@ urlpatterns = [
     
     # TerrainArea API
     path('api/areas/', views.list_areas, name='list_areas'),
+    path('api/areas/import/', views.import_areas, name='import_areas'),
+    path('api/areas/import-template/', views.import_template, name='import_template'),
     path('api/areas/<int:area_id>/plots/', views.area_plots, name='area_plots'),
     path('api/areas/<int:area_id>/edit/', views.area_edit_detail, name='area_edit_detail'),
     path('api/areas/<int:pk>/delete/', views.delete_terrain, name='delete_terrain'),

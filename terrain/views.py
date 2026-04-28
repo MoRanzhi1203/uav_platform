@@ -43,6 +43,285 @@ ACTIVE_PLOT_EXCLUDED_ZONE_STATUSES = {
 
 SPATIAL_COMPAT = GeoJSONCompatibilityMixin()
 
+PLOT_TYPE_LABELS = {
+    "forest": "林区",
+    "farmland": "农田",
+    "building": "建筑",
+    "water": "水域",
+    "road": "道路",
+    "bare_land": "裸地",
+}
+
+PLOT_TYPE_ALIASES = {
+    "forest": "forest",
+    "林区": "forest",
+    "farmland": "farmland",
+    "农田": "farmland",
+    "building": "building",
+    "建筑": "building",
+    "water": "water",
+    "水域": "water",
+    "road": "road",
+    "道路": "road",
+    "bare_land": "bare_land",
+    "bare": "bare_land",
+    "裸地": "bare_land",
+    "open": "bare_land",
+    "open_land": "bare_land",
+    "empty_land": "bare_land",
+    "unused_land": "bare_land",
+    "空地": "bare_land",
+    "开敞地": "bare_land",
+}
+
+
+def normalize_plot_type_key(value, for_storage=False):
+    if value is None:
+        normalized = None
+    else:
+        raw_value = str(value).strip()
+        normalized = (
+            PLOT_TYPE_ALIASES.get(raw_value)
+            or PLOT_TYPE_ALIASES.get(raw_value.lower())
+        )
+    if not normalized:
+        return None
+    if for_storage and normalized == "bare_land":
+        return "bare"
+    return normalized
+
+
+def get_plot_type_label(type_key):
+    normalized = normalize_plot_type_key(type_key) or ""
+    return PLOT_TYPE_LABELS.get(normalized, normalized)
+
+
+def _parse_json_payload(value, default=None):
+    current = value
+    for _ in range(3):
+        if not isinstance(current, str):
+            break
+        try:
+            current = json.loads(current)
+        except json.JSONDecodeError:
+            return default
+    return current if current is not None else default
+
+
+def normalize_plot_geometry(geometry, properties=None):
+    parsed_geometry = _parse_json_payload(geometry, default=geometry)
+    if not isinstance(parsed_geometry, dict):
+        return None
+
+    feature_properties = {}
+    if parsed_geometry.get("type") == "Feature":
+        feature_properties = parsed_geometry.get("properties") or {}
+        parsed_geometry = {
+            "type": "Feature",
+            "geometry": parsed_geometry.get("geometry") or {},
+            "properties": feature_properties,
+        }
+    elif parsed_geometry.get("type") in {"Polygon", "MultiPolygon"}:
+        parsed_geometry = {
+            "type": "Feature",
+            "geometry": parsed_geometry,
+            "properties": {},
+        }
+    else:
+        return None
+
+    merged_properties = {}
+    if isinstance(feature_properties, dict):
+        merged_properties.update(feature_properties)
+    if isinstance(properties, dict):
+        merged_properties.update({key: value for key, value in properties.items() if value not in (None, "")})
+    parsed_geometry["properties"] = merged_properties
+    return parsed_geometry
+
+
+def normalize_plot_item(raw_plot):
+    if not isinstance(raw_plot, dict):
+        return None
+
+    name = (
+        raw_plot.get("name")
+        or raw_plot.get("地块名称")
+        or raw_plot.get("plot_name")
+        or ""
+    ).strip()
+    if not name:
+        return None
+
+    raw_type = (
+        raw_plot.get("type")
+        or raw_plot.get("地块类型")
+        or raw_plot.get("plot_type")
+        or raw_plot.get("category")
+        or raw_plot.get("type_label")
+        or raw_plot.get("类型名称")
+    )
+    normalized_type = normalize_plot_type_key(raw_type)
+    if not normalized_type:
+        return None
+
+    type_label = get_plot_type_label(
+        raw_plot.get("type_label")
+        or raw_plot.get("类型名称")
+        or normalized_type
+    )
+    subtype = (
+        raw_plot.get("subtype")
+        or raw_plot.get("sub_type")
+        or raw_plot.get("子类别")
+        or raw_plot.get("子类别名称")
+        or ""
+    )
+    subtype_label = (
+        raw_plot.get("subtype_label")
+        or raw_plot.get("sub_type_label")
+        or raw_plot.get("子类别名称")
+        or raw_plot.get("subcategory_name")
+        or subtype
+        or ""
+    )
+
+    geometry = normalize_plot_geometry(
+        raw_plot.get("geometry")
+        or raw_plot.get("边界数据")
+        or raw_plot.get("geom_json")
+        or raw_plot.get("boundary_geojson")
+        or raw_plot.get("boundary_json"),
+        properties={
+            "name": name,
+            "type": normalized_type,
+            "type_label": type_label,
+            "subtype": subtype,
+            "subtype_label": subtype_label,
+        },
+    )
+    if not geometry:
+        return None
+
+    area = raw_plot.get("area") or raw_plot.get("面积") or 0
+    try:
+        area = round(float(area), 4) if area not in ("", None) else 0
+    except (TypeError, ValueError):
+        area = 0
+
+    return {
+        "id": raw_plot.get("id"),
+        "name": name,
+        "type": normalized_type,
+        "type_label": type_label,
+        "subtype": str(subtype or "").strip(),
+        "subtype_label": str(subtype_label or "").strip(),
+        "area": area,
+        "geometry": geometry,
+    }
+
+
+def normalize_plots_payload(raw_plots):
+    parsed_plots = _parse_json_payload(raw_plots, default=raw_plots)
+    if isinstance(parsed_plots, dict):
+        if parsed_plots.get("type") == "FeatureCollection":
+            parsed_plots = [
+                {
+                    **(feature.get("properties") or {}),
+                    "geometry": feature,
+                }
+                for feature in parsed_plots.get("features", [])
+                if isinstance(feature, dict)
+            ]
+        elif parsed_plots.get("type") == "Feature":
+            parsed_plots = [{
+                **(parsed_plots.get("properties") or {}),
+                "geometry": parsed_plots,
+            }]
+    if not isinstance(parsed_plots, list):
+        return []
+
+    normalized_plots = []
+    for raw_plot in parsed_plots:
+        normalized_plot = normalize_plot_item(raw_plot)
+        if normalized_plot:
+            normalized_plots.append(normalized_plot)
+    return normalized_plots
+
+
+def sync_area_plots(area, plots, risk_level="low"):
+    existing_zones = list(
+        TerrainZone.objects.filter(area_obj=area, is_deleted=False).order_by("id")
+    )
+    existing_by_id = {str(zone.id): zone for zone in existing_zones}
+    existing_by_signature = {}
+    for zone in existing_zones:
+        signature = (
+            str(zone.name or "").strip(),
+            str(zone.category or "").strip(),
+            str(zone.type or "").strip(),
+        )
+        existing_by_signature.setdefault(signature, []).append(zone)
+
+    saved_plots = []
+    for plot in plots:
+        storage_category = normalize_plot_type_key(plot.get("type"), for_storage=True)
+        if not storage_category:
+            raise ValueError(f"地块[{plot.get('name') or '未命名'}]类型无效")
+
+        zone = None
+        plot_id = plot.get("id")
+        if plot_id is not None:
+            zone = existing_by_id.get(str(plot_id))
+        if zone is None:
+            signature = (
+                str(plot.get("name") or "").strip(),
+                storage_category,
+                str(plot.get("subtype") or "").strip(),
+            )
+            candidates = existing_by_signature.get(signature) or []
+            zone = candidates.pop(0) if candidates else None
+
+        payload = {
+            "area_obj": area.id,
+            "name": plot.get("name") or "未命名地块",
+            "category": storage_category,
+            "type": plot.get("subtype") or "",
+            "risk_level": risk_level or "low",
+            "area": plot.get("area") or 0,
+            "geom_json": plot.get("geometry") or {},
+            "grid_json": getattr(zone, "grid_json", {}) if zone else {},
+            "style_json": {
+                **(_parse_json_payload(getattr(zone, "style_json", None), default={}) if zone else {}),
+                "fill_color": {
+                    "forest": "#2ecc71",
+                    "farmland": "#f39c12",
+                    "building": "#475569",
+                    "water": "#3498db",
+                    "road": "#9CA3AF",
+                    "bare": "#D97706",
+                }.get(storage_category, "#64748b"),
+                "visible": True,
+                "layer_name": plot.get("name") or "未命名地块",
+            },
+            "meta_json": {
+                **(_parse_json_payload(getattr(zone, "meta_json", None), default={}) if zone else {}),
+                "type": normalize_plot_type_key(plot.get("type")) or "",
+                "type_label": plot.get("type_label") or get_plot_type_label(plot.get("type")),
+                "subtype": str(plot.get("subtype") or "").strip(),
+                "subtype_label": plot.get("subtype_label") or plot.get("subtype") or "",
+                "standard_type": normalize_plot_type_key(plot.get("type")) or "",
+                "standard_type_label": get_plot_type_label(plot.get("type")),
+                "area": plot.get("area") or 0,
+            },
+        }
+
+        serializer = TerrainZoneSerializer(zone, data=payload, partial=bool(zone)) if zone else TerrainZoneSerializer(data=payload)
+        if not serializer.is_valid():
+            raise ValueError(f"地块[{payload['name']}]保存失败: {serializer.errors}")
+        saved_plots.append(serializer.save())
+
+    return saved_plots
+
 
 def _get_zone_normalized_geometry(zone):
     normalized_geojson = SPATIAL_COMPAT._normalize_geojson(getattr(zone, "geom_json", None))
@@ -51,8 +330,11 @@ def _get_zone_normalized_geometry(zone):
 
 
 def build_area_spatial_from_active_plots(area, active_plots=None):
-    """基于当前有效地块重建 TerrainArea 顶层空间字段，避免旧 boundary_json 借尸还魂。"""
+    """同步当前有效地块到区域对象，但不反向覆盖 TerrainArea 的面积与边界。"""
     plots = list(active_plots) if active_plots is not None else list(get_area_active_plots(area))
+
+    existing_boundary_geojson = SPATIAL_COMPAT._normalize_geojson(getattr(area, "boundary_json", None))
+    existing_boundary_geometry = SPATIAL_COMPAT._geometry_from_geojson(existing_boundary_geojson)
     geometries = []
 
     for zone in plots:
@@ -61,56 +343,20 @@ def build_area_spatial_from_active_plots(area, active_plots=None):
             geometries.append(geometry)
 
     merged_geometry = unary_union(geometries) if geometries else None
-    if merged_geometry and not merged_geometry.is_empty:
-        boundary_geojson = {
-            "type": "Feature",
-            "geometry": mapping(merged_geometry),
-            "properties": {},
-        }
-        centroid = merged_geometry.centroid
-        center_lat = SPATIAL_COMPAT._coerce_float(getattr(centroid, "y", None))
-        center_lng = SPATIAL_COMPAT._coerce_float(getattr(centroid, "x", None))
-        if not SPATIAL_COMPAT._is_valid_center(center_lat, center_lng):
-            center_lat = None
-            center_lng = None
-        area_ha = SPATIAL_COMPAT._calculate_area_ha(merged_geometry) or 0
-        bbox = merged_geometry.bounds
-    else:
-        boundary_geojson = {}
-        center_lat = None
-        center_lng = None
-        area_ha = 0
-        bbox = None
-
-    update_fields = []
-
-    if boundary_geojson != area.boundary_json:
-        area.boundary_json = boundary_geojson
-        update_fields.append("boundary_json")
-
-    if center_lng != area.center_lng:
-        area.center_lng = center_lng
-        update_fields.append("center_lng")
-
-    if center_lat != area.center_lat:
-        area.center_lat = center_lat
-        update_fields.append("center_lat")
-
-    try:
-        normalized_area = Decimal(str(round(float(area_ha), 2)))
-    except (TypeError, ValueError, InvalidOperation):
-        normalized_area = None
-
-    if normalized_area is not None and normalized_area != area.area:
-        area.area = normalized_area
-        update_fields.append("area")
-
-    if update_fields:
-        area.save(update_fields=update_fields)
+    plot_bbox = (
+        merged_geometry.bounds
+        if merged_geometry and not merged_geometry.is_empty
+        else None
+    )
+    boundary_bbox = (
+        existing_boundary_geometry.bounds
+        if existing_boundary_geometry and not existing_boundary_geometry.is_empty
+        else None
+    )
 
     area.active_zones = plots
     area.plot_count = len(plots)
-    area._active_plot_bbox = bbox
+    area._active_plot_bbox = boundary_bbox or plot_bbox
 
     return area
 
@@ -497,9 +743,11 @@ def area_edit_detail(request, area_id):
         response_data = {
             "area": area_serializer.data,
             "zones": zones_serializer.data,
+            "plots": area_serializer.data.get("plots", []),
             "editor_payload": {
                 "area": area_serializer.data,
                 "zones": zones_serializer.data,
+                "plots": area_serializer.data.get("plots", []),
                 "view_meta": {
                     "area_id": area.id,
                     "plot_count": len(zones_serializer.data),
@@ -512,6 +760,468 @@ def area_edit_detail(request, area_id):
     except Exception as e:
         logger.error(f"获取区域编辑详情异常: {str(e)}")
         return api_error(msg=str(e), status=500)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def import_template(request):
+    """下载地形批量导入模板"""
+    template = [
+        {
+            "name": "示例地形区域",
+            "risk_level": "low",
+            "area": 77.8,
+            "accuracy": 98,
+            "description": "示例导入数据",
+            "bounds": {
+                "south_west": [106.09, 29.09],
+                "north_east": [106.11, 29.11]
+            },
+            "geometry": {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [106.09, 29.09],
+                            [106.11, 29.09],
+                            [106.11, 29.11],
+                            [106.09, 29.11],
+                            [106.09, 29.09]
+                        ]
+                    ]
+                },
+                "properties": {}
+            },
+            "plots": [
+                {
+                    "name": "示例农田地块",
+                    "type": "farmland",
+                    "type_label": "农田",
+                    "subtype": "dry_field",
+                    "subtype_label": "旱地",
+                    "area": 35.2,
+                    "geometry": {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [106.0914, 29.0914],
+                                    [106.0988, 29.0914],
+                                    [106.0988, 29.1086],
+                                    [106.0914, 29.1086],
+                                    [106.0914, 29.0914]
+                                ]
+                            ]
+                        },
+                        "properties": {
+                            "name": "示例农田地块",
+                            "type": "farmland",
+                            "type_label": "农田",
+                            "subtype": "dry_field",
+                            "subtype_label": "旱地"
+                        }
+                    }
+                },
+                {
+                    "name": "示例林区地块",
+                    "type": "forest",
+                    "type_label": "林区",
+                    "subtype": "mixed_forest",
+                    "subtype_label": "混交林",
+                    "area": 42.6,
+                    "geometry": {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [106.0996, 29.0914],
+                                    [106.1086, 29.0914],
+                                    [106.1086, 29.1086],
+                                    [106.0996, 29.1086],
+                                    [106.0996, 29.0914]
+                                ]
+                            ]
+                        },
+                        "properties": {
+                            "name": "示例林区地块",
+                            "type": "forest",
+                            "type_label": "林区",
+                            "subtype": "mixed_forest",
+                            "subtype_label": "混交林"
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+    return JsonResponse(template, safe=False, json_dumps_params={'ensure_ascii': False, 'indent': 2})
+
+def normalize_import_item(item):
+    """将导入数据标准化为统一的结构"""
+    normalized = {}
+    
+    # id
+    normalized['id'] = item.get('id') or item.get('地形 ID')
+    
+    # name
+    normalized['name'] = item.get('name') or item.get('地形名称') or item.get('terrain_name') or ''
+    
+    # risk_level
+    raw_risk = item.get('risk_level') or item.get('风险等级') or 'low'
+    risk_map = {
+        '低风险': 'low',
+        '中风险': 'medium',
+        '高风险': 'high',
+        '低': 'low',
+        '中': 'medium',
+        '高': 'high'
+    }
+    normalized['risk_level'] = risk_map.get(raw_risk, raw_risk if raw_risk in ['low', 'medium', 'high'] else 'low')
+    
+    # area
+    normalized['area'] = item.get('area') or item.get('面积(公顷)') or 0
+    
+    # accuracy
+    raw_acc = item.get('accuracy') or item.get('data_accuracy') or item.get('数据精度')
+    if isinstance(raw_acc, str) and '%' in raw_acc:
+        try:
+            normalized['accuracy'] = float(raw_acc.replace('%', '').strip())
+        except ValueError:
+            normalized['accuracy'] = 0
+    else:
+        try:
+            normalized['accuracy'] = float(raw_acc) if raw_acc is not None else 0
+        except ValueError:
+            normalized['accuracy'] = 0
+            
+    # description
+    normalized['description'] = item.get('description') or item.get('描述') or ''
+    
+    # geometry
+    geom = item.get('geometry') or item.get('boundary') or item.get('边界数据') or item.get('boundary_json')
+    if isinstance(geom, str):
+        try:
+            geom = json.loads(geom)
+        except Exception:
+            pass
+    if isinstance(geom, dict):
+        geo_type = geom.get('type')
+        if geo_type in ['Polygon', 'MultiPolygon']:
+            geom = {
+                "type": "Feature",
+                "geometry": geom,
+                "properties": {}
+            }
+    normalized['geometry'] = geom
+    
+    # plots
+    plots = (
+        item.get('plots')
+        or item.get('地块数据')
+        or item.get('blocks')
+        or item.get('layers')
+        or item.get('features')
+        or item.get('plot_data')
+        or []
+    )
+    normalized['plots'] = normalize_plots_payload(plots)
+    
+    # bounds
+    bounds = item.get('bounds')
+    if not bounds:
+        sw_coord = item.get('左下角坐标')
+        ne_coord = item.get('右上角坐标')
+        if sw_coord and ne_coord:
+            try:
+                min_lng, min_lat = map(float, sw_coord.split(','))
+                max_lng, max_lat = map(float, ne_coord.split(','))
+                bounds = {
+                    "south_west": [min_lng, min_lat],
+                    "north_east": [max_lng, max_lat]
+                }
+            except Exception:
+                pass
+                
+    if not bounds and geom and isinstance(geom, dict):
+        try:
+            from shapely.geometry import shape
+            geom_obj = None
+            if geom.get('type') == 'Feature':
+                geom_obj = shape(geom.get('geometry', {}))
+            else:
+                geom_obj = shape(geom)
+            if geom_obj and not geom_obj.is_empty:
+                minx, miny, maxx, maxy = geom_obj.bounds
+                bounds = {
+                    "south_west": [minx, miny],
+                    "north_east": [maxx, maxy]
+                }
+        except Exception:
+            pass
+            
+    normalized['bounds'] = bounds or None
+    
+    return normalized
+
+def build_area_payload(item, area_val, geom_json, center_lat, center_lng, is_update=False):
+    """构建用于创建/更新的 TerrainArea 字典数据，清理不支持的字段"""
+    payload = {
+        "name": item.get("name") or item.get("terrain_name") or "",
+        "risk_level": item.get("risk_level") or "low",
+        "description": item.get("description") or "",
+        "area": area_val,
+        # geometry、bounds、plots 等字段在此处处理为对应模型字段或忽略
+        # 模型中存在 boundary_json, center_lat, center_lng 字段，予以映射保存
+        # accuracy 不存在于模型，因此直接忽略，不传入 payload
+    }
+    
+    if geom_json:
+        payload["boundary_json"] = geom_json
+    elif not is_update:
+        payload["boundary_json"] = {}
+        
+    if center_lat is not None:
+        payload["center_lat"] = center_lat
+    if center_lng is not None:
+        payload["center_lng"] = center_lng
+        
+    return payload
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def import_areas(request):
+    """批量导入地形区域"""
+    try:
+        if 'file' not in request.FILES:
+            return api_error(msg="缺少 file 字段")
+        
+        uploaded_file = request.FILES['file']
+        filename = uploaded_file.name.lower()
+        
+        data_list = []
+        if filename.endswith('.json') or filename.endswith('.geojson'):
+            try:
+                content = uploaded_file.read().decode('utf-8')
+                parsed_data = json.loads(content)
+                if (
+                    isinstance(parsed_data, dict)
+                    and parsed_data.get('type') == 'FeatureCollection'
+                    and 'features' in parsed_data
+                ):
+                    # GeoJSON FeatureCollection
+                    for feature in parsed_data['features']:
+                        props = feature.get('properties', {})
+                        geom = feature.get('geometry') or feature.get('boundary') or feature.get('geojson')
+                        item = {
+                            'id': props.get('id'),
+                            'name': props.get('name', ''),
+                            'risk_level': props.get('risk_level', 'low'),
+                            'area': props.get('area'),
+                            'description': props.get('description', ''),
+                            'geometry': geom,
+                            'bounds': props.get('bounds'),
+                            'plots': props.get('plots') or props.get('地块数据') or []
+                        }
+                        data_list.append(item)
+                elif isinstance(parsed_data, list):
+                    data_list = parsed_data
+                else:
+                    data_list = [parsed_data]
+            except json.JSONDecodeError:
+                return api_error(msg="JSON 解析失败，请检查文件格式")
+        elif filename.endswith('.csv'):
+            import csv
+            import io
+            content = uploaded_file.read().decode('utf-8')
+            reader = csv.DictReader(io.StringIO(content))
+            for row in reader:
+                item = {
+                    'id': row.get('id'),
+                    'name': row.get('name', ''),
+                    'risk_level': row.get('risk_level', 'low'),
+                    'area': row.get('area'),
+                    'description': row.get('description', ''),
+                }
+                
+                min_lng = row.get('min_lng')
+                min_lat = row.get('min_lat')
+                max_lng = row.get('max_lng')
+                max_lat = row.get('max_lat')
+                
+                if min_lng and min_lat and max_lng and max_lat:
+                    try:
+                        item['geometry'] = {
+                            "type": "Polygon",
+                            "coordinates": [[
+                                [float(min_lng), float(min_lat)],
+                                [float(max_lng), float(min_lat)],
+                                [float(max_lng), float(max_lat)],
+                                [float(min_lng), float(max_lat)],
+                                [float(min_lng), float(min_lat)]
+                            ]]
+                        }
+                    except ValueError:
+                        pass
+                data_list.append(item)
+        else:
+            return api_error(msg="不支持的文件格式，仅支持 .json, .geojson, .csv")
+
+        result = {
+            "success": True,
+            "message": "批量导入成功",
+            "created": 0,
+            "updated": 0,
+            "failed": 0,
+            "errors": [],
+            "warnings": [],
+        }
+        
+        with transaction.atomic():
+            for idx, raw_item in enumerate(data_list):
+                row_num = idx + 1
+                try:
+                    with transaction.atomic():
+                        item = normalize_import_item(raw_item)
+
+                        name = item.get('name', '').strip()
+                        if not name:
+                            raise ValueError(f"第 {row_num} 行缺少地形名称")
+
+                        area_id = item.get('id')
+                        geometry = item.get('geometry')
+                        bounds = item.get('bounds')
+                        plots = item.get("plots") or raw_item.get("plots") or raw_item.get("地块数据") or []
+                        plots = normalize_plots_payload(plots)
+
+                        if not geometry and isinstance(bounds, dict):
+                            sw = bounds.get('south_west') or bounds.get('southWest')
+                            ne = bounds.get('north_east') or bounds.get('northEast')
+                            if isinstance(sw, list) and isinstance(ne, list) and len(sw) == 2 and len(ne) == 2:
+                                min_lng, min_lat = sw[0], sw[1]
+                                max_lng, max_lat = ne[0], ne[1]
+                                if all(v is not None for v in (min_lng, min_lat, max_lng, max_lat)):
+                                    try:
+                                        geometry = {
+                                            "type": "Feature",
+                                            "geometry": {
+                                                "type": "Polygon",
+                                                "coordinates": [[
+                                                    [float(min_lng), float(min_lat)],
+                                                    [float(max_lng), float(min_lat)],
+                                                    [float(max_lng), float(max_lat)],
+                                                    [float(min_lng), float(max_lat)],
+                                                    [float(min_lng), float(min_lat)]
+                                                ]]
+                                            },
+                                            "properties": {}
+                                        }
+                                    except ValueError:
+                                        pass
+
+                        geom_json = None
+                        area_ha = item.get('area')
+                        center_lat = None
+                        center_lng = None
+
+                        if geometry:
+                            geom_json = geometry
+                            try:
+                                geom_obj = SPATIAL_COMPAT._geometry_from_geojson(geom_json)
+                                if geom_obj and not geom_obj.is_empty:
+                                    if not area_ha:
+                                        calc_area = SPATIAL_COMPAT._calculate_area_ha(geom_obj)
+                                        if calc_area:
+                                            area_ha = calc_area
+                                    centroid = geom_obj.centroid
+                                    center_lat = SPATIAL_COMPAT._coerce_float(getattr(centroid, "y", None))
+                                    center_lng = SPATIAL_COMPAT._coerce_float(getattr(centroid, "x", None))
+                            except Exception:
+                                pass
+
+                        try:
+                            area_val = Decimal(str(round(float(area_ha), 2))) if area_ha else Decimal('0.00')
+                        except (TypeError, ValueError, InvalidOperation):
+                            area_val = Decimal('0.00')
+
+                        terrain = None
+                        is_update = False
+                        if area_id:
+                            terrain = TerrainArea.objects.filter(id=area_id, is_deleted=False).first()
+                        if not terrain:
+                            terrain = TerrainArea.objects.filter(name=name, is_deleted=False).first()
+                        if terrain:
+                            is_update = True
+
+                        payload = {
+                            "name": name,
+                            "type": getattr(terrain, "type", None) or "farm",
+                            "risk_level": item.get("risk_level") or "low",
+                            "description": item.get("description") or "",
+                            "area": area_val,
+                        }
+
+                        if geom_json:
+                            payload["boundary_json"] = geom_json
+                        elif not is_update:
+                            payload["boundary_json"] = {}
+
+                        if center_lat is not None:
+                            payload["center_lat"] = center_lat
+                        if center_lng is not None:
+                            payload["center_lng"] = center_lng
+
+                        if is_update:
+                            for key, value in payload.items():
+                                setattr(terrain, key, value)
+                            terrain.save()
+                            result['updated'] += 1
+                        else:
+                            terrain = TerrainArea.objects.create(**payload)
+                            result['created'] += 1
+
+                        if hasattr(terrain, "zones"):
+                            saved_plots = sync_area_plots(
+                                terrain,
+                                plots,
+                                risk_level=item.get("risk_level") or "low",
+                            )
+                            terrain.active_zones = saved_plots
+                            terrain.plot_count = len(saved_plots)
+                        elif plots:
+                            result["warnings"].append("当前模型未配置地块保存字段，plots 已跳过")
+
+                except Exception as row_error:
+                    result['failed'] += 1
+                    result['errors'].append(str(row_error))
+
+        if result['failed'] > 0 and result['created'] == 0 and result['updated'] == 0:
+            result['success'] = False
+            result['message'] = "导入失败"
+            # Return HTTP 200 with success=False JSON structure to let frontend handle errors
+            return JsonResponse(result)
+            
+        return JsonResponse(result)
+        
+    except Exception as e:
+        logger.error(f"批量导入异常: {str(e)}\n{traceback.format_exc()}")
+        error_msg = str(e)
+        if "unexpected keyword argument" in error_msg:
+            # 提取出字段名
+            import re
+            match = re.search(r"unexpected keyword argument '(.+)'", error_msg)
+            if match:
+                field = match.group(1)
+                error_msg = f"导入字段与数据库模型不一致，请检查字段：{field}"
+            else:
+                error_msg = "导入字段与数据库模型不一致，请检查模板字段是否匹配"
+        
+        return JsonResponse({
+            "success": False,
+            "message": "导入处理异常",
+            "errors": [error_msg]
+        })
 
 # --- TerrainZone API ---
 
@@ -534,6 +1244,7 @@ def unified_save_terrain(request):
         with transaction.atomic():
             # 1. 处理地形 (TerrainArea)
             terrain_id = terrain_data.get('id')
+            declared_area = terrain_data.get('area', 0)
             if terrain_id:
                 terrain = get_object_or_404(TerrainArea, id=terrain_id, is_deleted=False)
                 terrain.name = terrain_data.get('name')
@@ -554,6 +1265,7 @@ def unified_save_terrain(request):
                 msg = "地形与地块已成功创建"
 
             # 2. 批量处理地块 (TerrainZone)
+            saved_plots = []
             saved_plot_ids = []
             for plot_item in plots_data:
                 plot_id = plot_item.get('id')
@@ -569,6 +1281,7 @@ def unified_save_terrain(request):
 
                 if serializer.is_valid():
                     plot = serializer.save()
+                    saved_plots.append(plot)
                     saved_plot_ids.append(plot.id)
                 else:
                     # 如果任何地块校验失败，回滚整个事务
@@ -585,13 +1298,28 @@ def unified_save_terrain(request):
             if deleted_count > 0:
                 logger.info(f"清理了 {deleted_count} 个未在保存列表中的旧地块")
 
-            terrain = build_area_spatial_from_active_plots(terrain)
+            terrain = build_area_spatial_from_active_plots(terrain, active_plots=saved_plots)
 
-            # 重新获取最新的已保存地块数据返回给前端
-            final_plots = TerrainZone.objects.filter(id__in=saved_plot_ids).prefetch_related('elements')
+            total_plot_area = Decimal('0.00')
+            for plot in saved_plots:
+                try:
+                    total_plot_area += Decimal(str(getattr(plot, 'area', 0) or 0))
+                except (TypeError, ValueError, InvalidOperation):
+                    continue
+
+            try:
+                declared_area_decimal = Decimal(str(declared_area or 0))
+            except (TypeError, ValueError, InvalidOperation):
+                declared_area_decimal = Decimal('0.00')
+
+            terrain.area = (
+                total_plot_area if total_plot_area > 0 else declared_area_decimal
+            ).quantize(Decimal('0.01'))
+            terrain.save(update_fields=['area', 'updated_at'])
+
             return api_response(data={
                 "terrain": TerrainAreaSerializer(terrain).data,
-                "plots": TerrainZoneSerializer(final_plots, many=True).data
+                "plots": TerrainZoneSerializer(saved_plots, many=True).data
             }, msg=msg)
 
     except Exception as e:
@@ -794,7 +1522,8 @@ def boolean_subtract(request):
 def subcategory_list(request):
     """获取子类别列表及统计数据 (n/m)"""
     try:
-        category = request.query_params.get('category')
+        requested_category = request.query_params.get('category')
+        category = normalize_plot_type_key(requested_category, for_storage=True) or requested_category
         area_id = request.query_params.get('area_id')
         config = load_subcategory_config()
         
@@ -843,7 +1572,7 @@ def subcategory_list(request):
                 })
             
         return api_response(data={
-            "category": category,
+            "category": normalize_plot_type_key(requested_category) or requested_category,
             "subcategories": subcategories
         })
     except Exception as e:
@@ -854,7 +1583,8 @@ def subcategory_list(request):
 def add_subcategory(request):
     """新增子类别"""
     try:
-        category = request.data.get('category')
+        requested_category = request.data.get('category')
+        category = normalize_plot_type_key(requested_category, for_storage=True) or requested_category
         name = request.data.get('name')
         description = request.data.get('description', '')
         if not category or not name:
@@ -874,6 +1604,7 @@ def add_subcategory(request):
         upsert_subcategory_in_config(category, clean_name, clean_description)
         return api_response(data={
             **TerrainSubCategorySerializer(subcat).data,
+            "category": normalize_plot_type_key(requested_category) or requested_category,
             "description": clean_description,
         }, msg="子类别已新增")
     except Exception as e:

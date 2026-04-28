@@ -3,13 +3,65 @@ import math
 
 from pyproj import Geod
 from rest_framework import serializers
-from shapely.geometry import mapping, shape
+from shapely.geometry import shape
 from shapely.ops import unary_union
 
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 
 
 WGS84_GEOD = Geod(ellps='WGS84')
+
+PLOT_TYPE_LABELS = {
+    'forest': '林区',
+    'farmland': '农田',
+    'building': '建筑',
+    'water': '水域',
+    'road': '道路',
+    'bare_land': '裸地',
+}
+
+PLOT_TYPE_ALIASES = {
+    'forest': 'forest',
+    '林区': 'forest',
+    'farmland': 'farmland',
+    '农田': 'farmland',
+    'building': 'building',
+    '建筑': 'building',
+    'water': 'water',
+    '水域': 'water',
+    'road': 'road',
+    '道路': 'road',
+    'bare': 'bare_land',
+    'bare_land': 'bare_land',
+    '裸地': 'bare_land',
+    'open': 'bare_land',
+    'open_land': 'bare_land',
+    'empty_land': 'bare_land',
+    'unused_land': 'bare_land',
+    '空地': 'bare_land',
+    '开敞地': 'bare_land',
+}
+
+
+def normalize_plot_type_key(value, for_storage=False):
+    if value is None:
+        normalized = None
+    else:
+        raw_value = str(value).strip()
+        normalized = (
+            PLOT_TYPE_ALIASES.get(raw_value)
+            or PLOT_TYPE_ALIASES.get(raw_value.lower())
+        )
+    if not normalized:
+        return None
+    if for_storage and normalized == 'bare_land':
+        return 'bare'
+    return normalized
+
+
+def get_plot_type_label(value):
+    normalized = normalize_plot_type_key(value) or ''
+    return PLOT_TYPE_LABELS.get(normalized, normalized)
 
 
 class GeoJSONCompatibilityMixin:
@@ -157,6 +209,11 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
     bbox_max_lat = serializers.SerializerMethodField()
     area = serializers.SerializerMethodField()
     area_ha = serializers.SerializerMethodField()
+    geometry = serializers.SerializerMethodField()
+    bounds = serializers.SerializerMethodField()
+    accuracy = serializers.SerializerMethodField()
+    risk_label = serializers.SerializerMethodField()
+    plots = serializers.SerializerMethodField()
 
     class Meta:
         model = TerrainArea
@@ -165,6 +222,7 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'name',
             'type',
             'risk_level',
+            'risk_label',
             'area',
             'area_ha',
             'description',
@@ -172,6 +230,10 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'center_lat',
             'boundary_json',
             'boundary_geojson',
+            'geometry',
+            'bounds',
+            'accuracy',
+            'plots',
             'created_at',
             'updated_at',
             'is_deleted',
@@ -192,42 +254,6 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             self.fields.pop('spatial_status', None)
             self.fields.pop('data_status', None)
 
-    def _build_geojson_from_related_zones(self, obj):
-        zones = getattr(obj, 'active_zones', None)
-        if zones is None:
-            zones_relation = getattr(obj, 'zones', None)
-            if zones_relation is None:
-                return None
-
-            try:
-                zones = zones_relation.filter(is_deleted=False)
-            except Exception:
-                return None
-
-        geometries = []
-        for zone in zones:
-            normalized_geojson = self._normalize_geojson(getattr(zone, 'geom_json', None))
-            geometry = self._geometry_from_geojson(normalized_geojson)
-            if geometry and not geometry.is_empty:
-                geometries.append(geometry)
-
-        if not geometries:
-            return None
-
-        try:
-            merged_geometry = unary_union(geometries)
-        except Exception:
-            return None
-
-        if not merged_geometry or merged_geometry.is_empty:
-            return None
-
-        return {
-            'type': 'Feature',
-            'geometry': mapping(merged_geometry),
-            'properties': {},
-        }
-
     def _get_spatial_meta(self, obj):
         if not hasattr(self, '_spatial_meta_cache'):
             self._spatial_meta_cache = {}
@@ -236,22 +262,9 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         if cache_key in self._spatial_meta_cache:
             return self._spatial_meta_cache[cache_key]
 
-        normalized_geojson = None
-        active_zone_geojson = self._build_geojson_from_related_zones(obj)
-        if active_zone_geojson:
-            normalized_geojson = active_zone_geojson
-        else:
-            normalized_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
-
+        normalized_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
         geometry = self._geometry_from_geojson(normalized_geojson)
-        if not geometry:
-            fallback_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
-            if fallback_geojson and fallback_geojson != normalized_geojson:
-                normalized_geojson = fallback_geojson
-                geometry = self._geometry_from_geojson(normalized_geojson)
-
         bbox = geometry.bounds if geometry else None
-        derived_area_ha = self._calculate_area_ha(geometry)
         stored_area = self._coerce_float(getattr(obj, 'area', None))
 
         center_lat = self._coerce_float(getattr(obj, 'center_lat', None))
@@ -267,7 +280,7 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
                 center_lat = None
                 center_lng = None
 
-        area_ha = derived_area_ha if derived_area_ha and derived_area_ha > 0 else stored_area
+        area_ha = stored_area
         if area_ha is not None:
             area_ha = round(float(area_ha), 4)
 
@@ -295,10 +308,10 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         return 0
 
     def get_area(self, obj):
-        return self._get_spatial_meta(obj)['area_ha']
+        return self._coerce_float(getattr(obj, 'area', None))
 
     def get_area_ha(self, obj):
-        return self._get_spatial_meta(obj)['area_ha']
+        return self._coerce_float(getattr(obj, 'area', None))
 
     def get_center_lng(self, obj):
         return self._get_spatial_meta(obj)['center_lng']
@@ -365,6 +378,49 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         bbox = self._get_spatial_meta(obj)['bbox']
         return bbox[3] if bbox else None
 
+    def get_geometry(self, obj):
+        return self._get_spatial_meta(obj)['boundary_geojson']
+
+    def get_bounds(self, obj):
+        bbox = self._get_spatial_meta(obj)['bbox']
+        if bbox:
+            return {
+                "south_west": [bbox[0], bbox[1]],
+                "north_east": [bbox[2], bbox[3]]
+            }
+        return None
+
+    def get_accuracy(self, obj):
+        score = 60
+        if obj.name:
+            score += 5
+        meta = self._get_spatial_meta(obj)
+        if meta['center_lat'] is not None and meta['center_lng'] is not None:
+            score += 10
+        if meta['has_boundary']:
+            score += 15
+        if self.get_plot_count(obj):
+            score += 10
+        return min(score, 98)
+
+    def get_risk_label(self, obj):
+        mapping = {
+            'high': '高风险',
+            'medium': '中风险',
+            'low': '低风险'
+        }
+        return mapping.get(obj.risk_level, '未评估')
+
+    def get_plots(self, obj):
+        active_zones = getattr(obj, 'active_zones', None)
+        if active_zones is not None:
+            return TerrainAreaPlotSerializer(active_zones, many=True).data
+        
+        zones_relation = getattr(obj, 'zones', None)
+        if zones_relation is not None:
+            zones = zones_relation.filter(is_deleted=False)
+            return TerrainAreaPlotSerializer(zones, many=True).data
+        return []
 
 class TerrainSubCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -378,6 +434,10 @@ class TerrainElementSerializer(serializers.ModelSerializer):
 
 class TerrainZoneSerializer(serializers.ModelSerializer):
     elements = TerrainElementSerializer(many=True, read_only=True)
+    geometry = serializers.SerializerMethodField()
+    type_label = serializers.SerializerMethodField()
+    subtype = serializers.SerializerMethodField()
+    subtype_label = serializers.SerializerMethodField()
     
     class Meta:
         model = TerrainZone
@@ -385,10 +445,11 @@ class TerrainZoneSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'updated_at', 'is_deleted')
 
     def validate_category(self, value):
+        normalized_value = normalize_plot_type_key(value, for_storage=True)
         allowed_categories = ['forest', 'farmland', 'water', 'road', 'building', 'bare']
-        if value not in allowed_categories:
+        if normalized_value not in allowed_categories:
             raise serializers.ValidationError(f"Invalid land category: {value}")
-        return value
+        return normalized_value
 
     def validate_risk_level(self, value):
         allowed_levels = ['low', 'medium', 'high']
@@ -397,28 +458,81 @@ class TerrainZoneSerializer(serializers.ModelSerializer):
         return value
 
     def to_internal_value(self, data):
+        mutable_data = data.copy() if hasattr(data, 'copy') else dict(data)
+        if mutable_data.get('category') is not None:
+            mutable_data['category'] = normalize_plot_type_key(mutable_data.get('category'), for_storage=True) or mutable_data.get('category')
         # 自动填充默认名称
-        if not data.get('name'):
-            data['name'] = "未命名地块"
-        return super().to_internal_value(data)
+        if not mutable_data.get('name'):
+            mutable_data['name'] = "未命名地块"
+        return super().to_internal_value(mutable_data)
+
+    def get_geometry(self, obj):
+        return self._get_geojson(obj)
+
+    def get_type_label(self, obj):
+        category = getattr(obj, 'category', None)
+        return self._get_meta_value(obj, 'type_label') or get_plot_type_label(category)
+
+    def get_subtype(self, obj):
+        return getattr(obj, 'type', '') or ''
+
+    def get_subtype_label(self, obj):
+        subtype = getattr(obj, 'type', '') or ''
+        return self._get_meta_value(obj, 'subtype_label') or self._get_meta_value(obj, 'subcategory_name') or subtype
+
+    def _get_geojson(self, obj):
+        parsed = GeoJSONCompatibilityMixin()._normalize_geojson(getattr(obj, 'geom_json', None))
+        return parsed
+
+    def _get_meta_value(self, obj, key):
+        meta = getattr(obj, 'meta_json', None)
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+        if isinstance(meta, dict):
+            value = meta.get(key)
+            if value is not None:
+                return value
+        return None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['category'] = normalize_plot_type_key(data.get('category')) or data.get('category')
+        data['geometry'] = self.get_geometry(instance)
+        data['type_label'] = self.get_type_label(instance)
+        data['subtype'] = self.get_subtype(instance)
+        data['subtype_label'] = self.get_subtype_label(instance)
+        return data
 
 
 class TerrainAreaPlotSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializer):
-    plot_type = serializers.CharField(source='category', read_only=True)
+    plot_type = serializers.SerializerMethodField()
     sub_type = serializers.CharField(source='type', read_only=True)
     boundary_json = serializers.SerializerMethodField()
     boundary_geojson = serializers.SerializerMethodField()
     area = serializers.SerializerMethodField()
+    geometry = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
+    type_label = serializers.SerializerMethodField()
+    subtype = serializers.CharField(source='type', read_only=True)
+    subtype_label = serializers.SerializerMethodField()
 
     class Meta:
         model = TerrainZone
         fields = (
             'id',
             'name',
+            'type',
+            'type_label',
             'plot_type',
+            'subtype',
+            'subtype_label',
             'sub_type',
             'area',
             'risk_level',
+            'geometry',
             'boundary_json',
             'boundary_geojson',
         )
@@ -434,8 +548,7 @@ class TerrainAreaPlotSerializer(GeoJSONCompatibilityMixin, serializers.ModelSeri
         normalized_geojson = self._normalize_geojson(getattr(obj, 'geom_json', None))
         geometry = self._geometry_from_geojson(normalized_geojson)
         stored_area = self._coerce_float(getattr(obj, 'area', None))
-        derived_area_ha = self._calculate_area_ha(geometry)
-        area_ha = stored_area if stored_area and stored_area > 0 else derived_area_ha
+        area_ha = stored_area
         if area_ha is not None:
             area_ha = round(float(area_ha), 4)
 
@@ -454,6 +567,37 @@ class TerrainAreaPlotSerializer(GeoJSONCompatibilityMixin, serializers.ModelSeri
 
     def get_area(self, obj):
         return self._get_zone_spatial_meta(obj)['area_ha']
+
+    def get_geometry(self, obj):
+        return self._get_zone_spatial_meta(obj)['boundary_geojson']
+
+    def get_plot_type(self, obj):
+        return normalize_plot_type_key(getattr(obj, 'category', None)) or getattr(obj, 'category', '') or ''
+
+    def get_type(self, obj):
+        return self.get_plot_type(obj)
+
+    def get_type_label(self, obj):
+        meta = getattr(obj, 'meta_json', None)
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+        if isinstance(meta, dict) and meta.get('type_label'):
+            return get_plot_type_label(meta.get('type_label'))
+        return get_plot_type_label(getattr(obj, 'category', None))
+
+    def get_subtype_label(self, obj):
+        meta = getattr(obj, 'meta_json', None)
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+        if isinstance(meta, dict):
+            return meta.get('subtype_label') or meta.get('subcategory_name') or getattr(obj, 'type', '') or ''
+        return getattr(obj, 'type', '') or ''
 
 # 保留旧名以兼容（如果还有其他地方用到）
 TerrainPlotSerializer = TerrainZoneSerializer

@@ -463,3 +463,49 @@
     min-width: 52px;
   }
 }
+
+/* ==================== 新增功能：批量导入、导出数据、刷新 ==================== */
+
+/* 导入错误提示区 */
+#terrainImportError {
+  background-color: #f8d7da;
+  color: #842029;
+  border-color: #f5c2c7;
+  padding: 1rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+#terrainImportError.d-none {
+  display: none !important;
+}
+
+#terrainImportError strong {
+  color: #b02a37;
+}
+
+#terrainImportError ul {
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+/* 工具栏按钮 loading 状态时保持宽度稳定 */
+#btnStartImportTerrain {
+  min-width: 100px;
+}
+
+#btnRefreshTerrain {
+  min-width: 82px;
+}
+
+/* 旋转动画 */
+.spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
