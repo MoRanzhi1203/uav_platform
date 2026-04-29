@@ -8,6 +8,12 @@
         selectedDroneId: null,
         replayDate: "",
         replayTimer: null,
+        mapDensity: "normal",
+        chartSelection: {
+            "已完成": true,
+            "执行中": true,
+            "待执行": true,
+        },
         filters: {
             keyword: "",
             status: "",
@@ -89,7 +95,15 @@
             state.replayDate = event.target.value;
             renderMap(window.__fleetHistoryDetail || null);
         });
+        document.getElementById("fleet-map-density").addEventListener("change", function (event) {
+            state.mapDensity = event.target.value || "normal";
+            renderMap(window.__fleetHistoryDetail || null);
+        });
         document.getElementById("fleet-replay-play").addEventListener("click", playReplay);
+        document.getElementById("fleet-card-refresh-btn").addEventListener("click", function () {
+            loadDashboard();
+        });
+        bindLegendToggle();
     }
 
     function syncFiltersFromForm() {
@@ -323,12 +337,43 @@
     function renderChart(chartData) {
         const chartDom = document.getElementById("fleet-history-chart");
         chart = chart || echarts.init(chartDom);
+        const colorMap = {
+            "已完成": "#0d6efd",
+            "执行中": "#198754",
+            "待执行": "#fd7e14",
+        };
         chart.setOption({
-            tooltip: { trigger: "axis" },
-            legend: { data: ["已完成", "执行中", "待执行"] },
-            grid: { left: 40, right: 20, top: 40, bottom: 30 },
-            xAxis: { type: "category", data: chartData.labels || [] },
-            yAxis: { type: "value" },
+            color: [colorMap["已完成"], colorMap["执行中"], colorMap["待执行"]],
+            tooltip: {
+                trigger: "axis",
+                axisPointer: { type: "cross" },
+                formatter: function (params) {
+                    if (!params || !params.length) {
+                        return "";
+                    }
+                    return params[0].axisValueLabel + "<br>" + params.map(function (item) {
+                        return item.marker + item.seriesName + "：<strong>" + item.value + "</strong>";
+                    }).join("<br>");
+                },
+            },
+            legend: {
+                data: ["已完成", "执行中", "待执行"],
+                top: 0,
+                selected: state.chartSelection,
+                textStyle: { color: "#526376" },
+            },
+            grid: { left: 44, right: 20, top: 48, bottom: 32 },
+            xAxis: {
+                type: "category",
+                boundaryGap: false,
+                data: chartData.labels || [],
+                axisLabel: { color: "#67788a" },
+            },
+            yAxis: {
+                type: "value",
+                axisLabel: { color: "#67788a" },
+                splitLine: { lineStyle: { color: "rgba(15, 23, 42, 0.08)" } },
+            },
             series: [
                 {
                     name: "已完成",
@@ -337,6 +382,7 @@
                     data: (chartData.series || {}).completed || [],
                     lineStyle: { color: "#0d6efd" },
                     itemStyle: { color: "#0d6efd" },
+                    areaStyle: { color: "rgba(13, 110, 253, 0.08)" },
                 },
                 {
                     name: "执行中",
@@ -345,6 +391,7 @@
                     data: (chartData.series || {}).running || [],
                     lineStyle: { color: "#198754" },
                     itemStyle: { color: "#198754" },
+                    areaStyle: { color: "rgba(25, 135, 84, 0.08)" },
                 },
                 {
                     name: "待执行",
@@ -353,20 +400,30 @@
                     data: (chartData.series || {}).pending || [],
                     lineStyle: { color: "#fd7e14" },
                     itemStyle: { color: "#fd7e14" },
+                    areaStyle: { color: "rgba(253, 126, 20, 0.08)" },
                 },
             ],
         });
+        chart.off("legendselectchanged");
+        chart.on("legendselectchanged", function (event) {
+            state.chartSelection = Object.assign({}, event.selected || {});
+            syncLegendState();
+        });
+        syncLegendState();
     }
 
     function renderDroneDetail(detail) {
+        detail = detail || {};
         const target = document.getElementById("fleet-detail-panel");
         const historyBody = document.getElementById("fleet-history-tbody");
         const drone = detail.selected_drone;
         if (!drone) {
             target.innerHTML = '<div class="text-muted">请选择无人机查看历史详情</div>';
             historyBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">暂无历史数据</td></tr>';
+            renderStatusAlert();
             return;
         }
+        renderStatusAlert(drone);
         target.innerHTML = '' +
             '<div class="ops-detail-grid">' +
             detailItem("无人机名称", drone.name) +
@@ -419,16 +476,20 @@
         if (!map) {
             return;
         }
+        detail = detail || {};
         trackLayer.clearLayers();
         heatLayer.clearLayers();
+        const density = getDensityConfig();
         const trajectories = (detail.trajectories || []).filter(function (item) {
             return !state.replayDate || item.date === state.replayDate;
         });
         const heatPoints = detail.heat_points || [];
         const bounds = [];
+        const selectedDrone = detail.selected_drone || {};
 
         trajectories.forEach(function (segment) {
-            const latLngs = segment.points.map(function (point) {
+            const points = samplePoints(segment.points || [], density.sampleStep);
+            const latLngs = points.map(function (point) {
                 const latLng = [point.lat, point.lng];
                 bounds.push(latLng);
                 return latLng;
@@ -438,26 +499,38 @@
             }
             L.polyline(latLngs, {
                 color: segment.color,
-                weight: 4,
+                weight: density.lineWeight,
                 opacity: 0.85,
-            }).bindPopup(segment.task_name + " | " + formatStatus(segment.status) + " | " + segment.date).addTo(trackLayer);
-            const lastPoint = segment.points[segment.points.length - 1];
+            }).bindTooltip(buildTrackTooltip(segment, selectedDrone), {
+                sticky: true,
+                direction: "top",
+                className: "ops-track-tooltip",
+            }).addTo(trackLayer);
+            const lastPoint = (segment.points || [])[segment.points.length - 1];
             L.circleMarker([lastPoint.lat, lastPoint.lng], {
-                radius: 6,
+                radius: density.nodeRadius,
                 color: segment.color,
                 fillColor: segment.color,
                 fillOpacity: 0.9,
-            }).bindPopup(segment.task_name).addTo(trackLayer);
+            }).bindTooltip(buildTrackTooltip(segment, selectedDrone), {
+                sticky: true,
+                direction: "top",
+                className: "ops-track-tooltip",
+            }).addTo(trackLayer);
         });
 
         heatPoints.forEach(function (item) {
-            const radius = 8 + Math.round((item.intensity || 0.3) * 18);
+            const radius = density.heatRadius + Math.round((item.intensity || 0.3) * density.heatBoost);
             L.circleMarker([item.lat, item.lng], {
                 radius: radius,
                 color: "rgba(220, 53, 69, 0.35)",
                 fillColor: "rgba(220, 53, 69, 0.35)",
                 fillOpacity: 0.28,
                 weight: 1,
+            }).bindTooltip(buildHeatTooltip(item, selectedDrone), {
+                sticky: true,
+                direction: "top",
+                className: "ops-track-tooltip",
             }).addTo(heatLayer);
             bounds.push([item.lat, item.lng]);
         });
@@ -494,6 +567,97 @@
                 document.getElementById("fleet-replay-play").textContent = "轨迹回放";
             }
         }, 1200);
+    }
+
+    function bindLegendToggle() {
+        Array.from(document.querySelectorAll("#fleet-chart-legend [data-series]")).forEach(function (item) {
+            item.addEventListener("click", function () {
+                const seriesName = item.dataset.series;
+                state.chartSelection[seriesName] = !state.chartSelection[seriesName];
+                if (chart) {
+                    chart.dispatchAction({
+                        type: state.chartSelection[seriesName] ? "legendSelect" : "legendUnSelect",
+                        name: seriesName,
+                    });
+                }
+                syncLegendState();
+            });
+        });
+    }
+
+    function syncLegendState() {
+        Array.from(document.querySelectorAll("#fleet-chart-legend [data-series]")).forEach(function (item) {
+            const seriesName = item.dataset.series;
+            item.classList.toggle("is-disabled", state.chartSelection[seriesName] === false);
+        });
+    }
+
+    function getDensityConfig() {
+        if (state.mapDensity === "coarse") {
+            return { lineWeight: 3, nodeRadius: 5, heatRadius: 6, heatBoost: 10, sampleStep: 3 };
+        }
+        if (state.mapDensity === "dense") {
+            return { lineWeight: 5, nodeRadius: 7, heatRadius: 10, heatBoost: 20, sampleStep: 1 };
+        }
+        return { lineWeight: 4, nodeRadius: 6, heatRadius: 8, heatBoost: 16, sampleStep: 2 };
+    }
+
+    function samplePoints(points, step) {
+        if (!Array.isArray(points) || !points.length || step <= 1) {
+            return points || [];
+        }
+        return points.filter(function (_, index) {
+            return index === 0 || index === points.length - 1 || index % step === 0;
+        });
+    }
+
+    function buildTrackTooltip(segment, drone) {
+        const droneName = segment.drone_name || drone.name || "-";
+        const droneId = segment.drone_id || drone.id || "-";
+        const duration = segment.flight_duration || segment.duration || "-";
+        return '' +
+            '<div class="ops-track-tooltip">' +
+            '<div><strong>' + escapeHtml(segment.task_name || "轨迹记录") + '</strong></div>' +
+            '<div>无人机：' + escapeHtml(String(droneName)) + '（ID: ' + escapeHtml(String(droneId)) + '）</div>' +
+            '<div>飞行时间：' + escapeHtml(String(duration)) + '</div>' +
+            '<div>状态：' + escapeHtml(formatStatus(segment.status)) + '</div>' +
+            '<div>日期：' + escapeHtml(segment.date || "-") + '</div>' +
+            '</div>';
+    }
+
+    function buildHeatTooltip(point, drone) {
+        return '' +
+            '<div class="ops-track-tooltip">' +
+            '<div><strong>热区节点</strong></div>' +
+            '<div>无人机 ID：' + escapeHtml(String(point.drone_id || drone.id || "-")) + '</div>' +
+            '<div>飞行时间：' + escapeHtml(String(point.flight_duration || point.duration || "-")) + '</div>' +
+            '<div>强度：' + escapeHtml(String(point.intensity || "-")) + '</div>' +
+            '</div>';
+    }
+
+    function renderStatusAlert(drone) {
+        const target = document.getElementById("fleet-status-alert");
+        if (!target) {
+            return;
+        }
+        if (!drone) {
+            target.className = "ops-inline-alert";
+            target.innerHTML = "";
+            return;
+        }
+        const normalizedStatus = normalizeStatusClass(drone.status);
+        if (normalizedStatus === "abnormal" || Number(drone.battery || 0) < 30) {
+            const levelClass = normalizedStatus === "abnormal" ? "is-danger" : "is-warning";
+            const icon = normalizedStatus === "abnormal" ? "bi-exclamation-octagon" : "bi-battery-half";
+            const message = normalizedStatus === "abnormal"
+                ? "当前无人机状态异常，建议立即检查链路与任务执行情况。"
+                : "当前无人机电量低于 30%，建议优先安排返航或补能。";
+            target.className = "ops-inline-alert is-visible " + levelClass;
+            target.innerHTML = '<i class="bi ' + icon + '"></i><div><strong>状态提示</strong><div>' + escapeHtml(message) + '</div></div>';
+            return;
+        }
+        target.className = "ops-inline-alert";
+        target.innerHTML = "";
     }
 
     function detailItem(label, value) {

@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}机群管理 - 重庆山地无人机群林农协同作业与风险管控系统{% endblock %}
+{% block page_id %}fleet-list{% endblock %}
+{% block sidebar_nav_id %}fleet{% endblock %}
 {% block page_title %}机群资源管理{% endblock %}
 {% block breadcrumb_items %}
     <li class="breadcrumb-item active">机群管理</li>
@@ -11,11 +13,16 @@
 {% endblock %}
 {% block content %}
 <section class="section">
-    <div class="row">
-        <div class="col-lg-3 col-md-6">
-            <div class="card info-card ops-stat-card">
+    <div class="row g-3 ops-stat-grid">
+        <div class="col-lg-3 col-md-6 d-flex">
+            <div class="card info-card ops-stat-card ops-tone-primary">
                 <div class="card-body">
-                    <h5 class="card-title">无人机总数 <span>| Fleet</span></h5>
+                    <div class="ops-stat-header">
+                        <h5 class="card-title">无人机总数 <span>| Fleet</span></h5>
+                        <a class="ops-quick-link" href="/fleet/detail/">
+                            <i class="bi bi-eye"></i> 详情
+                        </a>
+                    </div>
                     <div class="d-flex align-items-center">
                         <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
                             <i class="bi bi-airplane-engines text-primary"></i>
@@ -23,15 +30,23 @@
                         <div class="ps-3">
                             <h6 id="fleet-stat-total">0</h6>
                             <div class="trend-text">无人机资产总量</div>
+                                <div class="ops-stat-meta">
+                                    <span class="ops-chip">关键指标</span>
+                                </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card info-card ops-stat-card">
+        <div class="col-lg-3 col-md-6 d-flex">
+            <div class="card info-card ops-stat-card ops-tone-success">
                 <div class="card-body">
-                    <h5 class="card-title">在线率 <span>| 实时</span></h5>
+                    <div class="ops-stat-header">
+                        <h5 class="card-title">在线率 <span>| 实时</span></h5>
+                        <button type="button" class="ops-quick-link border-0" id="fleet-card-refresh-btn">
+                            <i class="bi bi-arrow-repeat"></i> 刷新
+                        </button>
+                    </div>
                     <div class="d-flex align-items-center">
                         <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
                             <i class="bi bi-broadcast text-success"></i>
@@ -39,15 +54,23 @@
                         <div class="ps-3">
                             <h6 id="fleet-stat-online">0%</h6>
                             <div class="trend-text">自动刷新在线状态与电量</div>
+                            <div class="ops-stat-meta">
+                                <span class="ops-chip">在线态势</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card info-card ops-stat-card">
+        <div class="col-lg-3 col-md-6 d-flex">
+            <div class="card info-card ops-stat-card ops-tone-warning">
                 <div class="card-body">
-                    <h5 class="card-title">飞手总数 <span>| Crew</span></h5>
+                    <div class="ops-stat-header">
+                        <h5 class="card-title">飞手总数 <span>| Crew</span></h5>
+                        <a class="ops-quick-link" href="/fleet/detail/">
+                            <i class="bi bi-person-lines-fill"></i> 资质
+                        </a>
+                    </div>
                     <div class="d-flex align-items-center">
                         <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
                             <i class="bi bi-person-badge text-warning"></i>
@@ -55,15 +78,23 @@
                         <div class="ps-3">
                             <h6 id="fleet-stat-pilot">0</h6>
                             <div class="trend-text">关联飞手资质与执飞机型</div>
+                            <div class="ops-stat-meta">
+                                <span class="ops-chip">机组协同</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6">
-            <div class="card info-card ops-stat-card">
+        <div class="col-lg-3 col-md-6 d-flex">
+            <div class="card info-card ops-stat-card ops-tone-danger">
                 <div class="card-body">
-                    <h5 class="card-title">活跃任务数 <span>| 今日</span></h5>
+                    <div class="ops-stat-header">
+                        <h5 class="card-title">活跃任务数 <span>| 今日</span></h5>
+                        <a class="ops-quick-link" href="/tasking/">
+                            <i class="bi bi-send-check"></i> 调度
+                        </a>
+                    </div>
                     <div class="d-flex align-items-center">
                         <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
                             <i class="bi bi-list-task text-danger"></i>
@@ -71,6 +102,9 @@
                         <div class="ps-3">
                             <h6 id="fleet-stat-active">0</h6>
                             <div class="trend-text">任务执行链路联动调度模块</div>
+                            <div class="ops-stat-meta">
+                                <span class="ops-chip">任务联动</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -80,8 +114,20 @@
 
     <div class="card ops-filter-card">
         <div class="card-body">
+            <div class="ops-filter-shell">
+                <div class="ops-filter-summary">
+                    <div>
+                        <h5 class="card-title mb-1">历史数据筛选与导出</h5>
+                        <div class="trend-text">时间、状态、区域、飞手多维过滤，支持导出与详情联动。</div>
+                    </div>
+                    <div class="ops-filter-chips">
+                        <span class="ops-chip">日期范围</span>
+                        <span class="ops-chip">机组维度</span>
+                        <span class="ops-chip">关键词检索</span>
+                    </div>
+                </div>
             <div class="ops-toolbar mb-3">
-                <h5 class="card-title mb-0">历史数据筛选与导出</h5>
+                <h5 class="card-title mb-0">筛选操作</h5>
                 <div class="ops-toolbar-actions">
                     <button type="button" class="btn btn-outline-primary btn-sm" id="fleet-export-list-btn">
                         <i class="bi bi-download"></i> 导出无人机 CSV
@@ -94,7 +140,7 @@
                     </a>
                 </div>
             </div>
-            <form id="fleet-filter-form" class="row g-3">
+            <form id="fleet-filter-form" class="row g-3 ops-filter-form">
                 <div class="col-lg-2 col-md-4">
                     <label class="form-label">开始日期</label>
                     <input id="fleet-start-date" type="date" class="form-control">
@@ -141,7 +187,7 @@
                         <option value="50">50</option>
                     </select>
                 </div>
-                <div class="col-lg-4 d-flex align-items-end gap-2">
+                <div class="col-lg-4 ops-filter-actions">
                     <button id="fleet-query-btn" type="button" class="btn btn-primary">
                         <i class="bi bi-search"></i> 查询
                     </button>
@@ -150,18 +196,24 @@
                     </button>
                 </div>
             </form>
+            </div>
         </div>
     </div>
 
-    <div class="row">
+    <div class="row g-3 ops-content-grid">
         <div class="col-xl-7">
-            <div class="card">
+            <div class="card ops-panel-card">
                 <div class="card-body">
                     <h5 class="card-title">历史任务趋势 <span>| 完成 / 执行中 / 待执行</span></h5>
                     <div id="fleet-history-chart" class="ops-chart"></div>
+                    <div id="fleet-chart-legend" class="ops-legend mt-3">
+                        <span class="ops-legend-item is-clickable" data-series="已完成"><span class="ops-legend-dot" style="background:#0d6efd;"></span> 已完成</span>
+                        <span class="ops-legend-item is-clickable" data-series="执行中"><span class="ops-legend-dot" style="background:#198754;"></span> 执行中</span>
+                        <span class="ops-legend-item is-clickable" data-series="待执行"><span class="ops-legend-dot" style="background:#fd7e14;"></span> 待执行</span>
+                    </div>
                 </div>
             </div>
-            <div class="card">
+            <div class="card ops-panel-card">
                 <div class="card-body">
                     <div class="ops-toolbar mb-3">
                         <h5 class="card-title mb-0">无人机列表</h5>
@@ -199,23 +251,34 @@
         </div>
 
         <div class="col-xl-5">
-            <div class="card">
+            <div class="card ops-panel-card">
                 <div class="card-body">
-                    <div class="ops-toolbar mb-3">
-                        <h5 class="card-title mb-0">GIS 历史轨迹与热力</h5>
-                        <div class="ops-toolbar-actions">
-                            <select id="fleet-replay-date" class="form-select form-select-sm">
-                                <option value="">全部日期</option>
-                            </select>
-                            <button id="fleet-replay-play" type="button" class="btn btn-outline-primary btn-sm">轨迹回放</button>
+                    <div class="ops-map-shell">
+                        <div class="ops-map-toolbar">
+                            <div>
+                                <h5 class="card-title mb-0">GIS 历史轨迹与热力</h5>
+                                <div class="ops-map-note">支持时间段回放、轨迹密度调节和节点悬停说明。</div>
+                            </div>
+                            <div class="ops-toolbar-actions">
+                                <select id="fleet-replay-date" class="form-select form-select-sm">
+                                    <option value="">全部日期</option>
+                                </select>
+                                <select id="fleet-map-density" class="form-select form-select-sm ops-density-select">
+                                    <option value="coarse">稀疏</option>
+                                    <option value="normal" selected>标准</option>
+                                    <option value="dense">精细</option>
+                                </select>
+                                <button id="fleet-replay-play" type="button" class="btn btn-outline-primary btn-sm">轨迹回放</button>
+                            </div>
                         </div>
+                        <div id="fleet-map" class="ops-map"></div>
                     </div>
-                    <div id="fleet-map" class="ops-map"></div>
                 </div>
             </div>
             <div class="card ops-detail-card">
                 <div class="card-body">
                     <h5 class="card-title">无人机详细历史数据</h5>
+                    <div id="fleet-status-alert" class="ops-inline-alert"></div>
                     <div id="fleet-detail-panel" class="mb-3"></div>
                     <div class="table-responsive ops-mini-table">
                         <table class="table table-sm align-middle">

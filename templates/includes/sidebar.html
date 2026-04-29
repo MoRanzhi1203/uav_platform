@@ -1,67 +1,67 @@
 <aside id="sidebar" class="sidebar">
 
-  <ul class="sidebar-nav" id="sidebar-nav">
+  <ul class="sidebar-nav" id="sidebar-nav" data-sidebar-nav="primary">
 
-    <li class="nav-item">
-      <a class="nav-link active" href="{% url 'page-dashboard' %}">
+    <li class="nav-item" data-nav-id="dashboard">
+      <a class="nav-link sidebar-link" href="{% url 'page-dashboard' %}">
         <i class="bi bi-grid"></i>
         <span>仪表盘</span>
       </a>
     </li><!-- End Dashboard Nav -->
 
-    <li class="nav-item">
-      <a class="nav-link" href="{% url 'page-fleet-list' %}">
+    <li class="nav-item" data-nav-id="fleet">
+      <a class="nav-link sidebar-link" href="{% url 'page-fleet-list' %}">
         <i class="bi bi-drone"></i>
         <span>无人机管理</span>
       </a>
     </li><!-- End Drone Management Nav -->
 
-    <li class="nav-item">
-      <a class="nav-link" href="{% url 'forest-index' %}">
+    <li class="nav-item" data-nav-id="forest">
+      <a class="nav-link sidebar-link" href="{% url 'forest-index' %}">
         <i class="bi bi-tree"></i>
         <span>林区管理</span>
       </a>
     </li><!-- End Forest Management Nav -->
 
-    <li class="nav-item">
-      <a class="nav-link" href="{% url 'agri-index' %}">
+    <li class="nav-item" data-nav-id="agri">
+      <a class="nav-link sidebar-link" href="{% url 'agri-index' %}">
         <i class="bi bi-geo-alt"></i>
         <span>农田管理</span>
       </a>
     </li><!-- End Agriculture Management Nav -->
 
-    <li class="nav-item">
-      <a class="nav-link" href="{% url 'page-tasking-list' %}">
+    <li class="nav-item" data-nav-id="tasking">
+      <a class="nav-link sidebar-link" href="{% url 'page-tasking-list' %}">
         <i class="bi bi-list-check"></i>
         <span>任务调度</span>
       </a>
     </li><!-- End Task Management Nav -->
 
-    <li class="nav-item">
-      <a class="nav-link collapsed" data-bs-target="#monitoring-nav" data-bs-toggle="collapse" href="#">
-        <i class="bi bi-activity"></i><span>监控管理</span><i class="bi bi-chevron-down ms-auto"></i>
+    <li class="nav-item" data-nav-id="monitoring">
+      <a class="nav-link collapsed sidebar-link sidebar-toggle" data-bs-target="#monitoring-nav" data-bs-toggle="collapse" href="#">
+        <i class="bi bi-activity"></i><span>监控管理</span><span class="sidebar-toggle-hint" aria-hidden="true"></span><i class="bi bi-chevron-down ms-auto"></i>
       </a>
-      <ul id="monitoring-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
-        <li>
-          <a href="#">
+      <ul id="monitoring-nav" class="nav-content collapse sidebar-submenu" data-bs-parent="#sidebar-nav" data-nav-group="monitoring">
+        <li data-nav-id="monitoring-map">
+          <a class="sidebar-sublink" href="#">
             <i class="bi bi-circle"></i><span>地图监控</span>
           </a>
         </li>
-        <li>
-          <a href="#">
+        <li data-nav-id="monitoring-risk">
+          <a class="sidebar-sublink" href="#">
             <i class="bi bi-circle"></i><span>风险预警</span>
           </a>
         </li>
-        <li>
-          <a href="#">
+        <li data-nav-id="monitoring-screen">
+          <a class="sidebar-sublink" href="#">
             <i class="bi bi-circle"></i><span>总控大屏</span>
           </a>
         </li>
       </ul>
     </li><!-- End Monitoring Nav -->
 
-    <li class="nav-item">
-      <a class="nav-link" href="{% url 'terrain_index' %}">
+    <li class="nav-item" data-nav-id="terrain">
+      <a class="nav-link sidebar-link" href="{% url 'terrain_index' %}">
         <i class="bi bi-geo"></i>
         <span>地形管理</span>
       </a>
@@ -69,22 +69,22 @@
 
     <li class="nav-heading">系统设置</li>
 
-    <li class="nav-item">
-      <a class="nav-link collapsed" href="#">
+    <li class="nav-item" data-nav-id="user-management">
+      <a class="nav-link collapsed sidebar-link" href="#">
         <i class="bi bi-person"></i>
         <span>用户管理</span>
       </a>
     </li><!-- End User Management Nav -->
 
-    <li class="nav-item">
-      <a class="nav-link collapsed" href="#">
+    <li class="nav-item" data-nav-id="system-config">
+      <a class="nav-link collapsed sidebar-link" href="#">
         <i class="bi bi-gear"></i>
         <span>系统配置</span>
       </a>
     </li><!-- End System Configuration Nav -->
 
-    <li class="nav-item">
-      <a class="nav-link collapsed" href="#">
+    <li class="nav-item" data-nav-id="operation-log">
+      <a class="nav-link collapsed sidebar-link" href="#">
         <i class="bi bi-clock-history"></i>
         <span>操作日志</span>
       </a>

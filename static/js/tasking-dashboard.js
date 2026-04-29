@@ -8,6 +8,12 @@
         assignmentPageSize: 8,
         selectedTaskId: null,
         replayDate: "",
+        mapDensity: "normal",
+        chartSelection: {
+            "已完成": true,
+            "执行中": true,
+            "待执行": true,
+        },
         filters: {
             keyword: "",
             status: "",
@@ -113,6 +119,21 @@
             state.replayDate = event.target.value;
             renderMap(window.__taskingHistoryDetail || null);
         });
+        document.getElementById("tasking-map-density").addEventListener("change", function (event) {
+            state.mapDensity = event.target.value || "normal";
+            renderMap(window.__taskingHistoryDetail || null);
+        });
+        document.getElementById("tasking-card-refresh-btn").addEventListener("click", function () {
+            loadDashboard();
+        });
+        document.getElementById("tasking-focus-alerts-btn").addEventListener("click", function () {
+            state.filters.status = "abnormal";
+            document.getElementById("tasking-status").value = "abnormal";
+            state.taskPage = 1;
+            state.assignmentPage = 1;
+            loadDashboard();
+        });
+        bindLegendToggle();
     }
 
     function syncFiltersFromForm() {
@@ -404,12 +425,43 @@
     function renderChart(chartData) {
         const chartDom = document.getElementById("tasking-history-chart");
         chart = chart || echarts.init(chartDom);
+        const colorMap = {
+            "已完成": "#0d6efd",
+            "执行中": "#198754",
+            "待执行": "#fd7e14",
+        };
         chart.setOption({
-            tooltip: { trigger: "axis" },
-            legend: { data: ["已完成", "执行中", "待执行"] },
-            grid: { left: 40, right: 20, top: 40, bottom: 30 },
-            xAxis: { type: "category", data: chartData.labels || [] },
-            yAxis: { type: "value" },
+            color: [colorMap["已完成"], colorMap["执行中"], colorMap["待执行"]],
+            tooltip: {
+                trigger: "axis",
+                axisPointer: { type: "cross" },
+                formatter: function (params) {
+                    if (!params || !params.length) {
+                        return "";
+                    }
+                    return params[0].axisValueLabel + "<br>" + params.map(function (item) {
+                        return item.marker + item.seriesName + "：<strong>" + item.value + "</strong>";
+                    }).join("<br>");
+                },
+            },
+            legend: {
+                data: ["已完成", "执行中", "待执行"],
+                top: 0,
+                selected: state.chartSelection,
+                textStyle: { color: "#526376" },
+            },
+            grid: { left: 44, right: 20, top: 48, bottom: 32 },
+            xAxis: {
+                type: "category",
+                boundaryGap: false,
+                data: chartData.labels || [],
+                axisLabel: { color: "#67788a" },
+            },
+            yAxis: {
+                type: "value",
+                axisLabel: { color: "#67788a" },
+                splitLine: { lineStyle: { color: "rgba(15, 23, 42, 0.08)" } },
+            },
             series: [
                 {
                     name: "已完成",
@@ -418,6 +470,7 @@
                     data: (chartData.series || {}).completed || [],
                     lineStyle: { color: "#0d6efd" },
                     itemStyle: { color: "#0d6efd" },
+                    areaStyle: { color: "rgba(13, 110, 253, 0.08)" },
                 },
                 {
                     name: "执行中",
@@ -426,6 +479,7 @@
                     data: (chartData.series || {}).running || [],
                     lineStyle: { color: "#198754" },
                     itemStyle: { color: "#198754" },
+                    areaStyle: { color: "rgba(25, 135, 84, 0.08)" },
                 },
                 {
                     name: "待执行",
@@ -434,20 +488,30 @@
                     data: (chartData.series || {}).pending || [],
                     lineStyle: { color: "#fd7e14" },
                     itemStyle: { color: "#fd7e14" },
+                    areaStyle: { color: "rgba(253, 126, 20, 0.08)" },
                 },
             ],
         });
+        chart.off("legendselectchanged");
+        chart.on("legendselectchanged", function (event) {
+            state.chartSelection = Object.assign({}, event.selected || {});
+            syncLegendState();
+        });
+        syncLegendState();
     }
 
     function renderTaskDetail(detail) {
+        detail = detail || {};
         const target = document.getElementById("tasking-detail-panel");
         const assignmentTarget = document.getElementById("tasking-detail-assignments");
         const task = detail.selected_task;
         if (!task) {
             target.innerHTML = '<div class="text-muted">请选择任务查看详情</div>';
             assignmentTarget.innerHTML = '<div class="text-muted">暂无分派记录</div>';
+            renderStatusAlert();
             return;
         }
+        renderStatusAlert(task);
         target.innerHTML = '' +
             '<div class="ops-detail-grid">' +
             detailItem("任务名称", task.name) +
@@ -501,16 +565,20 @@
         if (!map) {
             return;
         }
+        detail = detail || {};
         trackLayer.clearLayers();
         heatLayer.clearLayers();
+        const density = getDensityConfig();
         const trajectories = (detail.trajectories || []).filter(function (item) {
             return !state.replayDate || item.date === state.replayDate;
         });
         const heatPoints = detail.heat_points || [];
         const bounds = [];
+        const selectedTask = detail.selected_task || {};
 
         trajectories.forEach(function (segment) {
-            const latLngs = segment.points.map(function (point) {
+            const points = samplePoints(segment.points || [], density.sampleStep);
+            const latLngs = points.map(function (point) {
                 const latLng = [point.lat, point.lng];
                 bounds.push(latLng);
                 return latLng;
@@ -520,26 +588,38 @@
             }
             L.polyline(latLngs, {
                 color: segment.color,
-                weight: 4,
+                weight: density.lineWeight,
                 opacity: 0.85,
-            }).bindPopup(segment.task_name + " | " + formatStatus(segment.status)).addTo(trackLayer);
-            const lastPoint = segment.points[segment.points.length - 1];
+            }).bindTooltip(buildTrackTooltip(segment, selectedTask), {
+                sticky: true,
+                direction: "top",
+                className: "ops-track-tooltip",
+            }).addTo(trackLayer);
+            const lastPoint = (segment.points || [])[segment.points.length - 1];
             L.circleMarker([lastPoint.lat, lastPoint.lng], {
-                radius: 6,
+                radius: density.nodeRadius,
                 color: segment.color,
                 fillColor: segment.color,
                 fillOpacity: 0.9,
+            }).bindTooltip(buildTrackTooltip(segment, selectedTask), {
+                sticky: true,
+                direction: "top",
+                className: "ops-track-tooltip",
             }).addTo(trackLayer);
         });
 
         heatPoints.forEach(function (item) {
-            const radius = 8 + Math.round((item.intensity || 0.3) * 18);
+            const radius = density.heatRadius + Math.round((item.intensity || 0.3) * density.heatBoost);
             L.circleMarker([item.lat, item.lng], {
                 radius: radius,
                 color: "rgba(220, 53, 69, 0.35)",
                 fillColor: "rgba(220, 53, 69, 0.35)",
                 fillOpacity: 0.28,
                 weight: 1,
+            }).bindTooltip(buildHeatTooltip(item, selectedTask), {
+                sticky: true,
+                direction: "top",
+                className: "ops-track-tooltip",
             }).addTo(heatLayer);
             bounds.push([item.lat, item.lng]);
         });
@@ -549,6 +629,96 @@
         } else {
             map.setView([29.56301, 106.55156], 10);
         }
+    }
+
+    function bindLegendToggle() {
+        Array.from(document.querySelectorAll("#tasking-chart-legend [data-series]")).forEach(function (item) {
+            item.addEventListener("click", function () {
+                const seriesName = item.dataset.series;
+                state.chartSelection[seriesName] = !state.chartSelection[seriesName];
+                if (chart) {
+                    chart.dispatchAction({
+                        type: state.chartSelection[seriesName] ? "legendSelect" : "legendUnSelect",
+                        name: seriesName,
+                    });
+                }
+                syncLegendState();
+            });
+        });
+    }
+
+    function syncLegendState() {
+        Array.from(document.querySelectorAll("#tasking-chart-legend [data-series]")).forEach(function (item) {
+            const seriesName = item.dataset.series;
+            item.classList.toggle("is-disabled", state.chartSelection[seriesName] === false);
+        });
+    }
+
+    function getDensityConfig() {
+        if (state.mapDensity === "coarse") {
+            return { lineWeight: 3, nodeRadius: 5, heatRadius: 6, heatBoost: 10, sampleStep: 3 };
+        }
+        if (state.mapDensity === "dense") {
+            return { lineWeight: 5, nodeRadius: 7, heatRadius: 10, heatBoost: 20, sampleStep: 1 };
+        }
+        return { lineWeight: 4, nodeRadius: 6, heatRadius: 8, heatBoost: 16, sampleStep: 2 };
+    }
+
+    function samplePoints(points, step) {
+        if (!Array.isArray(points) || !points.length || step <= 1) {
+            return points || [];
+        }
+        return points.filter(function (_, index) {
+            return index === 0 || index === points.length - 1 || index % step === 0;
+        });
+    }
+
+    function buildTrackTooltip(segment, task) {
+        const duration = segment.flight_duration || segment.duration || "-";
+        return '' +
+            '<div class="ops-track-tooltip">' +
+            '<div><strong>' + escapeHtml(segment.task_name || task.name || "任务轨迹") + '</strong></div>' +
+            '<div>无人机：' + escapeHtml(segment.drone_name || task.assigned_drone_name || "-") + '</div>' +
+            '<div>飞行时间：' + escapeHtml(String(duration)) + '</div>' +
+            '<div>状态：' + escapeHtml(formatStatus(segment.status)) + '</div>' +
+            '<div>日期：' + escapeHtml(segment.date || "-") + '</div>' +
+            '</div>';
+    }
+
+    function buildHeatTooltip(point, task) {
+        return '' +
+            '<div class="ops-track-tooltip">' +
+            '<div><strong>热区节点</strong></div>' +
+            '<div>任务：' + escapeHtml(task.name || "-") + '</div>' +
+            '<div>无人机 ID：' + escapeHtml(String(point.drone_id || task.assigned_drone_id || "-")) + '</div>' +
+            '<div>飞行时间：' + escapeHtml(String(point.flight_duration || point.duration || "-")) + '</div>' +
+            '<div>强度：' + escapeHtml(String(point.intensity || "-")) + '</div>' +
+            '</div>';
+    }
+
+    function renderStatusAlert(task) {
+        const target = document.getElementById("tasking-status-alert");
+        if (!target) {
+            return;
+        }
+        if (!task) {
+            target.className = "ops-inline-alert";
+            target.innerHTML = "";
+            return;
+        }
+        const normalizedStatus = normalizeStatusClass(task.status);
+        if (normalizedStatus === "abnormal" || task.delayed) {
+            const message = normalizedStatus === "abnormal"
+                ? "当前任务存在异常状态，请优先检查无人机链路与执行记录。"
+                : "当前任务已经延误，建议检查资源分配和执行路径。";
+            const levelClass = normalizedStatus === "abnormal" ? "is-danger" : "is-warning";
+            const icon = normalizedStatus === "abnormal" ? "bi-exclamation-octagon" : "bi-clock-history";
+            target.className = "ops-inline-alert is-visible " + levelClass;
+            target.innerHTML = '<i class="bi ' + icon + '"></i><div><strong>状态提示</strong><div>' + escapeHtml(message) + '</div></div>';
+            return;
+        }
+        target.className = "ops-inline-alert";
+        target.innerHTML = "";
     }
 
     function detailItem(label, value) {
