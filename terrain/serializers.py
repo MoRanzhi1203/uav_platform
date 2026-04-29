@@ -6,6 +6,7 @@ from rest_framework import serializers
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
+from fleet.models import Drone
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
 from .services import calculate_terrain_risk, get_risk_level_display, normalize_risk_level
 
@@ -230,6 +231,8 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
     low_risk_area = serializers.SerializerMethodField()
     total_risk_area = serializers.SerializerMethodField()
     plots = serializers.SerializerMethodField()
+    drone = serializers.SerializerMethodField()
+    drone_id = serializers.SerializerMethodField()
 
     class Meta:
         model = TerrainArea
@@ -255,6 +258,8 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'bounds',
             'accuracy',
             'plots',
+            'drone',
+            'drone_id',
             'created_at',
             'updated_at',
             'is_deleted',
@@ -492,13 +497,25 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
     def get_plots(self, obj):
         active_zones = getattr(obj, 'active_zones', None)
         if active_zones is not None:
-            return TerrainAreaPlotSerializer(active_zones, many=True).data
-        
-        zones_relation = getattr(obj, 'zones', None)
-        if zones_relation is not None:
-            zones = zones_relation.filter(is_deleted=False)
-            return TerrainAreaPlotSerializer(zones, many=True).data
+            return TerrainZoneSerializer(active_zones, many=True).data
+        if hasattr(obj, 'zones'):
+            return TerrainZoneSerializer(obj.zones.filter(is_deleted=False), many=True).data
         return []
+
+    def get_drone_id(self, obj):
+        drone = Drone.objects.filter(terrain_id=obj.id).first()
+        return drone.id if drone else 0
+
+    def get_drone(self, obj):
+        drone = Drone.objects.filter(terrain_id=obj.id).first()
+        if drone:
+            return {
+                "id": drone.id,
+                "drone_code": drone.drone_code,
+                "drone_name": drone.drone_name,
+                "model_name": drone.model_name,
+            }
+        return None
 
 class TerrainSubCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -689,6 +706,3 @@ class TerrainAreaPlotSerializer(GeoJSONCompatibilityMixin, serializers.ModelSeri
 
     def get_risk_level_display(self, obj):
         return get_risk_level_display(getattr(obj, 'risk_level', None))
-
-# 保留旧名以兼容（如果还有其他地方用到）
-TerrainPlotSerializer = TerrainZoneSerializer

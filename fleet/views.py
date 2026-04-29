@@ -533,6 +533,7 @@ def _drone_create(request):
         status=payload.get("status", "idle"),
         launch_site_id=payload.get("launch_site_id", 0),
         pilot_id=payload.get("pilot_id", 0),
+        terrain_id=payload.get("terrain_id", 0),
     )
     return api_response(data=_serialize_api_instance(instance))
 
@@ -569,6 +570,7 @@ def _drone_update(request, instance):
             "status",
             "launch_site_id",
             "pilot_id",
+            "terrain_id",
         ],
     )
     return _save_instance(instance)

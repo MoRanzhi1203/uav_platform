@@ -50,6 +50,7 @@ class Drone(models.Model):
     status = models.CharField(max_length=32, default="idle")
     launch_site_id = models.BigIntegerField(default=0)
     pilot_id = models.BigIntegerField(default=0)
+    terrain_id = models.BigIntegerField(default=0, verbose_name="绑定地形ID")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

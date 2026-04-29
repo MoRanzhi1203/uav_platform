@@ -193,9 +193,66 @@
   min-height: 320px;
 }
 
-.terrain-module-meta {
-  font-size: 0.8125rem;
-  color: #64748b;
+/* 信息卡片对齐 */
+.info-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.info-card .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* 标签页样式 */
+.nav-tabs-bordered .nav-link {
+  margin-bottom: -1px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #444444;
+  font-weight: 600;
+  transition: 0.3s;
+}
+
+.nav-tabs-bordered .nav-link:hover,
+.nav-tabs-bordered .nav-link:focus {
+  color: #4154f1;
+}
+
+.nav-tabs-bordered .nav-link.active {
+  background-color: #fff;
+  color: #4154f1;
+  border-bottom: 2px solid #4154f1;
+}
+
+/* 列表容器高度固定 */
+.fixed-height-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #a8a8a8 #f1f1f1;
+}
+
+.fixed-height-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.fixed-height-scroll::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.fixed-height-scroll::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+/* 表格行高统一 */
+.terrain-table-wrap .table td, 
+.terrain-table-wrap .table th {
+  height: 52px;
+  vertical-align: middle;
 }
 
 .terrain-module-list {

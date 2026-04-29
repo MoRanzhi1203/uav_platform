@@ -33,6 +33,24 @@ class TerrainArea(models.Model):
     def __str__(self):
         return self.name
 
+class SurveyShift(models.Model):
+    """测绘班次模型 (Shift)"""
+    task_id = models.BigIntegerField(verbose_name="关联任务ID")
+    drone_id = models.BigIntegerField(verbose_name="使用无人机ID")
+    drone_name = models.CharField(max_length=128, verbose_name="无人机名称")
+    start_time = models.DateTimeField(verbose_name="开始时间")
+    end_time = models.DateTimeField(verbose_name="结束时间")
+    status = models.CharField(max_length=32, default="pending", verbose_name="班次状态")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'terrain_survey_shift'
+        verbose_name = '测绘班次'
+        verbose_name_plural = '测绘班次'
+
+    def __str__(self):
+        return f"Task {self.task_id} - Shift {self.id}"
+
 class TerrainSubCategory(models.Model):
     """子类别管理 (SubCategory)"""
     category = models.CharField(max_length=50, verbose_name="大类")
