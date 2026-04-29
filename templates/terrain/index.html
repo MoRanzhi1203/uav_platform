@@ -158,61 +158,10 @@
               <button type="button" class="btn btn-outline-secondary terrain-filter-btn" id="resetBtn">
                 <i class="bi bi-arrow-counterclockwise"></i> 重置
               </button>
-              <button
-                type="button"
-                class="btn btn-outline-primary terrain-filter-btn"
-                data-bs-toggle="collapse"
-                data-bs-target="#terrainAdvancedFilters"
-                aria-expanded="false"
-                aria-controls="terrainAdvancedFilters"
-              >
-                <i class="bi bi-sliders"></i> 高级筛选
-              </button>
             </div>
           </div>
         </div>
       </form>
-
-      <div class="collapse terrain-advanced-filters" id="terrainAdvancedFilters">
-        <div class="terrain-advanced-filters-inner">
-          <!-- 高级筛选为后续业务字段预留，当前先完成前端布局，不接入现有查询逻辑。 -->
-          <div class="row g-3">
-            <div class="col-12 col-lg-4">
-              <label for="advancedTerrainType" class="form-label terrain-filter-label">地形类型</label>
-              <select class="form-select" id="advancedTerrainType" disabled>
-                <option value="">全部</option>
-                <option value="forest">林区</option>
-                <option value="farm">农田</option>
-                <option value="water">水域</option>
-                <option value="building">建筑</option>
-                <option value="road">道路</option>
-                <option value="bare_land">裸地</option>
-              </select>
-            </div>
-            <div class="col-12 col-lg-4">
-              <label class="form-label terrain-filter-label">面积范围</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="advancedMinArea" placeholder="最小面积" disabled>
-                <span class="input-group-text">-</span>
-                <input type="number" class="form-control" id="advancedMaxArea" placeholder="最大面积" disabled>
-                <span class="input-group-text">公顷</span>
-              </div>
-            </div>
-            <div class="col-12 col-lg-4">
-              <label for="advancedDataStatus" class="form-label terrain-filter-label">数据状态</label>
-              <select class="form-select" id="advancedDataStatus" disabled>
-                <option value="">全部</option>
-                <option value="drawn">已绘制</option>
-                <option value="pending">待完善</option>
-                <option value="survey">有测绘任务</option>
-              </select>
-            </div>
-          </div>
-          <div class="terrain-advanced-note text-muted small">
-            当前高级筛选控件仅作为布局与业务预留，待后续字段和接口确认后接入筛选逻辑。
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -523,7 +472,6 @@
 
 {% block extra_js %}
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="{% static 'mock/terrain.js' %}"></script>
     <script src="{% static 'js/map/map_init.js' %}"></script>
     <script src="{% static 'js/map/terrain_map.js' %}"></script>
     <script src="{% static 'pages/terrain/index.js' %}"></script>
