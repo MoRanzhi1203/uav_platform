@@ -6,7 +6,9 @@ from rest_framework import serializers
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
+from fleet.models import Drone
 from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
+from .services import calculate_terrain_risk, get_risk_level_display, normalize_risk_level
 
 
 WGS84_GEOD = Geod(ellps='WGS84')
@@ -194,6 +196,7 @@ class GeoJSONCompatibilityMixin:
 
 
 class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializer):
+    risk_level = serializers.SerializerMethodField()
     plot_count = serializers.SerializerMethodField()
     center_lng = serializers.SerializerMethodField()
     center_lat = serializers.SerializerMethodField()
@@ -213,7 +216,23 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
     bounds = serializers.SerializerMethodField()
     accuracy = serializers.SerializerMethodField()
     risk_label = serializers.SerializerMethodField()
+    risk_level_display = serializers.SerializerMethodField()
+    computed_risk_level = serializers.SerializerMethodField()
+    computed_risk_level_display = serializers.SerializerMethodField()
+    risk_score = serializers.SerializerMethodField()
+    risk_reason = serializers.SerializerMethodField()
+    high_risk_plot_count = serializers.SerializerMethodField()
+    medium_risk_plot_count = serializers.SerializerMethodField()
+    low_risk_plot_count = serializers.SerializerMethodField()
+    unknown_risk_plot_count = serializers.SerializerMethodField()
+    total_plot_count = serializers.SerializerMethodField()
+    high_risk_area = serializers.SerializerMethodField()
+    medium_risk_area = serializers.SerializerMethodField()
+    low_risk_area = serializers.SerializerMethodField()
+    total_risk_area = serializers.SerializerMethodField()
     plots = serializers.SerializerMethodField()
+    drone = serializers.SerializerMethodField()
+    drone_id = serializers.SerializerMethodField()
 
     class Meta:
         model = TerrainArea
@@ -223,6 +242,11 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'type',
             'risk_level',
             'risk_label',
+            'risk_level_display',
+            'computed_risk_level',
+            'computed_risk_level_display',
+            'risk_score',
+            'risk_reason',
             'area',
             'area_ha',
             'description',
@@ -234,10 +258,21 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'bounds',
             'accuracy',
             'plots',
+            'drone',
+            'drone_id',
             'created_at',
             'updated_at',
             'is_deleted',
             'plot_count',
+            'high_risk_plot_count',
+            'medium_risk_plot_count',
+            'low_risk_plot_count',
+            'unknown_risk_plot_count',
+            'total_plot_count',
+            'high_risk_area',
+            'medium_risk_area',
+            'low_risk_area',
+            'total_risk_area',
             'has_boundary',
             'spatial_status',
             'data_accuracy',
@@ -295,6 +330,17 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         }
         self._spatial_meta_cache[cache_key] = meta
         return meta
+
+    def _get_terrain_risk(self, obj):
+        cached = getattr(obj, '_terrain_risk_cache', None)
+        if cached is not None:
+            return cached
+        payload = calculate_terrain_risk(obj, plots=getattr(obj, 'active_zones', None))
+        obj._terrain_risk_cache = payload
+        return payload
+
+    def get_risk_level(self, obj):
+        return self._get_terrain_risk(obj)['risk_level']
 
     def get_plot_count(self, obj):
         active_zones = getattr(obj, 'active_zones', None)
@@ -404,23 +450,72 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         return min(score, 98)
 
     def get_risk_label(self, obj):
-        mapping = {
-            'high': '高风险',
-            'medium': '中风险',
-            'low': '低风险'
-        }
-        return mapping.get(obj.risk_level, '未评估')
+        return self._get_terrain_risk(obj)['risk_level_display']
+
+    def get_risk_level_display(self, obj):
+        return self._get_terrain_risk(obj)['risk_level_display']
+
+    def get_computed_risk_level(self, obj):
+        return self._get_terrain_risk(obj)['risk_level']
+
+    def get_computed_risk_level_display(self, obj):
+        return self._get_terrain_risk(obj)['risk_level_display']
+
+    def get_risk_score(self, obj):
+        return self._get_terrain_risk(obj)['risk_score']
+
+    def get_risk_reason(self, obj):
+        return self._get_terrain_risk(obj)['reason']
+
+    def get_high_risk_plot_count(self, obj):
+        return self._get_terrain_risk(obj)['high_count']
+
+    def get_medium_risk_plot_count(self, obj):
+        return self._get_terrain_risk(obj)['medium_count']
+
+    def get_low_risk_plot_count(self, obj):
+        return self._get_terrain_risk(obj)['low_count']
+
+    def get_unknown_risk_plot_count(self, obj):
+        return self._get_terrain_risk(obj)['unknown_count']
+
+    def get_total_plot_count(self, obj):
+        return self._get_terrain_risk(obj)['total_count']
+
+    def get_high_risk_area(self, obj):
+        return self._get_terrain_risk(obj)['high_area']
+
+    def get_medium_risk_area(self, obj):
+        return self._get_terrain_risk(obj)['medium_area']
+
+    def get_low_risk_area(self, obj):
+        return self._get_terrain_risk(obj)['low_area']
+
+    def get_total_risk_area(self, obj):
+        return self._get_terrain_risk(obj)['total_area']
 
     def get_plots(self, obj):
         active_zones = getattr(obj, 'active_zones', None)
         if active_zones is not None:
-            return TerrainAreaPlotSerializer(active_zones, many=True).data
-        
-        zones_relation = getattr(obj, 'zones', None)
-        if zones_relation is not None:
-            zones = zones_relation.filter(is_deleted=False)
-            return TerrainAreaPlotSerializer(zones, many=True).data
+            return TerrainZoneSerializer(active_zones, many=True).data
+        if hasattr(obj, 'zones'):
+            return TerrainZoneSerializer(obj.zones.filter(is_deleted=False), many=True).data
         return []
+
+    def get_drone_id(self, obj):
+        drone = Drone.objects.filter(terrain_id=obj.id).first()
+        return drone.id if drone else 0
+
+    def get_drone(self, obj):
+        drone = Drone.objects.filter(terrain_id=obj.id).first()
+        if drone:
+            return {
+                "id": drone.id,
+                "drone_code": drone.drone_code,
+                "drone_name": drone.drone_name,
+                "model_name": drone.model_name,
+            }
+        return None
 
 class TerrainSubCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -438,6 +533,8 @@ class TerrainZoneSerializer(serializers.ModelSerializer):
     type_label = serializers.SerializerMethodField()
     subtype = serializers.SerializerMethodField()
     subtype_label = serializers.SerializerMethodField()
+    risk_level_display = serializers.SerializerMethodField()
+    risk_level = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     class Meta:
         model = TerrainZone
@@ -452,10 +549,11 @@ class TerrainZoneSerializer(serializers.ModelSerializer):
         return normalized_value
 
     def validate_risk_level(self, value):
-        allowed_levels = ['low', 'medium', 'high']
-        if value not in allowed_levels:
+        normalized_value = normalize_risk_level(value)
+        allowed_levels = ['none', 'low', 'medium', 'high']
+        if normalized_value not in allowed_levels:
             raise serializers.ValidationError(f"Invalid risk level: {value}")
-        return value
+        return normalized_value
 
     def to_internal_value(self, data):
         mutable_data = data.copy() if hasattr(data, 'copy') else dict(data)
@@ -480,6 +578,9 @@ class TerrainZoneSerializer(serializers.ModelSerializer):
         subtype = getattr(obj, 'type', '') or ''
         return self._get_meta_value(obj, 'subtype_label') or self._get_meta_value(obj, 'subcategory_name') or subtype
 
+    def get_risk_level_display(self, obj):
+        return get_risk_level_display(getattr(obj, 'risk_level', None))
+
     def _get_geojson(self, obj):
         parsed = GeoJSONCompatibilityMixin()._normalize_geojson(getattr(obj, 'geom_json', None))
         return parsed
@@ -500,6 +601,8 @@ class TerrainZoneSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data['category'] = normalize_plot_type_key(data.get('category')) or data.get('category')
+        data['risk_level'] = normalize_risk_level(data.get('risk_level'))
+        data['risk_level_display'] = data.get('risk_level_display') or get_risk_level_display(data.get('risk_level'))
         data['geometry'] = self.get_geometry(instance)
         data['type_label'] = self.get_type_label(instance)
         data['subtype'] = self.get_subtype(instance)
@@ -518,6 +621,7 @@ class TerrainAreaPlotSerializer(GeoJSONCompatibilityMixin, serializers.ModelSeri
     type_label = serializers.SerializerMethodField()
     subtype = serializers.CharField(source='type', read_only=True)
     subtype_label = serializers.SerializerMethodField()
+    risk_level_display = serializers.SerializerMethodField()
 
     class Meta:
         model = TerrainZone
@@ -532,6 +636,7 @@ class TerrainAreaPlotSerializer(GeoJSONCompatibilityMixin, serializers.ModelSeri
             'sub_type',
             'area',
             'risk_level',
+            'risk_level_display',
             'geometry',
             'boundary_json',
             'boundary_geojson',
@@ -599,5 +704,5 @@ class TerrainAreaPlotSerializer(GeoJSONCompatibilityMixin, serializers.ModelSeri
             return meta.get('subtype_label') or meta.get('subcategory_name') or getattr(obj, 'type', '') or ''
         return getattr(obj, 'type', '') or ''
 
-# 保留旧名以兼容（如果还有其他地方用到）
-TerrainPlotSerializer = TerrainZoneSerializer
+    def get_risk_level_display(self, obj):
+        return get_risk_level_display(getattr(obj, 'risk_level', None))

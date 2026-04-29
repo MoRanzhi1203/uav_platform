@@ -61,19 +61,6 @@
   min-width: 0;
 }
 
-.terrain-advanced-filters {
-  margin-top: 0.75rem;
-}
-
-.terrain-advanced-filters-inner {
-  padding-top: 0.75rem;
-  border-top: 1px dashed #dee2e6;
-}
-
-.terrain-advanced-note {
-  margin-top: 0.75rem;
-}
-
 /* 主业务区 Bootstrap 栅格补充样式 */
 .terrain-main-layout {
   align-items: stretch;
@@ -198,13 +185,80 @@
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
-.terrain-module-meta {
-  font-size: 0.8125rem;
-  color: #64748b;
+.terrain-bottom-tabs .nav-tabs {
+  margin-bottom: 1rem;
+}
+
+.terrain-bottom-tabs .tab-pane {
+  min-height: 320px;
+}
+
+/* 信息卡片对齐 */
+.info-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.info-card .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* 标签页样式 */
+.nav-tabs-bordered .nav-link {
+  margin-bottom: -1px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #444444;
+  font-weight: 600;
+  transition: 0.3s;
+}
+
+.nav-tabs-bordered .nav-link:hover,
+.nav-tabs-bordered .nav-link:focus {
+  color: #4154f1;
+}
+
+.nav-tabs-bordered .nav-link.active {
+  background-color: #fff;
+  color: #4154f1;
+  border-bottom: 2px solid #4154f1;
+}
+
+/* 列表容器高度固定 */
+.fixed-height-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #a8a8a8 #f1f1f1;
+}
+
+.fixed-height-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.fixed-height-scroll::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.fixed-height-scroll::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+/* 表格行高统一 */
+.terrain-table-wrap .table td, 
+.terrain-table-wrap .table th {
+  height: 52px;
+  vertical-align: middle;
 }
 
 .terrain-module-list {
   min-height: 320px;
+  display: flex;
+  flex-direction: column;
 }
 
 .terrain-module-empty,
@@ -311,6 +365,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.terrain-module-pagination-actions .btn {
+  margin: 0 2px;
 }
 
 .terrain-analysis-card .card-body {
@@ -323,32 +382,16 @@
   gap: 0.5rem;
 }
 
-.terrain-analysis-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0.9rem;
-  margin: 1rem 0 1.25rem;
+.terrain-analysis-chart {
+  margin: 1rem 0;
 }
 
-.terrain-analysis-summary-item {
-  border: 1px solid #e9eef5;
-  border-radius: 12px;
-  padding: 0.95rem 1rem;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+.terrain-analysis-module-list {
+  min-height: auto;
 }
 
-.terrain-analysis-summary-label {
-  display: block;
-  font-size: 0.8125rem;
-  color: #64748b;
-}
-
-.terrain-analysis-summary-value {
-  display: block;
-  margin-top: 0.35rem;
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: #0f172a;
+.terrain-analysis-item .terrain-module-item-footer {
+  justify-content: flex-start;
 }
 
 .terrain-analysis-chart {
@@ -449,6 +492,7 @@
 .risk-high { background: #fee2e2; color: #dc2626; }
 .risk-medium { background: #ffedd5; color: #ea580c; }
 .risk-low { background: #dcfce7; color: #16a34a; }
+.risk-none { background: #e5e7eb; color: #4b5563; }
 
 /* 地图容器 */
 .map-container {

@@ -14,10 +14,17 @@ from rest_framework.permissions import AllowAny
 from shapely.geometry import shape, mapping, MultiPolygon, Polygon
 from shapely.ops import unary_union
 from tasking.models import GlobalTask
-from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory
+from fleet.models import Drone
+from .models import TerrainArea, TerrainZone, TerrainElement, TerrainSubCategory, SurveyShift
 from .serializers import (
     GeoJSONCompatibilityMixin, TerrainAreaSerializer, TerrainZoneSerializer, TerrainAreaPlotSerializer,
     TerrainElementSerializer, TerrainSubCategorySerializer
+)
+from .services import (
+    attach_terrain_risk,
+    get_risk_level_display,
+    normalize_risk_level,
+    sync_terrain_risk_fields,
 )
 from common.responses import api_response, api_error
 
@@ -81,6 +88,7 @@ RISK_LEVEL_LABELS = {
     "low": "低风险",
     "medium": "中风险",
     "high": "高风险",
+    "none": "未评估",
 }
 
 TASK_STATUS_LABELS = {
@@ -153,14 +161,14 @@ def _get_zone_area_ha(zone):
 
 def _serialize_risk_zone(zone):
     area_ha = _get_zone_area_ha(zone)
-    risk_level = str(getattr(zone, "risk_level", "") or "low")
+    risk_level = normalize_risk_level(getattr(zone, "risk_level", None))
     return {
         "id": zone.id,
         "terrain_id": getattr(zone, "area_obj_id", None),
         "terrain_name": getattr(getattr(zone, "area_obj", None), "name", "") or "未绑定地形",
         "plot_name": getattr(zone, "name", "") or f"地块 {zone.id}",
         "risk_level": risk_level,
-        "risk_level_label": RISK_LEVEL_LABELS.get(risk_level, "未评估"),
+        "risk_level_label": get_risk_level_display(risk_level),
         "area_ha": area_ha,
         "area_label": f"{area_ha:.2f} 公顷" if area_ha > 0 else "-",
         "updated_at": zone.updated_at.isoformat() if getattr(zone, "updated_at", None) else None,
@@ -192,6 +200,22 @@ def _match_task_terrain_name(task, terrain_names):
 def _serialize_survey_task(task, terrain_names):
     raw_status = str(getattr(task, "status", "") or "pending").strip().lower()
     status_label = TASK_STATUS_LABELS.get(raw_status, "未开始")
+    
+    # 获取班次信息
+    shifts = SurveyShift.objects.filter(task_id=task.id).order_by("start_time")
+    serialized_shifts = []
+    for s in shifts:
+        serialized_shifts.append({
+            "id": s.id,
+            "drone_id": s.drone_id,
+            "drone_name": s.drone_name,
+            "start_time": s.start_time.isoformat(),
+            "end_time": s.end_time.isoformat(),
+            "start_time_label": _format_datetime_label(s.start_time),
+            "end_time_label": _format_datetime_label(s.end_time),
+            "status": s.status,
+        })
+
     return {
         "id": task.id,
         "terrain_name": _match_task_terrain_name(task, terrain_names),
@@ -209,6 +233,7 @@ def _serialize_survey_task(task, terrain_names):
         "api_detail_url": f"/api/tasking/global-tasks/{task.id}/",
         "scene_type": getattr(task, "scene_type", "") or "mixed",
         "scene_label": TASK_SCENE_LABELS.get(getattr(task, "scene_type", ""), "综合区域"),
+        "shifts": serialized_shifts,
     }
 
 
@@ -821,7 +846,10 @@ def delete_terrain(request, pk):
             # 2. 逻辑删除下属所有地块
             TerrainZone.objects.filter(area_obj=terrain).update(is_deleted=True)
             
-        return api_response(msg="地形及其关联地块已成功删除", data={"terrain_id": pk})
+            # 3. 解除无人机绑定 (不删除无人机)
+            Drone.objects.filter(terrain_id=terrain.id).update(terrain_id=0)
+            
+        return api_response(msg="地形及其关联地块已成功删除，相关无人机已解除绑定", data={"terrain_id": pk})
     except Exception as e:
         logger.error(f"删除地形异常: {str(e)}")
         return api_error(msg=f"删除失败: {str(e)}", status=500)
@@ -831,21 +859,32 @@ def delete_terrain(request, pk):
 def list_areas(request):
     """区域列表接口"""
     try:
-        queryset = list(
+        page = _parse_positive_int(request.GET.get("page"), 1)
+        page_size = _parse_positive_int(request.GET.get("page_size"), 20, maximum=100)
+        
+        queryset = (
             TerrainArea.objects.filter(is_deleted=False)
             .annotate(plot_count=Count('zones', distinct=True))
             .order_by('-updated_at', '-id')
         )
-        for area in queryset:
+        
+        page_obj, pagination = _paginate_queryset(queryset, page, page_size)
+        items = list(page_obj.object_list)
+        
+        for area in items:
             active_plots = get_area_active_plots(area)
             build_area_spatial_from_active_plots(area, active_plots=active_plots)
+            attach_terrain_risk(area, sync_terrain_risk_fields(area, save=False, plots=active_plots))
 
         serializer = TerrainAreaSerializer(
-            queryset,
+            items,
             many=True,
             context={'exclude_status_fields': True}
         )
-        return api_response(data=serializer.data)
+        return api_response(data={
+            "items": serializer.data,
+            "pagination": pagination
+        })
     except Exception as e:
         logger.error(f"获取区域列表异常: {str(e)}")
         return api_error(msg=str(e), status=500)
@@ -873,6 +912,8 @@ def area_edit_detail(request, area_id):
         zones = get_editor_active_zones(area)
         area.active_zones = zones
         area.plot_count = len(zones)
+        terrain_risk = sync_terrain_risk_fields(area, save=False, plots=zones)
+        attach_terrain_risk(area, terrain_risk)
 
         area_serializer = TerrainAreaSerializer(area)
         zones_serializer = TerrainZoneSerializer(zones, many=True)
@@ -881,10 +922,12 @@ def area_edit_detail(request, area_id):
             "area": area_serializer.data,
             "zones": zones_serializer.data,
             "plots": area_serializer.data.get("plots", []),
+            "terrain_risk": terrain_risk,
             "editor_payload": {
                 "area": area_serializer.data,
                 "zones": zones_serializer.data,
                 "plots": area_serializer.data.get("plots", []),
+                "terrain_risk": terrain_risk,
                 "view_meta": {
                     "area_id": area.id,
                     "plot_count": len(zones_serializer.data),
@@ -1001,6 +1044,101 @@ def terrain_risk_analysis(request):
         )
     except Exception as e:
         logger.error("获取风险分析数据异常: %s", str(e))
+        return api_error(msg=str(e), status=500)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def execute_survey_task(request):
+    """执行测绘任务：创建任务并自动分配班次"""
+    try:
+        data = request.data
+        terrain_id = data.get('terrain_id')
+        task_name = data.get('task_name')
+        description = data.get('description', '')
+        
+        terrain = get_object_or_404(TerrainArea, id=terrain_id, is_deleted=False)
+        drone = Drone.objects.filter(terrain_id=terrain.id).first()
+        
+        if not drone:
+            return api_error(msg="该地形尚未绑定无人机，请先绑定无人机后再执行任务")
+            
+        # 创建全局任务
+        task_code = f"SURVEY-{timezone.now().strftime('%Y%m%d%H%M%S')}-{terrain.id}"
+        now = timezone.now()
+        task = GlobalTask.objects.create(
+            task_code=task_code,
+            task_name=task_name or f"{terrain.name}测绘任务",
+            scene_type="mixed",
+            status="pending",
+            description=description,
+            planned_start=now,
+            planned_end=now + timezone.timedelta(hours=4) # 默认4小时
+        )
+        
+        # 自动计算班次 (多班次逻辑)
+        # 假设每次飞行 1.5 小时，间隔 30 分钟充电
+        flight_duration = 1.5
+        rest_duration = 0.5
+        total_shifts = 2 # 演示用，固定2个班次
+        
+        for i in range(total_shifts):
+            shift_start = now + timezone.timedelta(hours=(flight_duration + rest_duration) * i)
+            shift_end = shift_start + timezone.timedelta(hours=flight_duration)
+            SurveyShift.objects.create(
+                task_id=task.id,
+                drone_id=drone.id,
+                drone_name=drone.drone_name,
+                start_time=shift_start,
+                end_time=shift_end,
+                status="pending"
+            )
+            
+        return api_response(data={
+            "task_id": task.id,
+            "task_code": task_code,
+            "shifts_count": total_shifts
+        }, msg="测绘任务创建成功")
+    except Exception as e:
+        logger.error(f"创建测绘任务异常: {str(e)}")
+        return api_error(msg=str(e), status=500)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_available_drones(request):
+    """获取可用于绑定的无人机列表"""
+    try:
+        # 返回未绑定或已绑定到当前地形的无人机
+        terrain_id = request.GET.get('terrain_id')
+        if terrain_id:
+            queryset = Drone.objects.filter(models.Q(terrain_id=0) | models.Q(terrain_id=terrain_id))
+        else:
+            queryset = Drone.objects.filter(terrain_id=0)
+            
+        data = [
+            {
+                "id": d.id,
+                "drone_code": d.drone_code,
+                "drone_name": d.drone_name,
+                "model_name": d.model_name,
+                "terrain_id": d.terrain_id
+            }
+            for d in queryset
+        ]
+        return api_response(data=data)
+    except Exception as e:
+        logger.error(f"获取无人机列表异常: {str(e)}")
+        return api_error(msg=str(e), status=500)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def unbind_drone(request):
+    """解除无人机绑定"""
+    try:
+        drone_id = request.data.get('drone_id')
+        Drone.objects.filter(id=drone_id).update(terrain_id=0)
+        return api_response(msg="解除绑定成功")
+    except Exception as e:
+        logger.error(f"解除绑定异常: {str(e)}")
         return api_error(msg=str(e), status=500)
 
 @api_view(['GET'])
@@ -1431,6 +1569,7 @@ def import_areas(request):
                             )
                             terrain.active_zones = saved_plots
                             terrain.plot_count = len(saved_plots)
+                            sync_terrain_risk_fields(terrain, save=True, plots=saved_plots)
                         elif plots:
                             result["warnings"].append("当前模型未配置地块保存字段，plots 已跳过")
 
@@ -1479,6 +1618,7 @@ def unified_save_terrain(request):
         logger.info(f"--- 统一保存请求数据 ---: {json.dumps(data, ensure_ascii=False)}")
         terrain_data = data.get('terrain', {})
         plots_data = data.get('plots', []) # 支持批量地块
+        drone_id = terrain_data.get('drone_id')
 
         if not terrain_data.get('name'):
             return api_error(msg="地形名称不能为空")
@@ -1505,6 +1645,13 @@ def unified_save_terrain(request):
                     risk_level=terrain_data.get('risk_level', 'low')
                 )
                 msg = "地形与地块已成功创建"
+
+            # 处理无人机绑定
+            # 1. 解除该地形之前绑定的所有无人机
+            Drone.objects.filter(terrain_id=terrain.id).update(terrain_id=0)
+            # 2. 如果提供了新的 drone_id，则绑定它
+            if drone_id:
+                Drone.objects.filter(id=drone_id).update(terrain_id=terrain.id)
 
             # 2. 批量处理地块 (TerrainZone)
             saved_plots = []
@@ -1559,9 +1706,15 @@ def unified_save_terrain(request):
             ).quantize(Decimal('0.01'))
             terrain.save(update_fields=['area', 'updated_at'])
 
+            active_plots = get_area_active_plots(terrain)
+            terrain = build_area_spatial_from_active_plots(terrain, active_plots=active_plots)
+            terrain_risk = sync_terrain_risk_fields(terrain, save=True, plots=active_plots)
+            terrain_serializer = TerrainAreaSerializer(terrain)
+
             return api_response(data={
-                "terrain": TerrainAreaSerializer(terrain).data,
-                "plots": TerrainZoneSerializer(saved_plots, many=True).data
+                "terrain": terrain_serializer.data,
+                "plots": TerrainZoneSerializer(saved_plots, many=True).data,
+                "terrain_risk": terrain_risk,
             }, msg=msg)
 
     except Exception as e:
@@ -1584,7 +1737,13 @@ def create_or_update_zone(request):
 
         if serializer.is_valid():
             zone = serializer.save()
-            return api_response(data=TerrainZoneSerializer(zone).data, msg=msg)
+            terrain_risk = None
+            if getattr(zone, "area_obj", None):
+                terrain_risk = sync_terrain_risk_fields(zone.area_obj, save=True)
+            return api_response(data={
+                "zone": TerrainZoneSerializer(zone).data,
+                "terrain_risk": terrain_risk,
+            }, msg=msg)
         return api_error(msg="数据校验失败", data=serializer.errors)
     except Exception as e:
         logger.error(f"保存地块异常: {str(e)}")
@@ -1596,9 +1755,11 @@ def delete_zone(request, pk):
     """地块逻辑删除"""
     try:
         zone = get_object_or_404(TerrainZone, id=pk)
+        terrain = getattr(zone, "area_obj", None)
         zone.is_deleted = True
         zone.save()
-        return api_response(msg="地块已删除")
+        terrain_risk = sync_terrain_risk_fields(terrain, save=True) if terrain else None
+        return api_response(data={"terrain_risk": terrain_risk}, msg="地块已删除")
     except Exception as e:
         return api_error(msg=str(e), status=500)
 
@@ -1872,19 +2033,3 @@ def delete_subcategory(request):
     except Exception as e:
         return api_error(msg=str(e), status=500)
 
-# --- 为了兼容旧代码的占位符 (如果需要) ---
-def create_plot(request): return create_or_update_zone(request)
-def list_plots(request): 
-    # 临时兼容
-    queryset = TerrainZone.objects.filter(is_deleted=False)
-    area_id = request.GET.get('area_id')
-    if area_id and str(area_id).isdigit():
-        queryset = queryset.filter(area_obj_id=area_id)
-    serializer = TerrainZoneSerializer(queryset, many=True)
-    return api_response(data=serializer.data)
-def plot_detail(request, pk):
-    zone = get_object_or_404(TerrainZone, pk=pk, is_deleted=False)
-    return api_response(data=TerrainZoneSerializer(zone).data)
-def update_plot(request, pk):
-    request.data['id'] = pk
-    return create_or_update_zone(request)

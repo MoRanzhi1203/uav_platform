@@ -5,12 +5,14 @@ from tasking.views import (
     global_task_list_create,
     overview,
     task_history,
+    task_history_data,
     task_dispatch_detail,
     task_dispatch_list_create,
 )
 
 urlpatterns = [
     path("overview/", overview, name="tasking-overview"),
+    path("history/", task_history_data, name="task-history"),
     path("task-history/", task_history, name="tasking-task-history"),
     path("tasks/", global_task_list_create, name="tasking-task-list-create"),
     path("assignments/", task_dispatch_list_create, name="tasking-assignment-list-create"),

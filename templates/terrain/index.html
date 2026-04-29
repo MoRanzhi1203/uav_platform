@@ -2,6 +2,8 @@
 {% load static %}
 
 {% block title %}地形管理 - 山地空间支撑分析页{% endblock %}
+{% block page_id %}terrain-module-index{% endblock %}
+{% block sidebar_nav_id %}terrain{% endblock %}
 
 {% block extra_css %}
   <link href="{% static 'css/terrain.css' %}" rel="stylesheet">
@@ -58,15 +60,15 @@
     <div class="col-lg-3 col-md-6">
       <div class="card info-card">
         <div class="card-body">
-          <h5 class="card-title">危险区域 <span class="text-muted">| 高风险</span></h5>
+          <h5 class="card-title">危险区域 <span class="text-muted" id="dangerAreaScope">| 高风险 + 中风险</span></h5>
           <div class="d-flex align-items-center">
             <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
               <i class="bi bi-exclamation-octagon text-danger"></i>
             </div>
             <div class="ps-3">
-              <h6 id="highRiskAreas">12</h6>
-              <span class="text-danger small pt-1 fw-bold">2%</span>
-              <span class="text-muted small pt-2 ps-1">较上周</span>
+              <h6 id="highRiskAreas">0</h6>
+              <span class="text-danger small pt-1 fw-bold" id="dangerAreaBreakdown">高风险 0 个</span>
+              <span class="text-muted small pt-2 ps-1" id="dangerAreaDetail">中风险 0 个，低风险 0 个，未评估 0 个</span>
             </div>
           </div>
         </div>
@@ -136,6 +138,7 @@
               <option value="low">低风险</option>
               <option value="medium">中风险</option>
               <option value="high">高风险</option>
+              <option value="none">未评估</option>
             </select>
           </div>
           <div class="col-sm-6 col-lg-2">
@@ -157,61 +160,10 @@
               <button type="button" class="btn btn-outline-secondary terrain-filter-btn" id="resetBtn">
                 <i class="bi bi-arrow-counterclockwise"></i> 重置
               </button>
-              <button
-                type="button"
-                class="btn btn-outline-primary terrain-filter-btn"
-                data-bs-toggle="collapse"
-                data-bs-target="#terrainAdvancedFilters"
-                aria-expanded="false"
-                aria-controls="terrainAdvancedFilters"
-              >
-                <i class="bi bi-sliders"></i> 高级筛选
-              </button>
             </div>
           </div>
         </div>
       </form>
-
-      <div class="collapse terrain-advanced-filters" id="terrainAdvancedFilters">
-        <div class="terrain-advanced-filters-inner">
-          <!-- 高级筛选为后续业务字段预留，当前先完成前端布局，不接入现有查询逻辑。 -->
-          <div class="row g-3">
-            <div class="col-12 col-lg-4">
-              <label for="advancedTerrainType" class="form-label terrain-filter-label">地形类型</label>
-              <select class="form-select" id="advancedTerrainType" disabled>
-                <option value="">全部</option>
-                <option value="forest">林区</option>
-                <option value="farm">农田</option>
-                <option value="water">水域</option>
-                <option value="building">建筑</option>
-                <option value="road">道路</option>
-                <option value="bare_land">裸地</option>
-              </select>
-            </div>
-            <div class="col-12 col-lg-4">
-              <label class="form-label terrain-filter-label">面积范围</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="advancedMinArea" placeholder="最小面积" disabled>
-                <span class="input-group-text">-</span>
-                <input type="number" class="form-control" id="advancedMaxArea" placeholder="最大面积" disabled>
-                <span class="input-group-text">公顷</span>
-              </div>
-            </div>
-            <div class="col-12 col-lg-4">
-              <label for="advancedDataStatus" class="form-label terrain-filter-label">数据状态</label>
-              <select class="form-select" id="advancedDataStatus" disabled>
-                <option value="">全部</option>
-                <option value="drawn">已绘制</option>
-                <option value="pending">待完善</option>
-                <option value="survey">有测绘任务</option>
-              </select>
-            </div>
-          </div>
-          <div class="terrain-advanced-note text-muted small">
-            当前高级筛选控件仅作为布局与业务预留，待后续字段和接口确认后接入筛选逻辑。
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -277,7 +229,10 @@
               <div class="col">
                 <h5 class="card-title mb-0">地形详细信息</h5>
               </div>
-              <div class="col-auto">
+              <div class="col-auto d-flex gap-2">
+                <button class="btn btn-sm btn-outline-info" id="executeTaskBtn">
+                  <i class="bi bi-play-circle"></i> 执行测绘任务
+                </button>
                 <button class="btn btn-sm btn-primary" id="editTerrainMapBtn">
                   <i class="bi bi-pencil-square"></i> 编辑地形地图
                 </button>
@@ -309,6 +264,24 @@
                   <div class="info-item">
                     <label class="text-muted small">地块数量</label>
                     <div class="fw-bold" id="infoPlotCount">-</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="info-item">
+                    <label class="text-muted small">风险构成</label>
+                    <div class="fw-bold" id="infoRiskComposition">-</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="info-item">
+                    <label class="text-muted small">风险分值</label>
+                    <div class="fw-bold" id="infoRiskScore">-</div>
+                  </div>
+                </div>
+                <div class="col-md-6 col-sm-12">
+                  <div class="info-item">
+                    <label class="text-muted small">判定原因</label>
+                    <div class="info-description-text" id="infoRiskReason">暂无风险判定说明</div>
                   </div>
                 </div>
                 <div class="col-md-3 col-sm-6">
@@ -354,76 +327,169 @@
   <!-- 底部业务模块 -->
   <section class="card terrain-bottom-insights" id="terrainBottomInsights">
     <div class="card-body">
-      <div class="terrain-bottom-header">
+      <div class="terrain-bottom-header mb-3">
         <div>
-          <h5 class="card-title mb-1">地形底部业务模块</h5>
-          <p class="text-muted mb-0">沿用当前页面大框架，展示风险区域、测绘记录与风险统计分析，支持自动刷新与详情展开。</p>
+          <h5 class="card-title mb-1">地形业务模块</h5>
+          <p class="text-muted mb-0">展示风险区域、测绘记录与风险统计分析，支持分页、班次详情与自动刷新。</p>
         </div>
         <div class="terrain-bottom-actions">
           <span class="badge bg-light text-primary border" id="terrainBottomRefreshHint">自动刷新：5 分钟</span>
           <span class="text-muted small" id="terrainBottomLastUpdated">最近更新：--</span>
           <button type="button" class="btn btn-sm btn-outline-primary" id="terrainBottomRefreshBtn">
-            <i class="bi bi-arrow-clockwise"></i> 刷新模块
+            <i class="bi bi-arrow-clockwise"></i> 刷新
           </button>
         </div>
       </div>
 
-      <div class="row g-4">
-        <div class="col-12 col-xxl-6">
-          <div class="card terrain-module-card h-100">
-            <div class="card-body">
-              <div class="terrain-module-header">
-                <div>
-                  <h6 class="card-title mb-1">风险区域</h6>
-                  <p class="text-muted mb-0">展示当前项目中高风险和中风险地块，支持分页、展开详情和定位到对应地形。</p>
-                </div>
-                <span class="terrain-module-meta" id="terrainRiskModuleMeta">每页 10 条</span>
-              </div>
-              <div class="terrain-module-list" id="terrainRiskModuleList"></div>
-              <div class="terrain-module-pagination" id="terrainRiskModulePagination"></div>
+      <!-- 顶部标签页 -->
+      <ul class="nav nav-tabs nav-tabs-bordered d-flex mb-3" id="terrainBottomTabs" role="tablist">
+        <li class="nav-item flex-fill" role="presentation">
+          <button class="nav-link w-100 active" id="risk-tab" data-bs-toggle="tab" data-bs-target="#risk-content" type="button" role="tab">风险区域</button>
+        </li>
+        <li class="nav-item flex-fill" role="presentation">
+          <button class="nav-link w-100" id="survey-tab" data-bs-toggle="tab" data-bs-target="#survey-content" type="button" role="tab">测绘记录</button>
+        </li>
+        <li class="nav-item flex-fill" role="presentation">
+          <button class="nav-link w-100" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis-content" type="button" role="tab">数据分析</button>
+        </li>
+      </ul>
+
+      <div class="tab-content pt-2" id="terrainBottomTabContent">
+        <!-- 风险区域 Tab -->
+        <div class="tab-pane fade show active" id="risk-content" role="tabpanel" aria-labelledby="risk-tab">
+          <div class="terrain-module-card border-0">
+            <div class="terrain-module-header d-flex justify-content-between align-items-center mb-2">
+              <span class="text-muted small">展示当前高/中风险地块 (每页 10 条)</span>
+              <div id="terrainRiskPaginationTop"></div>
             </div>
+            <div class="terrain-module-list fixed-height-scroll" id="terrainRiskModuleList" style="height: 400px; overflow-y: auto;"></div>
+            <div class="terrain-module-pagination mt-2" id="terrainRiskModulePagination"></div>
           </div>
         </div>
 
-        <div class="col-12 col-xxl-6">
-          <div class="card terrain-module-card h-100">
-            <div class="card-body">
-              <div class="terrain-module-header">
-                <div>
-                  <h6 class="card-title mb-1">测绘记录</h6>
-                  <p class="text-muted mb-0">展示最近测绘任务执行情况，支持分页、自动刷新与跳转任务详情。</p>
-                </div>
-                <span class="terrain-module-meta" id="terrainSurveyModuleMeta">最近任务</span>
-              </div>
-              <div class="terrain-module-list" id="terrainSurveyModuleList"></div>
-              <div class="terrain-module-pagination" id="terrainSurveyModulePagination"></div>
+        <!-- 测绘记录 Tab -->
+        <div class="tab-pane fade" id="survey-content" role="tabpanel" aria-labelledby="survey-tab">
+          <div class="terrain-module-card border-0">
+            <div class="terrain-module-header d-flex justify-content-between align-items-center mb-2">
+              <span class="text-muted small">展示测绘任务及班次详情 (每页 10 条)</span>
+              <div id="terrainSurveyPaginationTop"></div>
             </div>
+            <div class="terrain-module-list fixed-height-scroll" id="terrainSurveyModuleList" style="height: 400px; overflow-y: auto;"></div>
+            <div class="terrain-module-pagination mt-2" id="terrainSurveyModulePagination"></div>
           </div>
         </div>
 
-        <div class="col-12">
-          <div class="card terrain-module-card terrain-analysis-card">
-            <div class="card-body">
-              <div class="terrain-module-header terrain-analysis-header">
-                <div>
-                  <h6 class="card-title mb-1">数据分析</h6>
-                  <p class="text-muted mb-0">统计当前地块风险等级分布，支持柱状图与饼图切换，并提供悬停查看具体数据。</p>
-                </div>
-                <div class="terrain-analysis-toolbar">
-                  <div class="btn-group btn-group-sm" role="group" aria-label="图表类型切换">
-                    <button type="button" class="btn btn-outline-primary active" data-chart-type="bar">柱状图</button>
-                    <button type="button" class="btn btn-outline-primary" data-chart-type="pie">饼图</button>
-                  </div>
+        <!-- 数据分析 Tab -->
+        <div class="tab-pane fade" id="analysis-content" role="tabpanel" aria-labelledby="analysis-tab">
+          <div class="terrain-module-card border-0">
+            <div class="terrain-module-header d-flex justify-content-between align-items-center mb-3">
+              <span class="text-muted small">统计当前地块风险等级分布</span>
+              <div class="terrain-analysis-toolbar">
+                <div class="btn-group btn-group-sm" role="group" aria-label="图表类型切换">
+                  <button type="button" class="btn btn-outline-primary active" data-chart-type="bar">柱状图</button>
+                  <button type="button" class="btn btn-outline-primary" data-chart-type="pie">饼图</button>
                 </div>
               </div>
-              <div class="terrain-analysis-summary" id="terrainAnalysisSummary"></div>
-              <div id="terrainAnalysisChart" class="terrain-analysis-chart"></div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4">
+                <div class="terrain-analysis-summary" id="terrainAnalysisSummary"></div>
+              </div>
+              <div class="col-lg-8">
+                <div id="terrainAnalysisChart" class="terrain-analysis-chart" style="min-height: 350px;"></div>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
   </section>
+</div>
+
+<!-- 执行测绘任务弹窗 -->
+<div class="modal fade" id="taskModal" tabindex="-1" aria-labelledby="taskModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="taskModalLabel">创建测绘任务</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="taskForm">
+          <input type="hidden" id="taskTerrainId">
+          <div class="mb-3">
+            <label class="form-label">目标地形</label>
+            <input type="text" class="form-control" id="taskTerrainName" readonly>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">绑定无人机</label>
+            <div id="taskDroneInfo" class="alert alert-info py-2 small mb-1">
+              <!-- 动态加载 -->
+            </div>
+            <div id="noDroneWarning" class="alert alert-warning py-2 small d-none">
+              该地形尚未绑定无人机，请先去编辑地形绑定。
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="taskName" class="form-label">任务名称</label>
+            <input type="text" class="form-control" id="taskName" placeholder="例如：某某区域定期巡检">
+          </div>
+          <div class="mb-3">
+            <label for="taskDescription" class="form-label">任务描述</label>
+            <textarea class="form-control" id="taskDescription" rows="3"></textarea>
+          </div>
+          <div class="alert alert-light border small">
+            <i class="bi bi-info-circle me-1"></i> 任务创建后将根据无人机性能自动拆分为多班次执行。
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="startTaskBtn">启动任务</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 任务详情弹窗 (班次列表) -->
+<div class="modal fade" id="taskDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">任务执行详情</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <p class="mb-1 text-muted small">任务名称</p>
+            <h6 id="detailTaskName">-</h6>
+          </div>
+          <div class="col-md-6">
+            <p class="mb-1 text-muted small">任务状态</p>
+            <span class="badge" id="detailTaskStatus">-</span>
+          </div>
+        </div>
+        <h6 class="border-bottom pb-2 mb-3">班次列表 (Shifts)</h6>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>班次</th>
+                <th>无人机</th>
+                <th>开始时间</th>
+                <th>结束时间</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="shiftListBody">
+              <!-- 动态加载 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- 编辑弹窗 -->
@@ -452,6 +518,16 @@
               <option value="medium">中</option>
               <option value="high">高</option>
             </select>
+          </div>
+          <div class="mb-3">
+            <label for="editDroneId" class="form-label">绑定无人机</label>
+            <select class="form-select" id="editDroneId">
+              <option value="0">暂不绑定</option>
+              <!-- 动态加载 -->
+            </select>
+            <div class="form-text text-info small" id="droneBindingHint">
+              删除地形不会删除绑定的无人机，仅解除关系。
+            </div>
           </div>
           <div class="mb-3">
             <label for="description" class="form-label">描述</label>
@@ -504,7 +580,6 @@
 
 {% block extra_js %}
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="{% static 'mock/terrain.js' %}"></script>
     <script src="{% static 'js/map/map_init.js' %}"></script>
     <script src="{% static 'js/map/terrain_map.js' %}"></script>
     <script src="{% static 'pages/terrain/index.js' %}"></script>

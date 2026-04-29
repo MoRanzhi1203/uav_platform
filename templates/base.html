@@ -36,7 +36,9 @@
   {% block extra_css %}{% endblock %}
 </head>
 
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}"
+  data-page-id="{% block page_id %}{% endblock %}"
+  data-sidebar-nav="{% block sidebar_nav_id %}{% endblock %}">
 
   {% if not hide_nav %}
     <!-- ======= Header ======= -->
