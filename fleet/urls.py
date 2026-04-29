@@ -8,6 +8,7 @@ from fleet.views import (
     drone_group_member_detail,
     drone_group_member_list_create,
     drone_list_create,
+    fleet_history_data,
     launch_site_detail,
     launch_site_list_create,
     overview,
@@ -17,6 +18,7 @@ from fleet.views import (
 
 urlpatterns = [
     path("overview/", overview, name="fleet-overview"),
+    path("history/", fleet_history_data, name="fleet-history"),
     path("pilots/", pilot_list_create, name="fleet-pilot-list-create"),
     path("pilots/<int:pk>/", pilot_detail, name="fleet-pilot-detail"),
     path("drone-history/", drone_history, name="fleet-drone-history"),

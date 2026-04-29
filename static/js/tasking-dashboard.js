@@ -1,4 +1,6 @@
 (function () {
+    const TASKING_HISTORY_API_URL = "/tasking/api/history/";
+
     const state = {
         taskPage: 1,
         taskPageSize: 10,
@@ -142,12 +144,28 @@
             }
         });
         const requestUrl = search.toString() ? url + "?" + search.toString() : url;
-        return fetch(requestUrl, { credentials: "same-origin" }).then(function (response) {
-            return response.json().then(function (payload) {
-                if (!response.ok || payload.code !== 0) {
-                    throw new Error(payload.msg || "请求失败");
+        return fetch(requestUrl, {
+            credentials: "same-origin",
+            headers: buildRequestHeaders(),
+        }).then(function (response) {
+            return response.text().then(function (text) {
+                const contentType = response.headers.get("content-type") || "";
+                if (contentType.indexOf("application/json") === -1) {
+                    throw new Error("接口未返回 JSON，可能返回了 HTML：" + text.slice(0, 120));
                 }
-                return payload.data;
+                let payload;
+                try {
+                    payload = JSON.parse(text);
+                } catch (error) {
+                    throw new Error("JSON 解析失败：" + error.message);
+                }
+                if (payload.success === true) {
+                    return payload.data;
+                }
+                if (payload.code === 0) {
+                    return payload.data;
+                }
+                throw new Error(payload.error || payload.msg || payload.message || "请求失败");
             });
         });
     }
@@ -203,6 +221,33 @@
         return params;
     }
 
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== "") {
+            const cookies = document.cookie.split(";");
+            for (let i = 0; i < cookies.length; i += 1) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === name + "=") {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function buildRequestHeaders() {
+        const headers = {
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+        };
+        const csrfToken = getCookie("csrftoken");
+        if (csrfToken) {
+            headers["X-CSRFToken"] = csrfToken;
+        }
+        return headers;
+    }
+
     function loadDashboard() {
         return Promise.all([loadTasks(), loadAssignments(), loadHistory()]).catch(handleError);
     }
@@ -242,7 +287,7 @@
     }
 
     function loadHistory(silent) {
-        return fetchJson("/tasking/api/task-history/", buildHistoryQuery(false)).then(function (data) {
+        return fetchJson(TASKING_HISTORY_API_URL, buildHistoryQuery(false)).then(function (data) {
             window.__taskingHistoryDetail = data.detail || null;
             if (data.detail && data.detail.selected_task) {
                 state.selectedTaskId = data.detail.selected_task.id;

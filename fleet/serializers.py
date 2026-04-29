@@ -1,5 +1,4 @@
-from datetime import datetime
-
+from django.utils import timezone
 from rest_framework import serializers
 
 from fleet.models import Drone, LaunchSite, Pilot
@@ -8,11 +7,29 @@ from fleet.models import Drone, LaunchSite, Pilot
 ONLINE_STATUSES = {"online", "running", "busy", "active", "ready"}
 
 
-class PilotSerializer(serializers.ModelSerializer):
+def normalize_datetime(value):
+    if not value:
+        return value
+    current_timezone = timezone.get_current_timezone()
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, current_timezone)
+    return timezone.localtime(value, current_timezone)
+
+
+class AwareDateTimeMixin:
+    @staticmethod
+    def _serialize_datetime(value):
+        value = normalize_datetime(value)
+        return value.isoformat() if value else None
+
+
+class PilotSerializer(AwareDateTimeMixin, serializers.ModelSerializer):
     name = serializers.CharField(source="pilot_name", read_only=True)
     qualification = serializers.CharField(source="skill_level", read_only=True)
     assigned_drone_ids = serializers.SerializerMethodField()
     assigned_drone_names = serializers.SerializerMethodField()
+    created_at = serializers.SerializerMethodField()
+    updated_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Pilot
@@ -43,12 +60,18 @@ class PilotSerializer(serializers.ModelSerializer):
             return drone_name_map[obj.id]
         return list(Drone.objects.filter(pilot_id=obj.id).values_list("drone_name", flat=True))
 
+    def get_created_at(self, obj):
+        return self._serialize_datetime(obj.created_at)
 
-class DroneSerializer(serializers.ModelSerializer):
+    def get_updated_at(self, obj):
+        return self._serialize_datetime(obj.updated_at)
+
+
+class DroneSerializer(AwareDateTimeMixin, serializers.ModelSerializer):
     name = serializers.CharField(source="drone_name", read_only=True)
     model = serializers.CharField(source="model_name", read_only=True)
     battery = serializers.SerializerMethodField()
-    last_active = serializers.DateTimeField(source="updated_at", read_only=True)
+    last_active = serializers.SerializerMethodField()
     region_id = serializers.SerializerMethodField()
     region = serializers.SerializerMethodField()
     pilot_name = serializers.SerializerMethodField()
@@ -56,6 +79,8 @@ class DroneSerializer(serializers.ModelSerializer):
     task_count = serializers.SerializerMethodField()
     flight_duration = serializers.SerializerMethodField()
     completion_rate = serializers.SerializerMethodField()
+    created_at = serializers.SerializerMethodField()
+    updated_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Drone
@@ -90,11 +115,15 @@ class DroneSerializer(serializers.ModelSerializer):
         if obj.id in battery_map:
             return battery_map[obj.id]
 
-        now = self.context.get("now") or datetime.now()
-        age_hours = max(0, int((now - obj.updated_at).total_seconds() // 3600)) if obj.updated_at else 0
+        now = normalize_datetime(self.context.get("now")) or normalize_datetime(timezone.now())
+        updated_at = normalize_datetime(obj.updated_at)
+        age_hours = max(0, int((now - updated_at).total_seconds() // 3600)) if updated_at else 0
         status = (obj.status or "").lower()
         base = 90 if status in ONLINE_STATUSES else 72
         return max(15, min(100, base - ((obj.id * 11 + age_hours * 3) % 48)))
+
+    def get_last_active(self, obj):
+        return self._serialize_datetime(obj.updated_at)
 
     def get_region_id(self, obj):
         site = self._get_launch_site(obj)
@@ -121,6 +150,12 @@ class DroneSerializer(serializers.ModelSerializer):
 
     def get_completion_rate(self, obj):
         return round((self.context.get("drone_completion_rate_map") or {}).get(obj.id, 0), 2)
+
+    def get_created_at(self, obj):
+        return self._serialize_datetime(obj.created_at)
+
+    def get_updated_at(self, obj):
+        return self._serialize_datetime(obj.updated_at)
 
     def _get_launch_site(self, obj):
         launch_site_map = self.context.get("launch_site_map") or {}
