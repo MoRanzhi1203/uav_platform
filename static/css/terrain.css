@@ -198,6 +198,14 @@
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
+.terrain-bottom-tabs .nav-tabs {
+  margin-bottom: 1rem;
+}
+
+.terrain-bottom-tabs .tab-pane {
+  min-height: 320px;
+}
+
 .terrain-module-meta {
   font-size: 0.8125rem;
   color: #64748b;
@@ -205,6 +213,8 @@
 
 .terrain-module-list {
   min-height: 320px;
+  display: flex;
+  flex-direction: column;
 }
 
 .terrain-module-empty,
@@ -311,6 +321,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.terrain-module-pagination-actions .btn {
+  margin: 0 2px;
 }
 
 .terrain-analysis-card .card-body {
@@ -323,32 +338,16 @@
   gap: 0.5rem;
 }
 
-.terrain-analysis-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0.9rem;
-  margin: 1rem 0 1.25rem;
+.terrain-analysis-chart {
+  margin: 1rem 0;
 }
 
-.terrain-analysis-summary-item {
-  border: 1px solid #e9eef5;
-  border-radius: 12px;
-  padding: 0.95rem 1rem;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+.terrain-analysis-module-list {
+  min-height: auto;
 }
 
-.terrain-analysis-summary-label {
-  display: block;
-  font-size: 0.8125rem;
-  color: #64748b;
-}
-
-.terrain-analysis-summary-value {
-  display: block;
-  margin-top: 0.35rem;
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: #0f172a;
+.terrain-analysis-item .terrain-module-item-footer {
+  justify-content: flex-start;
 }
 
 .terrain-analysis-chart {

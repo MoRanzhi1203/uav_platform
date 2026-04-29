@@ -6,6 +6,7 @@ const terrainData = {
   riskAreas: [],
   surveys: [],
   riskAnalysis: [],
+  riskAnalysisDetails: [],
   currentTerrain: null,
   pendingRiskTerrainId: null,
   appliedFilters: {
@@ -24,6 +25,7 @@ let terrainPanelResizeObserver = null;
 let terrainElasticHeightRaf = 0;
 let terrainFilterDebounceTimer = 0;
 let terrainBottomRefreshTimer = 0;
+let terrainBottomTabEventsBound = false;
 
 const terrainDashboardState = {
   refreshIntervalMs: 5 * 60 * 1000,
@@ -41,6 +43,9 @@ const terrainDashboardState = {
     pagination: null
   },
   analysis: {
+    page: 1,
+    pageSize: 2,
+    pagination: null,
     total: 0
   }
 };
@@ -265,18 +270,95 @@ async function loadSurveyRecordModule(options = {}) {
 
 async function loadRiskAnalysisModule(options = {}) {
   const {
+    page = terrainDashboardState.analysis.page,
     silent = false
   } = options;
   const chartNode = document.getElementById('terrainAnalysisChart');
+  const listNode = document.getElementById('terrainAnalysisModuleList');
   if (chartNode && !silent && !terrainData.riskAnalysis.length) {
     chartNode.innerHTML = '<div class="terrain-module-loading">风险分析加载中...</div>';
   }
+  if (listNode && !silent) {
+    listNode.innerHTML = '<div class="terrain-module-loading">数据分析加载中...</div>';
+  }
 
-  const data = await fetchTerrainDashboardJson('/terrain/api/dashboard/risk-analysis/');
+  const data = await fetchTerrainDashboardJson(`/terrain/api/dashboard/risk-analysis/?page=${page}&page_size=${terrainDashboardState.analysis.pageSize}`);
   terrainData.riskAnalysis = Array.isArray(data.items) ? data.items : [];
+  terrainData.riskAnalysisDetails = buildRiskAnalysisDetails(
+    terrainData.riskAnalysis,
+    data.total || 0
+  );
+  terrainDashboardState.analysis.page = page;
+  terrainDashboardState.analysis.pagination = buildClientPagination(
+    terrainData.riskAnalysisDetails.length,
+    page,
+    terrainDashboardState.analysis.pageSize
+  );
+  terrainDashboardState.analysis.page = terrainDashboardState.analysis.pagination?.page || 1;
   terrainDashboardState.analysis.total = data.total || 0;
   terrainDashboardState.lastRefreshedAt = data.refreshed_at || terrainDashboardState.lastRefreshedAt;
   renderRiskAnalysisModule();
+}
+
+function getActiveTerrainBottomTabTarget() {
+  const activeButton = document.querySelector('#terrainBottomTabNav .nav-link.active[data-bs-toggle="tab"]');
+  return activeButton?.getAttribute('data-bs-target') || '#riskTabPane';
+}
+
+function resizeTerrainAnalysisChart() {
+  if (!terrainDashboardState.chartInstance) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    terrainDashboardState.chartInstance?.resize();
+  });
+}
+
+async function loadTerrainBottomTabModule(targetId, options = {}) {
+  switch (targetId) {
+    case '#surveyTabPane':
+      await loadSurveyRecordModule(options);
+      break;
+    case '#analysisTabPane':
+      await loadRiskAnalysisModule(options);
+      resizeTerrainAnalysisChart();
+      break;
+    case '#riskTabPane':
+    default:
+      await loadRiskAreaModule(options);
+      break;
+  }
+
+  updateTerrainBottomRefreshLabel(terrainDashboardState.lastRefreshedAt);
+}
+
+function bindTerrainBottomTabEvents() {
+  if (terrainBottomTabEventsBound) {
+    return;
+  }
+
+  const tabButtons = document.querySelectorAll('#terrainBottomTabNav button[data-bs-toggle="tab"]');
+  if (!tabButtons.length) {
+    return;
+  }
+
+  tabButtons.forEach((button) => {
+    button.addEventListener('shown.bs.tab', async (event) => {
+      const targetId = event.target.getAttribute('data-bs-target');
+      if (!targetId) {
+        return;
+      }
+
+      try {
+        await loadTerrainBottomTabModule(targetId);
+      } catch (error) {
+        console.error('切换底部模块标签失败:', error);
+        showToast('标签内容加载失败，请稍后重试', 'danger');
+      }
+    });
+  });
+
+  terrainBottomTabEventsBound = true;
 }
 
 async function loadTerrainDashboardModules(options = {}) {
@@ -287,7 +369,7 @@ async function loadTerrainDashboardModules(options = {}) {
     await Promise.all([
       loadRiskAreaModule({ page: terrainDashboardState.risk.page, silent }),
       loadSurveyRecordModule({ page: terrainDashboardState.survey.page, silent }),
-      loadRiskAnalysisModule({ silent })
+      loadRiskAnalysisModule({ page: terrainDashboardState.analysis.page, silent })
     ]);
     updateTerrainBottomRefreshLabel(terrainDashboardState.lastRefreshedAt);
   } catch (error) {
@@ -310,15 +392,87 @@ function renderModulePagination(containerId, pagination, moduleType) {
     return;
   }
 
+  const pageButtons = getPaginationPageNumbers(pagination).map((pageNumber) => `
+    <button
+      type="button"
+      class="btn btn-sm ${pageNumber === pagination.page ? 'btn-primary' : 'btn-outline-secondary'}"
+      data-module-page="${moduleType}"
+      data-page="${pageNumber}"
+      ${pageNumber === pagination.page ? 'aria-current="page"' : ''}
+    >${pageNumber}</button>
+  `).join('');
+
   container.innerHTML = `
     <div class="terrain-module-pagination-info">
       第 ${pagination.page} / ${pagination.total_pages} 页，共 ${pagination.total} 条
     </div>
     <div class="terrain-module-pagination-actions">
       <button type="button" class="btn btn-sm btn-outline-secondary" data-module-page="${moduleType}" data-page="${pagination.page - 1}" ${pagination.has_previous ? '' : 'disabled'}>上一页</button>
+      ${pageButtons}
       <button type="button" class="btn btn-sm btn-outline-secondary" data-module-page="${moduleType}" data-page="${pagination.page + 1}" ${pagination.has_next ? '' : 'disabled'}>下一页</button>
     </div>
   `;
+}
+
+function buildClientPagination(total, page, pageSize) {
+  const safePageSize = Math.max(1, Number(pageSize) || 1);
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const totalPages = Math.max(1, Math.ceil(safeTotal / safePageSize));
+  const safePage = Math.min(Math.max(1, Number(page) || 1), totalPages);
+  return {
+    total: safeTotal,
+    page: safePage,
+    page_size: safePageSize,
+    total_pages: totalPages,
+    has_previous: safePage > 1,
+    has_next: safePage < totalPages
+  };
+}
+
+function getPaginationPageNumbers(pagination) {
+  if (!pagination || pagination.total_pages <= 1) {
+    return [];
+  }
+  const maxButtons = 5;
+  let start = Math.max(1, pagination.page - 2);
+  let end = Math.min(pagination.total_pages, start + maxButtons - 1);
+  start = Math.max(1, end - maxButtons + 1);
+  const pages = [];
+  for (let pageNumber = start; pageNumber <= end; pageNumber += 1) {
+    pages.push(pageNumber);
+  }
+  return pages;
+}
+
+function buildRiskAnalysisDetails(items, total) {
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const detailItems = (Array.isArray(items) ? items : []).map((item) => {
+    const count = Math.max(0, Number(item.count) || 0);
+    const ratio = safeTotal > 0 ? ((count / safeTotal) * 100).toFixed(1) : '0.0';
+    return {
+      key: item.risk_level || 'none',
+      title: `${item.risk_level_label || '未评估'}地块`,
+      subtitle: '当前风险统计',
+      badgeLabel: `${count} 个`,
+      badgeClass: getRiskBadgeClass(item.risk_level),
+      detailText: `占全部地块 ${ratio}%`,
+      helperText: '统计口径：当前项目内全部有效地块',
+      count
+    };
+  });
+
+  detailItems.push({
+    key: 'total',
+    title: '地块总数',
+    subtitle: '总体规模',
+    badgeLabel: `${safeTotal} 个`,
+    badgeClass: 'terrain-risk-badge risk-low',
+    detailText: '用于计算各风险等级占比',
+    helperText: '统计口径：当前项目内全部有效地块',
+    count: safeTotal
+  });
+
+  return detailItems;
 }
 
 function renderRiskAreaModule() {
@@ -418,27 +572,49 @@ function ensureTerrainAnalysisChart() {
   return terrainDashboardState.chartInstance;
 }
 
-function renderRiskAnalysisSummary() {
-  const summaryNode = document.getElementById('terrainAnalysisSummary');
-  if (!summaryNode) {
+function renderRiskAnalysisList() {
+  const listNode = document.getElementById('terrainAnalysisModuleList');
+  if (!listNode) {
     return;
   }
-  const summaryItems = terrainData.riskAnalysis.map(item => `
-    <div class="terrain-analysis-summary-item">
-      <span class="terrain-analysis-summary-label">${escapeHtml(item.risk_level_label || '未评估')}</span>
-      <span class="terrain-analysis-summary-value">${escapeHtml(item.count ?? 0)}</span>
-    </div>
+
+  if (!terrainData.riskAnalysisDetails.length) {
+    listNode.innerHTML = '<div class="terrain-module-empty">暂无可展示的数据分析结果</div>';
+    renderModulePagination('terrainAnalysisModulePagination', null, 'analysis');
+    return;
+  }
+
+  const pagination = terrainDashboardState.analysis.pagination
+    || buildClientPagination(
+      terrainData.riskAnalysisDetails.length,
+      terrainDashboardState.analysis.page,
+      terrainDashboardState.analysis.pageSize
+    );
+  const startIndex = (pagination.page - 1) * terrainDashboardState.analysis.pageSize;
+  const currentItems = terrainData.riskAnalysisDetails.slice(startIndex, startIndex + terrainDashboardState.analysis.pageSize);
+
+  listNode.innerHTML = currentItems.map((item, index) => `
+    <article class="terrain-module-item terrain-analysis-item">
+      <div class="terrain-module-item-header">
+        <div class="terrain-module-item-title">
+          <span class="badge bg-light text-dark border">${startIndex + index + 1}</span>
+          <span class="terrain-module-item-name">${escapeHtml(item.title || '风险统计')}</span>
+          <span class="terrain-module-item-subtitle">${escapeHtml(item.subtitle || '')}</span>
+        </div>
+        <span class="${escapeHtml(item.badgeClass || 'terrain-risk-badge risk-low')}">${escapeHtml(item.badgeLabel || '0 个')}</span>
+      </div>
+      <div class="terrain-module-item-footer">
+        <span>${escapeHtml(item.detailText || '暂无统计结果')}</span>
+        <span>${escapeHtml(item.helperText || '')}</span>
+      </div>
+    </article>
   `).join('');
-  summaryNode.innerHTML = summaryItems + `
-    <div class="terrain-analysis-summary-item">
-      <span class="terrain-analysis-summary-label">地块总数</span>
-      <span class="terrain-analysis-summary-value">${escapeHtml(terrainDashboardState.analysis.total ?? 0)}</span>
-    </div>
-  `;
+
+  renderModulePagination('terrainAnalysisModulePagination', pagination, 'analysis');
 }
 
 function renderRiskAnalysisModule() {
-  renderRiskAnalysisSummary();
+  renderRiskAnalysisList();
   const chart = ensureTerrainAnalysisChart();
   if (!chart) {
     return;
@@ -1366,7 +1542,8 @@ function initFilterForm() {
 }
 
 function initTables() {
-  loadTerrainDashboardModules();
+  bindTerrainBottomTabEvents();
+  loadTerrainBottomTabModule(getActiveTerrainBottomTabTarget());
   startTerrainBottomAutoRefresh();
 }
 
@@ -1455,6 +1632,8 @@ function initEvents() {
         loadRiskAreaModule({ page });
       } else if (moduleType === 'survey') {
         loadSurveyRecordModule({ page });
+      } else if (moduleType === 'analysis') {
+        loadRiskAnalysisModule({ page });
       }
       return;
     }
