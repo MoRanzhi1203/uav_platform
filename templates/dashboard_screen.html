@@ -1,0 +1,985 @@
+{% extends "base.html" %}
+
+{% block title %}总控大屏 - 重庆山地无人机群林农协同作业与风险管控系统{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item active" aria-current="page">总控大屏</li>
+{% endblock %}
+
+{% block content %}
+    <div id="dashboardScreen" class="screen-container">
+        <!-- 顶部指标栏 -->
+        <div class="top-indicators">
+            <div class="indicator-card">
+                <div class="indicator-icon drone-icon">
+                    <i class="bi bi-drone"></i>
+                </div>
+                <div class="indicator-content">
+                    <h3>{{ totalDrones }}</h3>
+                    <p>无人机总数</p>
+                </div>
+                <div class="indicator-status">
+                    <span class="status-dot online"></span>
+                    <span class="status-text">{{ onlineDrones }} 在线</span>
+                </div>
+            </div>
+            
+            <div class="indicator-card">
+                <div class="indicator-icon task-icon">
+                    <i class="bi bi-list-check"></i>
+                </div>
+                <div class="indicator-content">
+                    <h3>{{ totalTasks }}</h3>
+                    <p>任务总数</p>
+                </div>
+                <div class="indicator-status">
+                    <span class="status-dot running"></span>
+                    <span class="status-text">{{ runningTasks }} 执行中</span>
+                </div>
+            </div>
+            
+            <div class="indicator-card">
+                <div class="indicator-icon alert-icon">
+                    <i class="bi bi-exclamation-triangle"></i>
+                </div>
+                <div class="indicator-content">
+                    <h3>{{ totalAlerts }}</h3>
+                    <p>告警总数</p>
+                </div>
+                <div class="indicator-status">
+                    <span class="status-dot warning"></span>
+                    <span class="status-text">{{ pendingAlerts }} 未处理</span>
+                </div>
+            </div>
+            
+            <div class="indicator-card">
+                <div class="indicator-icon forest-icon">
+                    <i class="bi bi-tree"></i>
+                </div>
+                <div class="indicator-content">
+                    <h3>{{ forestArea }}</h3>
+                    <p>林区面积 (亩)</p>
+                </div>
+                <div class="indicator-status">
+                    <span class="status-dot safe"></span>
+                    <span class="status-text">{{ safeForest }} 安全</span>
+                </div>
+            </div>
+            
+            <div class="indicator-card">
+                <div class="indicator-icon agri-icon">
+                    <i class="bi bi-geo-alt"></i>
+                </div>
+                <div class="indicator-content">
+                    <h3>{{ farmArea }}</h3>
+                    <p>农田面积 (亩)</p>
+                </div>
+                <div class="indicator-status">
+                    <span class="status-dot monitored"></span>
+                    <span class="status-text">{{ monitoredFarm }} 已监测</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 主要内容区 -->
+        <div class="main-content">
+            <!-- 左侧统计区 -->
+            <div class="left-section">
+                <!-- 林区巡检情况 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5>林区巡检情况</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="stat-item">
+                            <div class="stat-label">已巡检林区</div>
+                            <div class="stat-value">{{ inspectedForests }} / {{ totalForests }}</div>
+                            <div class="stat-progress">
+                                <div class="progress">
+                                    <div class="progress-bar bg-success" style="width: {{ forestInspectionRate }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">火情风险</div>
+                            <div class="stat-value">{{ fireRisk }}%</div>
+                            <div class="stat-progress">
+                                <div class="progress">
+                                    <div class="progress-bar bg-danger" style="width: {{ fireRisk }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">异常点</div>
+                            <div class="stat-value">{{ forestAbnormal }}</div>
+                            <div class="stat-status">
+                                <span class="badge bg-warning">{{ forestAbnormal }} 处</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 农田植保情况 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5>农田植保情况</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="stat-item">
+                            <div class="stat-label">已监测农田</div>
+                            <div class="stat-value">{{ monitoredFarms }} / {{ totalFarms }}</div>
+                            <div class="stat-progress">
+                                <div class="progress">
+                                    <div class="progress-bar bg-success" style="width: {{ farmMonitoringRate }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">病虫害风险</div>
+                            <div class="stat-value">{{ pestRisk }}%</div>
+                            <div class="stat-progress">
+                                <div class="progress">
+                                    <div class="progress-bar bg-warning" style="width: {{ pestRisk }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">需要植保</div>
+                            <div class="stat-value">{{ needProtection }}</div>
+                            <div class="stat-status">
+                                <span class="badge bg-info">{{ needProtection }} 处</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 中间地图区 -->
+            <div class="center-section">
+                <div class="card full-height">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5>区域分布</h5>
+                            <div class="map-controls">
+                                <button class="btn btn-sm btn-outline-light" @click="centerMap">
+                                    <i class="bi bi-geo-alt"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-light ms-1" @click="zoomIn">
+                                    <i class="bi bi-zoom-in"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-light ms-1" @click="zoomOut">
+                                    <i class="bi bi-zoom-out"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="screenMap" class="map-container"></div>
+                        
+                        <!-- 地图图例 -->
+                        <div class="map-legend">
+                            <div class="legend-item">
+                                <span class="legend-dot forest"></span>
+                                <span>林区</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot farm"></span>
+                                <span>农田</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot drone"></span>
+                                <span>无人机</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot alert"></span>
+                                <span>告警点</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot takeoff"></span>
+                                <span>起降点</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧告警与任务区 -->
+            <div class="right-section">
+                <!-- 告警信息 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5>告警信息</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert-list">
+                            <div v-for="alert in alerts" :key="alert.id" class="alert-item" :class="alert.level">
+                                <div class="alert-icon">
+                                    <i :class="alert.icon"></i>
+                                </div>
+                                <div class="alert-content">
+                                    <h6>{{ alert.title }}</h6>
+                                    <p>{{ alert.description }}</p>
+                                    <small>{{ alert.time }}</small>
+                                </div>
+                                <div class="alert-level">
+                                    <span :class="['badge', 'level-' + alert.level]">{{ alert.levelText }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 任务进度 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5>任务进度</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="task-list">
+                            <div v-for="task in tasks" :key="task.id" class="task-item">
+                                <div class="task-header">
+                                    <h6>{{ task.name }}</h6>
+                                    <span :class="['badge', 'status-' + task.status]">{{ task.statusText }}</span>
+                                </div>
+                                <div class="task-progress">
+                                    <div class="progress">
+                                        <div class="progress-bar" :class="'bg-' + task.status" style="width: {{ task.progress }}%"></div>
+                                    </div>
+                                    <small>{{ task.progress }}%</small>
+                                </div>
+                                <div class="task-info">
+                                    <small>无人机: {{ task.drone }}</small>
+                                    <small>剩余: {{ task.remaining }} 分钟</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 底部趋势区 -->
+        <div class="bottom-trends">
+            <!-- 无人机活跃度趋势 -->
+            <div class="trend-card">
+                <div class="card-header">
+                    <h5>无人机活跃度趋势</h5>
+                </div>
+                <div class="card-body">
+                    <div class="trend-chart" id="droneActivityChart"></div>
+                </div>
+            </div>
+            
+            <!-- 告警趋势 -->
+            <div class="trend-card">
+                <div class="card-header">
+                    <h5>告警趋势</h5>
+                </div>
+                <div class="card-body">
+                    <div class="trend-chart" id="alertTrendChart"></div>
+                </div>
+            </div>
+            
+            <!-- 任务完成率趋势 -->
+            <div class="trend-card">
+                <div class="card-header">
+                    <h5>任务完成率趋势</h5>
+                </div>
+                <div class="card-body">
+                    <div class="trend-chart" id="taskCompletionChart"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 系统信息 -->
+        <div class="system-info">
+            <div class="info-item">
+                <span>系统状态: </span>
+                <span class="status-online">正常运行</span>
+            </div>
+            <div class="info-item">
+                <span>上次更新: </span>
+                <span>{{ lastUpdated }}</span>
+            </div>
+            <div class="info-item">
+                <span>数据刷新: </span>
+                <span>{{ refreshInterval }}s</span>
+            </div>
+            <div class="info-item">
+                <span>系统版本: </span>
+                <span>v1.0.0</span>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 大屏样式 */
+    .screen-container {
+        background: linear-gradient(135deg, #0a192f 0%, #172a45 100%);
+        color: #e6f1ff;
+        min-height: calc(100vh - 60px);
+    }
+    
+    /* 顶部指标栏 */
+    .top-indicators {
+        display: flex;
+        gap: 20px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .indicator-card {
+        flex: 1;
+        background: rgba(16, 30, 54, 0.8);
+        border: 1px solid rgba(45, 123, 243, 0.3);
+        border-radius: 8px;
+        padding: 20px;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+    
+    .indicator-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(45, 123, 243, 0.3);
+    }
+    
+    .indicator-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+    }
+    
+    .indicator-card:nth-child(1)::before {
+        background: #00c6ff;
+    }
+    
+    .indicator-card:nth-child(2)::before {
+        background: #0072ff;
+    }
+    
+    .indicator-card:nth-child(3)::before {
+        background: #ff4d4f;
+    }
+    
+    .indicator-card:nth-child(4)::before {
+        background: #52c41a;
+    }
+    
+    .indicator-card:nth-child(5)::before {
+        background: #faad14;
+    }
+    
+    .indicator-icon {
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+    
+    .drone-icon {
+        color: #00c6ff;
+    }
+    
+    .task-icon {
+        color: #0072ff;
+    }
+    
+    .alert-icon {
+        color: #ff4d4f;
+    }
+    
+    .forest-icon {
+        color: #52c41a;
+    }
+    
+    .agri-icon {
+        color: #faad14;
+    }
+    
+    .indicator-content h3 {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .indicator-content p {
+        font-size: 14px;
+        color: #a8b2d1;
+        margin: 5px 0 0 0;
+    }
+    
+    .indicator-status {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        display: flex;
+        align-items: center;
+    }
+    
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+    
+    .status-dot.online {
+        background: #52c41a;
+        box-shadow: 0 0 10px #52c41a;
+    }
+    
+    .status-dot.running {
+        background: #1890ff;
+        box-shadow: 0 0 10px #1890ff;
+    }
+    
+    .status-dot.warning {
+        background: #ff4d4f;
+        box-shadow: 0 0 10px #ff4d4f;
+    }
+    
+    .status-dot.safe {
+        background: #52c41a;
+        box-shadow: 0 0 10px #52c41a;
+    }
+    
+    .status-dot.monitored {
+        background: #1890ff;
+        box-shadow: 0 0 10px #1890ff;
+    }
+    
+    .status-text {
+        font-size: 12px;
+        color: #a8b2d1;
+    }
+    
+    /* 主要内容区 */
+    .main-content {
+        display: grid;
+        grid-template-columns: 300px 1fr 350px;
+        gap: 20px;
+        padding: 0 20px 20px 20px;
+    }
+    
+    /* 卡片样式 */
+    .card {
+        background: rgba(16, 30, 54, 0.8);
+        border: 1px solid rgba(45, 123, 243, 0.3);
+        border-radius: 8px;
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+    
+    .card-header {
+        background: rgba(45, 123, 243, 0.1);
+        border-bottom: 1px solid rgba(45, 123, 243, 0.3);
+        padding: 15px;
+    }
+    
+    .card-header h5 {
+        margin: 0;
+        color: #e6f1ff;
+    }
+    
+    .card-body {
+        padding: 15px;
+    }
+    
+    .full-height {
+        height: 100%;
+        margin-bottom: 0;
+    }
+    
+    /* 左侧统计区 */
+    .stat-item {
+        margin-bottom: 20px;
+    }
+    
+    .stat-label {
+        font-size: 14px;
+        color: #a8b2d1;
+        margin-bottom: 5px;
+    }
+    
+    .stat-value {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .stat-progress {
+        margin-top: 5px;
+    }
+    
+    .progress {
+        height: 6px;
+        background: rgba(45, 123, 243, 0.2);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+    
+    .progress-bar {
+        transition: width 1s ease-in-out;
+    }
+    
+    .stat-status {
+        margin-top: 5px;
+    }
+    
+    /* 中间地图区 */
+    .map-container {
+        width: 100%;
+        height: calc(100vh - 300px);
+        position: relative;
+    }
+    
+    .map-legend {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        background: rgba(16, 30, 54, 0.8);
+        border: 1px solid rgba(45, 123, 243, 0.3);
+        border-radius: 8px;
+        padding: 10px;
+        display: flex;
+        gap: 15px;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        font-size: 12px;
+    }
+    
+    .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+    
+    .legend-dot.forest {
+        background: #52c41a;
+    }
+    
+    .legend-dot.farm {
+        background: #faad14;
+    }
+    
+    .legend-dot.drone {
+        background: #00c6ff;
+    }
+    
+    .legend-dot.alert {
+        background: #ff4d4f;
+    }
+    
+    .legend-dot.takeoff {
+        background: #1890ff;
+    }
+    
+    /* 右侧告警与任务区 */
+    .alert-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .alert-item {
+        display: flex;
+        padding: 10px;
+        margin-bottom: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 6px;
+        border-left: 4px solid;
+    }
+    
+    .alert-item.紧急 {
+        border-left-color: #ff4d4f;
+    }
+    
+    .alert-item.警告 {
+        border-left-color: #faad14;
+    }
+    
+    .alert-item.提示 {
+        border-left-color: #1890ff;
+    }
+    
+    .alert-icon {
+        font-size: 18px;
+        margin-right: 10px;
+    }
+    
+    .alert-content h6 {
+        margin: 0 0 5px 0;
+        font-size: 14px;
+    }
+    
+    .alert-content p {
+        margin: 0 0 5px 0;
+        font-size: 12px;
+        color: #a8b2d1;
+    }
+    
+    .alert-content small {
+        font-size: 10px;
+        color: #64748b;
+    }
+    
+    .alert-level {
+        margin-left: auto;
+    }
+    
+    .badge.level-紧急 {
+        background: #ff4d4f;
+    }
+    
+    .badge.level-警告 {
+        background: #faad14;
+    }
+    
+    .badge.level-提示 {
+        background: #1890ff;
+    }
+    
+    .task-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .task-item {
+        padding: 10px;
+        margin-bottom: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 6px;
+    }
+    
+    .task-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    
+    .task-header h6 {
+        margin: 0;
+        font-size: 14px;
+    }
+    
+    .badge.status-进行中 {
+        background: #1890ff;
+    }
+    
+    .badge.status-已完成 {
+        background: #52c41a;
+    }
+    
+    .badge.status-待执行 {
+        background: #64748b;
+    }
+    
+    .task-progress {
+        margin: 5px 0;
+    }
+    
+    .task-info {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #a8b2d1;
+        margin-top: 5px;
+    }
+    
+    /* 底部趋势区 */
+    .bottom-trends {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+        padding: 0 20px 20px 20px;
+    }
+    
+    .trend-card {
+        background: rgba(16, 30, 54, 0.8);
+        border: 1px solid rgba(45, 123, 243, 0.3);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .trend-chart {
+        height: 200px;
+        position: relative;
+    }
+    
+    /* 系统信息 */
+    .system-info {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        padding: 15px;
+        background: rgba(16, 30, 54, 0.8);
+        border-top: 1px solid rgba(45, 123, 243, 0.3);
+        font-size: 12px;
+        color: #a8b2d1;
+    }
+    
+    .status-online {
+        color: #52c41a;
+    }
+    
+    /* 滚动条样式 */
+    ::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: rgba(45, 123, 243, 0.5);
+        border-radius: 3px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(45, 123, 243, 0.8);
+    }
+    
+    /* 响应式调整 */
+    @media (max-width: 1200px) {
+        .main-content {
+            grid-template-columns: 1fr;
+            grid-template-rows: auto auto auto;
+        }
+        
+        .bottom-trends {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    new Vue({
+        el: '#dashboardScreen',
+        data: {
+            // 顶部指标数据
+            totalDrones: 24,
+            onlineDrones: 20,
+            totalTasks: 42,
+            runningTasks: 8,
+            totalAlerts: 12,
+            pendingAlerts: 5,
+            forestArea: 12000,
+            safeForest: 11500,
+            farmArea: 8500,
+            monitoredFarm: 6200,
+            
+            // 林区数据
+            inspectedForests: 10,
+            totalForests: 12,
+            forestInspectionRate: 83,
+            fireRisk: 15,
+            forestAbnormal: 2,
+            
+            // 农田数据
+            monitoredFarms: 15,
+            totalFarms: 20,
+            farmMonitoringRate: 75,
+            pestRisk: 20,
+            needProtection: 3,
+            
+            // 告警数据
+            alerts: [
+                {
+                    id: 1,
+                    title: '无人机 #3 电量低',
+                    description: '电量低于 20%，需要充电',
+                    level: '紧急',
+                    levelText: '紧急',
+                    time: '2026-04-11 10:30',
+                    icon: 'bi bi-battery-half'
+                },
+                {
+                    id: 2,
+                    title: '林区 #2 检测到异常',
+                    description: '可能存在火灾隐患',
+                    level: '警告',
+                    levelText: '警告',
+                    time: '2026-04-11 10:15',
+                    icon: 'bi bi-fire'
+                },
+                {
+                    id: 3,
+                    title: '农田 #5 病虫害',
+                    description: '检测到病虫害迹象',
+                    level: '警告',
+                    levelText: '警告',
+                    time: '2026-04-11 09:45',
+                    icon: 'bi bi-exclamation-triangle'
+                },
+                {
+                    id: 4,
+                    title: '任务 #8 执行超时',
+                    description: '已超过预计执行时间 30 分钟',
+                    level: '提示',
+                    levelText: '提示',
+                    time: '2026-04-11 09:30',
+                    icon: 'bi bi-clock'
+                }
+            ],
+            
+            // 任务数据
+            tasks: [
+                {
+                    id: 1,
+                    name: '林区巡检任务',
+                    status: '进行中',
+                    statusText: '进行中',
+                    progress: 65,
+                    drone: '无人机 #1',
+                    remaining: 15
+                },
+                {
+                    id: 2,
+                    name: '农田监测任务',
+                    status: '进行中',
+                    statusText: '进行中',
+                    progress: 40,
+                    drone: '无人机 #2',
+                    remaining: 30
+                },
+                {
+                    id: 3,
+                    name: '地形测绘任务',
+                    status: '待执行',
+                    statusText: '待执行',
+                    progress: 0,
+                    drone: '无人机 #4',
+                    remaining: 60
+                },
+                {
+                    id: 4,
+                    name: '林区巡检任务',
+                    status: '已完成',
+                    statusText: '已完成',
+                    progress: 100,
+                    drone: '无人机 #5',
+                    remaining: 0
+                }
+            ],
+            
+            // 系统信息
+            lastUpdated: '2026-04-11 10:35:22',
+            refreshInterval: 5,
+            
+            // 图表数据
+            droneActivityData: [65, 78, 52, 91, 43, 65, 72],
+            alertTrendData: [12, 19, 15, 17, 14, 18, 12],
+            taskCompletionData: [85, 78, 92, 88, 90, 85, 95]
+        },
+        methods: {
+            // 初始化图表
+            initCharts() {
+                // 示例代码，实际项目中可以使用ECharts等图表库
+                console.log('初始化图表');
+                this.renderCharts();
+            },
+            
+            // 渲染图表
+            renderCharts() {
+                // 示例代码，实际项目中需要根据使用的图表库进行实现
+                console.log('渲染图表');
+            },
+            
+            // 地图控制
+            centerMap() {
+                console.log('定位到地图中心');
+            },
+            
+            zoomIn() {
+                console.log('地图放大');
+            },
+            
+            zoomOut() {
+                console.log('地图缩小');
+            },
+            
+            // 数据轮询刷新
+            refreshData() {
+                console.log('刷新数据');
+                
+                // 模拟从后端获取数据
+                // Http.get('/api/dashboard/screen/data/')
+                //     .done(function(data) {
+                //         // 更新数据
+                //         this.totalDrones = data.totalDrones;
+                //         this.onlineDrones = data.onlineDrones;
+                //         this.totalTasks = data.totalTasks;
+                //         this.runningTasks = data.runningTasks;
+                //         this.totalAlerts = data.totalAlerts;
+                //         this.pendingAlerts = data.pendingAlerts;
+                //         this.forestArea = data.forestArea;
+                //         this.safeForest = data.safeForest;
+                //         this.farmArea = data.farmArea;
+                //         this.monitoredFarm = data.monitoredFarm;
+                //         this.inspectedForests = data.inspectedForests;
+                //         this.totalForests = data.totalForests;
+                //         this.forestInspectionRate = data.forestInspectionRate;
+                //         this.fireRisk = data.fireRisk;
+                //         this.forestAbnormal = data.forestAbnormal;
+                //         this.monitoredFarms = data.monitoredFarms;
+                //         this.totalFarms = data.totalFarms;
+                //         this.farmMonitoringRate = data.farmMonitoringRate;
+                //         this.pestRisk = data.pestRisk;
+                //         this.needProtection = data.needProtection;
+                //         this.alerts = data.alerts;
+                //         this.tasks = data.tasks;
+                //         this.lastUpdated = data.lastUpdated;
+                //         this.droneActivityData = data.droneActivityData;
+                //         this.alertTrendData = data.alertTrendData;
+                //         this.taskCompletionData = data.taskCompletionData;
+                //         
+                //         // 重新渲染图表
+                //         this.renderCharts();
+                //     }.bind(this));
+                
+                // 模拟数据更新
+                this.lastUpdated = new Date().toLocaleString();
+                
+                // 随机更新一些数据
+                this.onlineDrones = Math.floor(Math.random() * 5) + 18;
+                this.runningTasks = Math.floor(Math.random() * 5) + 6;
+                this.pendingAlerts = Math.floor(Math.random() * 3) + 3;
+                
+                // 随机更新任务进度
+                this.tasks.forEach(task => {
+                    if (task.status === '进行中') {
+                        task.progress = Math.min(100, task.progress + Math.floor(Math.random() * 10));
+                        if (task.progress >= 100) {
+                            task.status = '已完成';
+                            task.statusText = '已完成';
+                            task.remaining = 0;
+                        } else {
+                            task.remaining = Math.max(0, task.remaining - 5);
+                        }
+                    }
+                });
+                
+                // 重新渲染图表
+                this.renderCharts();
+            }
+        },
+        mounted() {
+            this.initCharts();
+            
+            // 每5秒刷新一次数据
+            setInterval(this.refreshData, this.refreshInterval * 1000);
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,116 @@
+/* 农田管理页面样式 */
+
+/* 橙绿混合配色 */
+.agri-primary {
+  color: #10b981;
+}
+
+.agri-secondary {
+  color: #f97316;
+}
+
+.agri-bg-primary {
+  background-color: #10b981;
+}
+
+.agri-bg-secondary {
+  background-color: #f97316;
+}
+
+.agri-card {
+  border-left: 4px solid #10b981;
+}
+
+/* 地图容器样式 */
+.map-container {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+/* 详情面板样式 */
+.detail-panel {
+  border-radius: 0.5rem;
+  padding: 1rem;
+  background-color: #f8fafc;
+}
+
+/* 统计卡片样式 */
+.info-card {
+  transition: all 0.3s ease;
+}
+
+.info-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* 表格样式 */
+.table-hover tbody tr:hover {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+/* 按钮样式 */
+.btn-success {
+  background-color: #10b981;
+  border-color: #10b981;
+}
+
+.btn-success:hover {
+  background-color: #059669;
+  border-color: #059669;
+}
+
+/* 标签样式 */
+.badge-success {
+  background-color: #10b981;
+}
+
+.badge-warning {
+  background-color: #f59e0b;
+}
+
+.badge-danger {
+  background-color: #ef4444;
+}
+
+/* 表单样式 */
+.form-control:focus {
+  border-color: #10b981;
+  box-shadow: 0 0 0 0.25rem rgba(16, 185, 129, 0.25);
+}
+
+/* 分页样式 */
+.pagination .page-item.active .page-link {
+  background-color: #10b981;
+  border-color: #10b981;
+}
+
+/* Tab 样式 */
+.nav-tabs .nav-item .nav-link.active {
+  color: #10b981;
+  border-bottom: 2px solid #10b981;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .map-container {
+    height: 300px;
+  }
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.detail-panel {
+  animation: fadeIn 0.3s ease-in-out;
+}

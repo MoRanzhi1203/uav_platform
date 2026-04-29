@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}机群详情{% endblock %}
+{% block page_id %}fleet-detail{% endblock %}
+{% block page_title %}机群实体详情{% endblock %}
+{% block page_subtitle %}通过 URL 参数读取单条实体详情，如 ?endpoint=/api/fleet/drones/&id=1{% endblock %}
+{% block content %}
+<section class="detail-intro panel">
+    <div class="panel-header"><h3>请求参数</h3></div>
+    <p>示例：<code>/fleet/detail/?endpoint=/api/fleet/drones/&id=1</code></p>
+    <div id="detail-meta" class="detail-meta"></div>
+</section>
+<section class="panel">
+    <div class="panel-header"><h3>详情数据</h3></div>
+    <pre id="detail-json" class="json-block"></pre>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/module-detail.js' %}"></script>
+{% endblock %}

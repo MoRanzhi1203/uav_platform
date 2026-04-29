@@ -1,0 +1,345 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}系统配置 - 无人机群林农协同系统{% endblock %}
+
+{% block extra_css %}
+  <link href="{% static 'css/system-config.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div>
+          <h1 class="h3 mb-1">系统配置</h1>
+          <p class="text-muted mb-0">统一配置平台基础参数、安全策略、通知规则与数据保留策略。</p>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-success" id="btnSaveSettings">
+            <i class="bi bi-check2-circle"></i> 保存配置
+          </button>
+          <button type="button" class="btn btn-outline-warning" id="btnResetAllSettings">
+            <i class="bi bi-arrow-counterclockwise"></i> 恢复默认
+          </button>
+          <button type="button" class="btn btn-outline-secondary" id="btnRefreshSettings">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">配置分组 <span class="text-muted">| 当前模块</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-grid text-primary"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="configGroupCount">0</h6>
+              <span class="text-muted small pt-2">分组维度</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">配置项数 <span class="text-muted">| 全部条目</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-sliders text-success"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="configItemCount">0</h6>
+              <span class="text-muted small pt-2">已纳入维护</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">启用策略 <span class="text-muted">| 布尔开关</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-toggles text-warning"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="configEnabledSwitchCount">0</h6>
+              <span class="text-muted small pt-2">当前开启开关数</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">最近更新 <span class="text-muted">| 生效状态</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-clock-history text-info"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="configLastUpdated">--</h6>
+              <span class="text-muted small pt-2">最后修改时间</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-xl-8">
+      <form id="systemConfigForm">
+        <div class="card config-section-card mb-4" id="section-platform">
+          <div class="card-body">
+            <div class="config-section-header">
+              <div>
+                <h5 class="card-title mb-1">平台基础配置</h5>
+                <p class="text-muted mb-0">维护平台标识、时区、自动刷新频率与地图初始化参数。</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary btn-reset-group" data-group="platform">恢复本组默认</button>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="platform_name" class="form-label">平台名称</label>
+                <input type="text" class="form-control" id="platform_name">
+              </div>
+              <div class="col-md-6">
+                <label for="deployment_region" class="form-label">部署区域</label>
+                <input type="text" class="form-control" id="deployment_region">
+              </div>
+              <div class="col-md-4">
+                <label for="timezone" class="form-label">系统时区</label>
+                <select class="form-select" id="timezone">
+                  <option value="Asia/Shanghai">Asia/Shanghai</option>
+                  <option value="UTC">UTC</option>
+                  <option value="Asia/Chongqing">Asia/Chongqing</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label for="data_refresh_interval" class="form-label">数据刷新间隔(秒)</label>
+                <input type="number" class="form-control" id="data_refresh_interval" min="5">
+              </div>
+              <div class="col-md-4">
+                <label for="default_map_zoom" class="form-label">默认地图缩放</label>
+                <input type="number" class="form-control" id="default_map_zoom" min="1" max="22">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card config-section-card mb-4" id="section-security">
+          <div class="card-body">
+            <div class="config-section-header">
+              <div>
+                <h5 class="card-title mb-1">安全策略</h5>
+                <p class="text-muted mb-0">统一控制登录会话、密码策略与多端登录限制。</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary btn-reset-group" data-group="security">恢复本组默认</button>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="session_timeout_hours" class="form-label">会话过期时长(小时)</label>
+                <input type="number" class="form-control" id="session_timeout_hours" min="1">
+              </div>
+              <div class="col-md-6">
+                <label for="password_min_length" class="form-label">密码最小长度</label>
+                <input type="number" class="form-control" id="password_min_length" min="6">
+              </div>
+              <div class="col-md-4">
+                <div class="form-check form-switch config-switch">
+                  <input class="form-check-input" type="checkbox" id="require_strong_password">
+                  <label class="form-check-label" for="require_strong_password">启用强密码策略</label>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="form-check form-switch config-switch">
+                  <input class="form-check-input" type="checkbox" id="enable_login_captcha">
+                  <label class="form-check-label" for="enable_login_captcha">启用登录验证码</label>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="form-check form-switch config-switch">
+                  <input class="form-check-input" type="checkbox" id="allow_multi_login">
+                  <label class="form-check-label" for="allow_multi_login">允许多端同时登录</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card config-section-card mb-4" id="section-notification">
+          <div class="card-body">
+            <div class="config-section-header">
+              <div>
+                <h5 class="card-title mb-1">通知告警</h5>
+                <p class="text-muted mb-0">控制风险预警、短信邮件通知与响应时效。</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary btn-reset-group" data-group="notification">恢复本组默认</button>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <div class="form-check form-switch config-switch">
+                  <input class="form-check-input" type="checkbox" id="enable_risk_alert">
+                  <label class="form-check-label" for="enable_risk_alert">启用风险告警</label>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="form-check form-switch config-switch">
+                  <input class="form-check-input" type="checkbox" id="enable_sms_notice">
+                  <label class="form-check-label" for="enable_sms_notice">启用短信通知</label>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="form-check form-switch config-switch">
+                  <input class="form-check-input" type="checkbox" id="enable_email_notice">
+                  <label class="form-check-label" for="enable_email_notice">启用邮件通知</label>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label for="alert_response_minutes" class="form-label">告警响应时限(分钟)</label>
+                <input type="number" class="form-control" id="alert_response_minutes" min="1">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card config-section-card mb-4" id="section-dispatch">
+          <div class="card-body">
+            <div class="config-section-header">
+              <div>
+                <h5 class="card-title mb-1">调度与地图</h5>
+                <p class="text-muted mb-0">配置自动调度、并发上限、返航阈值与默认底图。</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary btn-reset-group" data-group="dispatch">恢复本组默认</button>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <div class="form-check form-switch config-switch">
+                  <input class="form-check-input" type="checkbox" id="enable_auto_dispatch">
+                  <label class="form-check-label" for="enable_auto_dispatch">启用自动调度</label>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label for="task_concurrency_limit" class="form-label">并发任务上限</label>
+                <input type="number" class="form-control" id="task_concurrency_limit" min="1">
+              </div>
+              <div class="col-md-4">
+                <label for="return_home_battery" class="form-label">返航电量阈值(%)</label>
+                <input type="number" class="form-control" id="return_home_battery" min="1" max="100">
+              </div>
+              <div class="col-md-6">
+                <label for="default_map_layer" class="form-label">默认地图底图</label>
+                <select class="form-select" id="default_map_layer">
+                  <option value="satellite">卫星图</option>
+                  <option value="vector">矢量图</option>
+                  <option value="terrain">地形图</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card config-section-card" id="section-data">
+          <div class="card-body">
+            <div class="config-section-header">
+              <div>
+                <h5 class="card-title mb-1">数据与日志</h5>
+                <p class="text-muted mb-0">维护日志、遥测、备份等运行数据的管理策略。</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary btn-reset-group" data-group="data">恢复本组默认</button>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="log_retention_days" class="form-label">操作日志保留天数</label>
+                <input type="number" class="form-control" id="log_retention_days" min="1">
+              </div>
+              <div class="col-md-6">
+                <label for="telemetry_retention_days" class="form-label">遥测数据保留天数</label>
+                <input type="number" class="form-control" id="telemetry_retention_days" min="1">
+              </div>
+              <div class="col-md-6">
+                <div class="form-check form-switch config-switch">
+                  <input class="form-check-input" type="checkbox" id="enable_auto_backup">
+                  <label class="form-check-label" for="enable_auto_backup">启用自动备份</label>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label for="backup_cycle" class="form-label">备份周期</label>
+                <select class="form-select" id="backup_cycle">
+                  <option value="daily">每天</option>
+                  <option value="weekly">每周</option>
+                  <option value="monthly">每月</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="col-12 col-xl-4">
+      <div class="card config-side-card mb-4">
+        <div class="card-body">
+          <div class="config-side-header">
+            <div>
+              <h5 class="card-title mb-1">配置总览</h5>
+              <p class="text-muted small mb-0">分组状态与当前配置统计摘要。</p>
+            </div>
+            <span class="badge bg-light text-primary border" id="settingsDirtyBadge">无变更</span>
+          </div>
+          <div id="configGroupSummary" class="config-summary-list">
+            <div class="text-muted small">正在加载配置数据...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card config-side-card mb-4">
+        <div class="card-body">
+          <div class="config-side-header">
+            <div>
+              <h5 class="card-title mb-1">当前生效摘要</h5>
+              <p class="text-muted small mb-0">展示关键策略的当前生效值。</p>
+            </div>
+          </div>
+          <div id="configHighlights" class="config-highlight-list">
+            <div class="text-muted small">暂无摘要</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card config-side-card">
+        <div class="card-body">
+          <div class="config-side-header">
+            <div>
+              <h5 class="card-title mb-1">运行建议</h5>
+              <p class="text-muted small mb-0">结合当前系统给出配置建议。</p>
+            </div>
+          </div>
+          <div id="configAdviceList" class="config-advice-list">
+            <div class="config-advice-item">正在分析配置建议...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'pages/system/config.js' %}"></script>
+{% endblock %}

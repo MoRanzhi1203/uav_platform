@@ -1,0 +1,100 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.python-version
+
+# Django
+local_settings.py
+.env
+.env.*
+db.sqlite3
+*.sqlite3
+db.sqlite3-journal
+*.log
+media/
+staticfiles/
+
+# Virtual environment
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python tooling / tests
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.tox/
+.ruff_cache/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# System
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+Icon?
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.cache/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# Temporary files
+*.tmp
+*.bak
+*.old
+*_backup.*
+*_bak.*
+*_old.*
+copy_*
+复制*
+.tmp-edge-profile/
+
+# Keep exported SQL dumps under version control when explicitly generated
+!db_dumps/
+!db_dumps/*.sql
+!db_dumps/.gitkeep
+
+# AI editor cache
+.trae/
+.cursor/
+.continue/
+.codex/
+
+# Coverage / reports
+coverage.xml
+
+# Large raw GIS files
+*.shp.xml
+*.qix
+*.cpg
+*.lock
+
+# Raw data archives (keep lightweight runtime data under static/)
+data/shp/**/*.shp
+data/shp/**/*.dbf
+data/shp/**/*.shx
+data/shp/**/*.prj
+data/shp/**/*.cpg
+data/shp/**/*.qix

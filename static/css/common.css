@@ -1,0 +1,279 @@
+/* 全局样式 */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+    background-color: #f8f9fa;
+}
+
+/* 侧边栏样式 */
+.sidebar {
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+    background-color: #ffffff;
+    border-right: 1px solid #e9ecef;
+}
+
+.sidebar .nav-link {
+    color: #495057;
+    padding: 0.75rem 1rem;
+    transition: all 0.2s ease;
+}
+
+.sidebar .nav-link:hover {
+    background-color: #f8f9fa;
+}
+
+.sidebar .nav-link.active {
+    color: #0d6efd;
+    background-color: #e7f3ff;
+    border-left: 3px solid #0d6efd;
+    font-weight: 500;
+}
+
+.sidebar .nav-link i {
+    margin-right: 0.5rem;
+    width: 1.25rem;
+    text-align: center;
+}
+
+/* 内容区样式 */
+main {
+    margin-top: 56px;
+    min-height: calc(100vh - 56px);
+    padding-bottom: 20px;
+}
+
+/* 卡片样式 */
+.card {
+    border-radius: 0.5rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: box-shadow 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* 表格样式 */
+.table {
+    font-size: 14px;
+}
+
+.table th {
+    font-weight: 600;
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* 按钮样式 */
+.btn {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.btn i {
+    margin-right: 0.25rem;
+}
+
+/* 表单样式 */
+.form-label {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.form-control {
+    font-size: 14px;
+}
+
+/* 状态徽章样式 */
+.badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0.35em 0.65em;
+    border-radius: 0.375rem;
+}
+
+.badge-status-online {
+    background-color: #198754;
+}
+
+.badge-status-offline {
+    background-color: #6c757d;
+}
+
+.badge-status-warning {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.badge-status-danger {
+    background-color: #dc3545;
+}
+
+.badge-status-info {
+    background-color: #0dcaf0;
+    color: #000;
+}
+
+/* 统计卡片样式 */
+.stat-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.stat-card .card-body {
+    padding: 1.5rem;
+}
+
+.stat-card h5 {
+    font-size: 1rem;
+    font-weight: 500;
+    opacity: 0.9;
+    margin-bottom: 0.5rem;
+}
+
+.stat-card .display-4 {
+    font-size: 2.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.stat-card .text-sm {
+    font-size: 0.875rem;
+    opacity: 0.8;
+}
+
+/* 加载动画 */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255,255,255,.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+.loading-dark {
+    border-color: rgba(0,0,0,.1);
+    border-top-color: #0d6efd;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 面包屑样式 */
+.breadcrumb {
+    background-color: #ffffff;
+    border: 1px solid #e9ecef;
+    padding: 0.75rem 1rem;
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+    content: ">";
+}
+
+/* 模态框样式 */
+.modal-content {
+    border-radius: 0.5rem;
+}
+
+.modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+/* ==========================================
+   全局复制策略 (Global Copy Policy)
+   ========================================== */
+
+/* 全局默认禁止复制状态 */
+body.copy-disabled {
+    -webkit-user-select: none !important; /* Safari */
+    -moz-user-select: none !important;    /* Firefox */
+    -ms-user-select: none !important;     /* IE10+/Edge */
+    user-select: none !important;         /* Standard */
+}
+
+/* 局部容器放开机制 (特定类名和属性) */
+body.copy-disabled .copy-enabled,
+body.copy-disabled [data-allow-copy="true"] {
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    user-select: text !important;
+}
+
+/* 豁免表单组件和富文本等需要正常交互的组件 */
+body.copy-disabled input,
+body.copy-disabled textarea,
+body.copy-disabled [contenteditable="true"] {
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    user-select: text !important;
+}
+
+/* 豁免特殊编辑器，使用 auto 避免破坏编辑器自身样式 */
+body.copy-disabled .monaco-editor,
+body.copy-disabled .CodeMirror,
+body.copy-disabled .tox-tinymce,
+body.copy-disabled .ql-editor {
+    -webkit-user-select: auto !important;
+    -moz-user-select: auto !important;
+    -ms-user-select: auto !important;
+    user-select: auto !important;
+}
+
+/* 保证地图/画布容器的原始交互行为 */
+body.copy-disabled canvas,
+body.copy-disabled .mapboxgl-canvas-container,
+body.copy-disabled .cesium-viewer {
+    -webkit-user-select: auto !important;
+    -moz-user-select: auto !important;
+    -ms-user-select: auto !important;
+    user-select: auto !important;
+}
+
+/* 模态框底部 */
+.modal-footer {
+    border-top: 1px solid #e9ecef;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        top: 56px;
+        left: -100%;
+        z-index: 1000;
+        width: 250px;
+        height: calc(100vh - 56px);
+        transition: left 0.3s ease;
+    }
+    
+    .sidebar.show {
+        left: 0;
+    }
+    
+    main {
+        margin-left: 0;
+    }
+    
+    .stat-card {
+        margin-bottom: 1rem;
+    }
+}

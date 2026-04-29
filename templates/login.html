@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}登录 - 重庆山地无人机群林农协同作业与风险管控系统{% endblock %}
+
+{% block content_nanv %}
+    <div class="vh-100 d-flex flex-column justify-content-center align-items-center">
+        <!-- Background image -->
+        <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('{% static 'img/login-bg.jpg' %}'); opacity: 0.1;"></div>
+        
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-lg-5">
+                    <div class="card shadow-lg border-0 rounded-lg overflow-hidden">
+                        <div class="card-body p-5">
+                            <!-- Logo -->
+                            <div class="text-center mb-5">
+                                <a href="{% url 'page-dashboard' %}" class="logo d-flex align-items-center justify-content-center">
+                                    <img src="{% static 'img/logo.png' %}" alt="" style="height: 50px;">
+                                    <span class="d-none d-lg-block ms-2 text-primary font-weight-bold">无人机群林农协同系统</span>
+                                </a>
+                                <p class="mt-2 text-muted">请登录系统</p>
+                            </div>
+                            
+                            <!-- Login Form -->
+                            <form id="loginForm">
+                                {% csrf_token %}
+                                <div class="mb-4">
+                                    <label for="username" class="form-label">用户名</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                        <input type="text" class="form-control" id="username" placeholder="请输入用户名" value="admin" required>
+                                    </div>
+                                </div>
+                                <div class="mb-4">
+                                    <label for="password" class="form-label">密码</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                        <input type="password" class="form-control" id="password" placeholder="请输入密码" required>
+                                    </div>
+                                </div>
+                                <div class="mb-4 d-flex justify-content-between">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="remember">
+                                        <label class="form-check-label" for="remember">记住我</label>
+                                    </div>
+                                    <a href="#" class="text-primary">忘记密码？</a>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100 py-2">
+                                    <i class="bi bi-box-arrow-in-right me-2"></i> 登录
+                                </button>
+                            </form>
+                        </div>
+                        <div class="card-footer text-center text-muted py-3">
+                            <p>© 2026 无人机群林农协同作业与风险管控系统</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 定义getCsrfToken函数
+    function getCsrfToken() {
+        const token = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
+        if (token) {
+            return token;
+        }
+        const match = document.cookie.match(/csrftoken=([^;]+)/);
+        return match ? match[1] : '';
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // 自动填充密码
+        document.getElementById('password').value = 'Admin@123456';
+        
+        const loginForm = document.getElementById('loginForm');
+        loginForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const remember = document.getElementById('remember').checked;
+            
+            // 使用原生XMLHttpRequest发送请求
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/system/login/', true);
+            xhr.withCredentials = true; // 允许发送和接收 cookies
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-CSRFToken', getCsrfToken());
+            
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            // 直接跳转到首页
+                            window.location.href = '{% url "page-dashboard" %}';
+                        } catch (error) {
+                            alert('登录失败，响应格式错误');
+                        }
+                    } else {
+                        alert('登录失败，状态码：' + xhr.status);
+                    }
+                }
+            };
+            
+            xhr.send(JSON.stringify({
+                username: username,
+                password: password,
+                remember: remember
+            }));
+        });
+    });
+</script>
+{% endblock %}

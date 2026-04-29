@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}实时遥测{% endblock %}
+{% block page_id %}telemetry{% endblock %}
+{% block page_title %}无人机实时状态与轨迹{% endblock %}
+{% block page_subtitle %}遥测快照、轨迹点、心跳状态展示页面{% endblock %}
+{% block content %}
+<section class="module-toolbar">
+    <div class="telemetry-search">
+        <label>
+            <span>无人机 ID</span>
+            <input id="drone-id-input" type="number" value="1" min="1">
+        </label>
+        <button class="primary-button" type="button" id="load-telemetry-button">加载遥测</button>
+    </div>
+</section>
+<section class="card-grid" id="telemetry-cards"></section>
+<section class="panel-grid">
+    <article class="panel">
+        <div class="panel-header"><h3>实时状态</h3></div>
+        <pre id="status-json" class="json-block"></pre>
+    </article>
+    <article class="panel">
+        <div class="panel-header"><h3>轨迹列表</h3></div>
+        <div id="track-table" class="table-shell"></div>
+    </article>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/telemetry.js' %}"></script>
+{% endblock %}

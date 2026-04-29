@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}任务详情{% endblock %}
+{% block page_id %}tasking-detail{% endblock %}
+{% block page_title %}全局任务详情{% endblock %}
+{% block page_subtitle %}支持查看单条全局任务或任务分派详情{% endblock %}
+{% block content %}
+<section class="panel">
+    <div class="panel-header"><h3>详情数据</h3></div>
+    <pre id="detail-json" class="json-block"></pre>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/module-detail.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,162 @@
+.ops-filter-card .form-label,
+.ops-detail-card .form-label {
+    font-weight: 600;
+    color: #4b5a6a;
+}
+
+.ops-stat-card {
+    min-height: 138px;
+}
+
+.ops-stat-card .card-icon {
+    width: 56px;
+    height: 56px;
+    font-size: 1.35rem;
+    background: rgba(13, 110, 253, 0.1);
+}
+
+.ops-stat-card .trend-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.ops-chart {
+    width: 100%;
+    height: 320px;
+}
+
+.ops-map {
+    width: 100%;
+    height: 420px;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.ops-table-wrap {
+    min-height: 380px;
+}
+
+.ops-table-wrap table {
+    margin-bottom: 0;
+}
+
+.ops-table-wrap tbody tr {
+    cursor: pointer;
+}
+
+.ops-table-wrap tbody tr.table-active td,
+.ops-table-wrap tbody tr.table-active th {
+    background: rgba(13, 110, 253, 0.08);
+}
+
+.ops-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.ops-badge.status-completed {
+    background: #0d6efd;
+}
+
+.ops-badge.status-running {
+    background: #198754;
+}
+
+.ops-badge.status-pending {
+    background: #fd7e14;
+}
+
+.ops-badge.status-abnormal,
+.ops-badge.status-failed {
+    background: #dc3545;
+}
+
+.ops-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 18px;
+}
+
+.ops-detail-value {
+    margin: 0;
+    font-weight: 600;
+    color: #25303b;
+}
+
+.ops-mini-table {
+    max-height: 240px;
+    overflow: auto;
+}
+
+.ops-mini-table table {
+    font-size: 0.92rem;
+}
+
+.ops-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.ops-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ops-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ops-pagination .page-info {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.ops-legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 0.88rem;
+    color: #6c757d;
+}
+
+.ops-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ops-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.ops-heat-point {
+    border-radius: 50%;
+    background: rgba(220, 53, 69, 0.28);
+    border: 1px solid rgba(220, 53, 69, 0.38);
+}
+
+@media (max-width: 991px) {
+    .ops-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ops-map {
+        height: 320px;
+    }
+}

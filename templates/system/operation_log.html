@@ -1,0 +1,216 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}操作日志 - 无人机群林农协同系统{% endblock %}
+
+{% block extra_css %}
+  <link href="{% static 'css/system-log.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div>
+          <h1 class="h3 mb-1">操作日志</h1>
+          <p class="text-muted mb-0">记录系统所有操作行为，支持多维度查询和筛选。</p>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-outline-secondary" id="btnRefreshLogs">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+          </button>
+          <button type="button" class="btn btn-outline-secondary" id="btnExportLogs">
+            <i class="bi bi-download"></i> 导出
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">今日操作 <span class="text-muted">| 今日</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-calendar-check text-primary"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="statTodayCount">0</h6>
+              <span class="text-muted small pt-2">今日操作次数</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">总操作数 <span class="text-muted">| 全部</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-list-ol text-success"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="statTotalCount">0</h6>
+              <span class="text-muted small pt-2">历史操作总数</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">活跃用户 <span class="text-muted">| 7天</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-people text-warning"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="statActiveUsers">0</h6>
+              <span class="text-muted small pt-2">7天内活跃用户</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">模块数量 <span class="text-muted">| 系统</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-boxes text-info"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="statModuleCount">0</h6>
+              <span class="text-muted small pt-2">有操作记录的模块</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4 log-filter-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h5 class="card-title mb-1">查询筛选</h5>
+          <p class="text-muted small mb-0">支持按关键词、模块、操作类型、日期等条件筛选。</p>
+        </div>
+      </div>
+      <form id="logFilterForm">
+        <div class="row g-3 align-items-end">
+          <div class="col-xl-4 col-lg-5">
+            <label for="filterKeyword" class="form-label">关键词</label>
+            <input type="text" class="form-control" id="filterKeyword" placeholder="请输入操作人、模块、操作或路径">
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterModule" class="form-label">模块</label>
+            <select class="form-select" id="filterModule">
+              <option value="">全部模块</option>
+            </select>
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterAction" class="form-label">操作</label>
+            <select class="form-select" id="filterAction">
+              <option value="">全部操作</option>
+            </select>
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterOperator" class="form-label">操作人</label>
+            <input type="text" class="form-control" id="filterOperator" placeholder="请输入操作人">
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterStartDate" class="form-label">开始日期</label>
+            <input type="date" class="form-control" id="filterStartDate">
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterEndDate" class="form-label">结束日期</label>
+            <input type="date" class="form-control" id="filterEndDate">
+          </div>
+          <div class="col-sm-6 col-lg-auto">
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-success">
+                <i class="bi bi-search"></i> 查询
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="btnResetFilters">
+                <i class="bi bi-arrow-counterclockwise"></i> 重置
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card log-table-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+          <h5 class="card-title mb-1">日志列表</h5>
+          <p class="text-muted small mb-0">点击日志行可查看详细的额外数据。</p>
+        </div>
+        <span class="log-list-count" id="logListCount">0 条</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle log-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>操作人</th>
+              <th>模块</th>
+              <th>操作</th>
+              <th>方法</th>
+              <th>路径</th>
+              <th>IP地址</th>
+              <th class="text-center">详情</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody">
+            <tr>
+              <td colspan="8" class="text-center text-muted py-5">正在加载日志数据...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+        <div class="text-muted small" id="logPaginationInfo">第 1 页</div>
+        <div class="btn-group btn-group-sm">
+          <button type="button" class="btn btn-outline-secondary" id="btnPrevPage" disabled>上一页</button>
+          <button type="button" class="btn btn-outline-secondary" id="btnNextPage" disabled>下一页</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="logDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">日志详情</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3" id="logDetailContent">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'pages/system/logs.js' %}"></script>
+{% endblock %}

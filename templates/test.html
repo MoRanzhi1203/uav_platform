@@ -1,0 +1,60 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>测试页面</title>
+  <!-- Vue -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <h1>测试页面</h1>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>名称</th>
+          <th>面积</th>
+          <th>区域</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="(forest, index) in forests" :key="forest.id">
+          <td>{{ forest.id }}</td>
+          <td>{{ forest.name }}</td>
+          <td>{{ forest.area }}</td>
+          <td>{{ forest.region }}</td>
+          <td>{{ forest.status }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 假数据 -->
+  <script src="{% static 'mock/forest.js' %}"></script>
+  <!-- 测试脚本 -->
+  <script>
+    console.log('假数据:', window.forestMockData);
+    
+    new Vue({
+      el: '#app',
+      data: {
+        forests: []
+      },
+      mounted() {
+        console.log('Vue实例挂载完成');
+        if (window.forestMockData) {
+          console.log('加载假数据');
+          this.forests = window.forestMockData.forests;
+          console.log('数据加载完成:', this.forests);
+        } else {
+          console.error('假数据未加载');
+        }
+      }
+    });
+  </script>
+</body>
+</html>

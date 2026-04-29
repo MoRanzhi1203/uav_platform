@@ -1,0 +1,400 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}用户管理 - 无人机群林农协同系统{% endblock %}
+
+{% block extra_css %}
+  <link href="{% static 'css/system-user.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div>
+          <h1 class="h3 mb-1">用户管理</h1>
+          <p class="text-muted mb-0">统一维护系统账号、角色权限归属与登录状态。</p>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="btn btn-primary" id="btnAddUser">
+            <i class="bi bi-person-plus"></i> 新增用户
+          </button>
+          <button type="button" class="btn btn-outline-secondary" id="btnExportUsers">
+            <i class="bi bi-download"></i> 导出名单
+          </button>
+          <button type="button" class="btn btn-outline-secondary" id="btnRefreshUsers">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">用户总数 <span class="text-muted">| 全部账号</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-people text-primary"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="statTotalUsers">0</h6>
+              <span class="text-muted small pt-2">系统注册账号数</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">启用账号 <span class="text-muted">| 当前可用</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-person-check text-success"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="statActiveUsers">0</h6>
+              <span class="text-muted small pt-2">可正常登录账号</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">管理员账号 <span class="text-muted">| 权限核心</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-shield-lock text-warning"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="statAdminUsers">0</h6>
+              <span class="text-muted small pt-2">含超级管理员</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card info-card">
+        <div class="card-body">
+          <h5 class="card-title">近 7 天活跃 <span class="text-muted">| 最近登录</span></h5>
+          <div class="d-flex align-items-center">
+            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+              <i class="bi bi-clock-history text-info"></i>
+            </div>
+            <div class="ps-3">
+              <h6 id="statRecentUsers">0</h6>
+              <span class="text-muted small pt-2">有登录记录账号</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4 user-filter-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h5 class="card-title mb-1">查询筛选</h5>
+          <p class="text-muted small mb-0">支持按姓名、账号、角色、部门和状态快速检索。</p>
+        </div>
+        <div class="text-muted small">
+          <span id="userFilterSummary">共 0 条，当前显示 0 条</span>
+        </div>
+      </div>
+      <form id="userFilterForm">
+        <div class="row g-3 align-items-end">
+          <div class="col-xl-4 col-lg-5">
+            <label for="filterKeyword" class="form-label">关键词</label>
+            <input type="text" class="form-control" id="filterKeyword" placeholder="请输入用户名、姓名、手机号">
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterRole" class="form-label">角色</label>
+            <select class="form-select" id="filterRole">
+              <option value="">全部角色</option>
+            </select>
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterStatus" class="form-label">状态</label>
+            <select class="form-select" id="filterStatus">
+              <option value="">全部状态</option>
+              <option value="active">启用</option>
+              <option value="inactive">停用</option>
+            </select>
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label for="filterDepartment" class="form-label">部门</label>
+            <input type="text" class="form-control" id="filterDepartment" placeholder="如：飞控中心">
+          </div>
+          <div class="col-sm-6 col-lg-auto">
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-success">
+                <i class="bi bi-search"></i> 查询
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="btnResetFilters">
+                <i class="bi bi-arrow-counterclockwise"></i> 重置
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-xl-8">
+      <div class="card user-table-card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div>
+              <h5 class="card-title mb-1">用户列表</h5>
+              <p class="text-muted small mb-0">点击用户行可查看详情，并在右侧执行管理操作。</p>
+            </div>
+            <span class="user-list-count" id="userListCount">0 条</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table align-middle user-table">
+              <thead>
+                <tr>
+                  <th>账号</th>
+                  <th>姓名</th>
+                  <th>角色</th>
+                  <th>部门</th>
+                  <th>状态</th>
+                  <th>最近登录</th>
+                  <th class="text-end">操作</th>
+                </tr>
+              </thead>
+              <tbody id="userTableBody">
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-5">正在加载用户数据...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+            <div class="text-muted small" id="userPaginationInfo">第 1 页</div>
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-outline-secondary" id="btnPrevPage">上一页</button>
+              <button type="button" class="btn btn-outline-secondary" id="btnNextPage">下一页</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+      <div class="card user-detail-card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 class="card-title mb-1">账号详情</h5>
+              <p class="text-muted small mb-0">展示当前选中用户的基础资料和安全信息。</p>
+            </div>
+            <span class="badge bg-light text-primary border" id="detailStatusBadge">未选择</span>
+          </div>
+          <div id="userDetailEmpty" class="user-detail-empty">
+            请从左侧列表中选择一个用户。
+          </div>
+          <div id="userDetailContent" class="d-none">
+            <div class="user-profile-header">
+              <div class="user-profile-avatar" id="detailAvatar">U</div>
+              <div>
+                <h4 class="mb-1" id="detailRealName">-</h4>
+                <div class="text-muted" id="detailUsername">@-</div>
+              </div>
+            </div>
+
+            <div class="user-detail-grid">
+              <div class="user-detail-item">
+                <label>手机号</label>
+                <div id="detailPhone">-</div>
+              </div>
+              <div class="user-detail-item">
+                <label>邮箱</label>
+                <div id="detailEmail">-</div>
+              </div>
+              <div class="user-detail-item">
+                <label>部门</label>
+                <div id="detailDepartment">-</div>
+              </div>
+              <div class="user-detail-item">
+                <label>负责区域</label>
+                <div id="detailRegion">-</div>
+              </div>
+              <div class="user-detail-item">
+                <label>用户类型</label>
+                <div id="detailUserType">-</div>
+              </div>
+              <div class="user-detail-item">
+                <label>最近登录</label>
+                <div id="detailLastLogin">-</div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="user-detail-label">角色权限</label>
+              <div id="detailRoles" class="user-role-group"></div>
+            </div>
+
+            <div class="mb-3">
+              <label class="user-detail-label">备注</label>
+              <div class="user-remark-box" id="detailRemark">暂无备注</div>
+            </div>
+
+            <div class="user-security-box">
+              <div class="user-detail-item">
+                <label>登录 IP</label>
+                <div id="detailLoginIp">-</div>
+              </div>
+              <div class="user-detail-item">
+                <label>创建时间</label>
+                <div id="detailCreatedAt">-</div>
+              </div>
+            </div>
+
+            <div class="d-grid gap-2 mt-3">
+              <button type="button" class="btn btn-primary" id="btnEditCurrentUser">
+                <i class="bi bi-pencil-square"></i> 编辑用户
+              </button>
+              <button type="button" class="btn btn-outline-warning" id="btnToggleCurrentUser">
+                <i class="bi bi-person-lock"></i> 停用账号
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="btnResetCurrentPassword">
+                <i class="bi bi-key"></i> 重置密码
+              </button>
+              <button type="button" class="btn btn-outline-danger" id="btnDeleteCurrentUser">
+                <i class="bi bi-trash"></i> 删除用户
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-1">
+    <div class="col-12 col-lg-6">
+      <div class="card user-summary-card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 class="card-title mb-1">角色分布</h5>
+              <p class="text-muted small mb-0">统计当前用户在不同角色下的配置数量。</p>
+            </div>
+            <span class="badge bg-light text-primary border" id="roleSummaryMeta">0 类</span>
+          </div>
+          <div id="roleSummaryList" class="summary-list">
+            <div class="text-muted small">暂无角色数据</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card user-summary-card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 class="card-title mb-1">部门分布</h5>
+              <p class="text-muted small mb-0">便于查看各业务部门账号配置情况。</p>
+            </div>
+            <span class="badge bg-light text-primary border" id="departmentSummaryMeta">0 个部门</span>
+          </div>
+          <div id="departmentSummaryList" class="summary-list">
+            <div class="text-muted small">暂无部门数据</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="userModalLabel">新增用户</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="userForm">
+          <input type="hidden" id="userId">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="formUsername" class="form-label">用户名</label>
+              <input type="text" class="form-control" id="formUsername" required>
+            </div>
+            <div class="col-md-6">
+              <label for="formRealName" class="form-label">姓名</label>
+              <input type="text" class="form-control" id="formRealName" required>
+            </div>
+            <div class="col-md-6">
+              <label for="formPhone" class="form-label">手机号</label>
+              <input type="text" class="form-control" id="formPhone">
+            </div>
+            <div class="col-md-6">
+              <label for="formEmail" class="form-label">邮箱</label>
+              <input type="email" class="form-control" id="formEmail">
+            </div>
+            <div class="col-md-6">
+              <label for="formUserType" class="form-label">用户类型</label>
+              <select class="form-select" id="formUserType">
+                <option value="dispatcher">调度员</option>
+                <option value="pilot">飞手</option>
+                <option value="forest_officer">林区专员</option>
+                <option value="agri_officer">农田专员</option>
+                <option value="super_admin">超级管理员</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="formPassword" class="form-label">密码</label>
+              <input type="text" class="form-control" id="formPassword" placeholder="留空时默认为 123456">
+            </div>
+            <div class="col-md-6">
+              <label for="formDepartment" class="form-label">部门</label>
+              <input type="text" class="form-control" id="formDepartment" placeholder="请输入部门名称">
+            </div>
+            <div class="col-md-6">
+              <label for="formRegion" class="form-label">负责区域</label>
+              <input type="text" class="form-control" id="formRegion" placeholder="请输入区域">
+            </div>
+            <div class="col-12">
+              <label class="form-label">角色</label>
+              <div id="roleCheckboxList" class="role-checkbox-list"></div>
+            </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="formIsActive" checked>
+                <label class="form-check-label" for="formIsActive">启用该用户</label>
+              </div>
+            </div>
+            <div class="col-12">
+              <label for="formRemark" class="form-label">备注</label>
+              <textarea class="form-control" id="formRemark" rows="3" placeholder="请输入用户说明或职责描述"></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="btnSaveUser">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'pages/system/users.js' %}"></script>
+{% endblock %}

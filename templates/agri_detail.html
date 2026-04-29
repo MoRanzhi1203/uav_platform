@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}农业详情{% endblock %}
+{% block page_id %}agri-detail{% endblock %}
+{% block page_title %}农业业务详情{% endblock %}
+{% block page_subtitle %}支持农田、植保任务和病虫害详情展示{% endblock %}
+{% block content %}
+<section class="panel">
+    <div class="panel-header"><h3>详情数据</h3></div>
+    <pre id="detail-json" class="json-block"></pre>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/module-detail.js' %}"></script>
+{% endblock %}

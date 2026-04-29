@@ -1,0 +1,715 @@
+{% extends "base.html" %}
+
+{% block title %}地图监控 - 重庆山地无人机群林农协同作业与风险管控系统{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item active" aria-current="page">地图监控</li>
+{% endblock %}
+
+{% block content %}
+    <div id="mapApp" class="h-100">
+        <div class="row h-100">
+            <!-- 左侧筛选区 -->
+            <div class="col-md-3 bg-light p-3 border-end">
+                <h5 class="mb-4">筛选条件</h5>
+                
+                <!-- 任务筛选 -->
+                <div class="mb-4">
+                    <label class="form-label">任务类型</label>
+                    <select class="form-select" v-model="filters.taskType">
+                        <option value="">全部任务</option>
+                        <option value="forest">林区巡检</option>
+                        <option value="agri">农田监测</option>
+                        <option value="terrain">地形测绘</option>
+                    </select>
+                </div>
+                
+                <!-- 区域筛选 -->
+                <div class="mb-4">
+                    <label class="form-label">区域</label>
+                    <select class="form-select" v-model="filters.region">
+                        <option value="">全部区域</option>
+                        <option value="region1">区域一</option>
+                        <option value="region2">区域二</option>
+                        <option value="region3">区域三</option>
+                    </select>
+                </div>
+                
+                <!-- 告警筛选 -->
+                <div class="mb-4">
+                    <label class="form-label">告警类型</label>
+                    <select class="form-select" v-model="filters.alertType">
+                        <option value="">全部告警</option>
+                        <option value="fire">火情</option>
+                        <option value="pest">病虫害</option>
+                        <option value="drone">无人机异常</option>
+                    </select>
+                </div>
+                
+                <!-- 状态筛选 -->
+                <div class="mb-4">
+                    <label class="form-label">无人机状态</label>
+                    <select class="form-select" v-model="filters.droneStatus">
+                        <option value="">全部状态</option>
+                        <option value="online">在线</option>
+                        <option value="offline">离线</option>
+                        <option value="warning">告警</option>
+                    </select>
+                </div>
+                
+                <button class="btn btn-primary w-100" @click="applyFilters">
+                    应用筛选
+                </button>
+                
+                <!-- 图层控制 -->
+                <div class="mt-4">
+                    <h6>图层控制</h6>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="layer-forest" v-model="layers.forest" @change="updateLayers">
+                        <label class="form-check-label" for="layer-forest">林区</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="layer-agri" v-model="layers.agri" @change="updateLayers">
+                        <label class="form-check-label" for="layer-agri">农田</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="layer-grid" v-model="layers.grid" @change="updateLayers">
+                        <label class="form-check-label" for="layer-grid">巡检网格</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="layer-no-fly" v-model="layers.noFly" @change="updateLayers">
+                        <label class="form-check-label" for="layer-no-fly">禁飞区</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="layer-takeoff" v-model="layers.takeoff" @change="updateLayers">
+                        <label class="form-check-label" for="layer-takeoff">起降点</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="layer-drone" v-model="layers.drone" @change="updateLayers">
+                        <label class="form-check-label" for="layer-drone">无人机</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="layer-alert" v-model="layers.alert" @change="updateLayers">
+                        <label class="form-check-label" for="layer-alert">告警点</label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 中间地图区 -->
+            <div class="col-md-6 h-100">
+                <div id="map" class="w-100 h-100"></div>
+                
+                <!-- 地图控制 -->
+                <div class="position-absolute bottom-4 left-4 bg-white p-2 rounded shadow">
+                    <button class="btn btn-sm btn-outline-primary mb-1 w-100" @click="centerMap">
+                        <i class="bi bi-geo-alt"></i> 定位中心
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary mb-1 w-100" @click="zoomIn">
+                        <i class="bi bi-zoom-in"></i> 放大
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary w-100" @click="zoomOut">
+                        <i class="bi bi-zoom-out"></i> 缩小
+                    </button>
+                </div>
+                
+                <!-- 无人机状态指示器 -->
+                <div class="position-absolute top-4 right-4 bg-white p-2 rounded shadow">
+                    <h6 class="mb-2">无人机状态</h6>
+                    <div class="d-flex align-items-center mb-1">
+                        <span class="badge bg-success me-2">●</span>
+                        <span class="text-sm">在线 ({{ onlineDrones }})</span>
+                    </div>
+                    <div class="d-flex align-items-center mb-1">
+                        <span class="badge bg-danger me-2">●</span>
+                        <span class="text-sm">离线 ({{ offlineDrones }})</span>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-warning me-2">●</span>
+                        <span class="text-sm">告警 ({{ warningDrones }})</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧详情区 -->
+            <div class="col-md-3 bg-light p-3 border-start">
+                <h5 class="mb-4">详情信息</h5>
+                
+                <div v-if="selectedObject" class="card">
+                    <div class="card-header">
+                        <h6>{{ selectedObject.name }}</h6>
+                        <span :class="['badge', getObjectStatusClass(selectedObject)]">{{ selectedObject.status || '正常' }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div v-if="selectedObject.type === 'drone'" class="drone-details">
+                            <p><strong>编号:</strong> {{ selectedObject.id }}</p>
+                            <p><strong>型号:</strong> {{ selectedObject.model }}</p>
+                            <p><strong>飞手:</strong> {{ selectedObject.pilot }}</p>
+                            <p><strong>电量:</strong> {{ selectedObject.battery }}%</p>
+                            <p><strong>高度:</strong> {{ selectedObject.altitude }}m</p>
+                            <p><strong>速度:</strong> {{ selectedObject.speed }}m/s</p>
+                            <p><strong>任务:</strong> {{ selectedObject.task }}</p>
+                            <div class="mt-3">
+                                <button class="btn btn-sm btn-primary w-100" @click="viewDroneRoute">
+                                    查看航线
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div v-else-if="selectedObject.type === 'forest'" class="forest-details">
+                            <p><strong>面积:</strong> {{ selectedObject.area }}亩</p>
+                            <p><strong>树种:</strong> {{ selectedObject.treeType }}</p>
+                            <p><strong>巡林状态:</strong> {{ selectedObject.patrolStatus }}</p>
+                            <p><strong>最近巡检:</strong> {{ selectedObject.lastPatrol }}</p>
+                            <p><strong>风险等级:</strong> {{ selectedObject.riskLevel }}</p>
+                        </div>
+                        
+                        <div v-else-if="selectedObject.type === 'agri'" class="agri-details">
+                            <p><strong>面积:</strong> {{ selectedObject.area }}亩</p>
+                            <p><strong>作物类型:</strong> {{ selectedObject.cropType }}</p>
+                            <p><strong>监测状态:</strong> {{ selectedObject.monitorStatus }}</p>
+                            <p><strong>最近监测:</strong> {{ selectedObject.lastMonitor }}</p>
+                            <p><strong>病虫害情况:</strong> {{ selectedObject.pestStatus }}</p>
+                        </div>
+                        
+                        <div v-else-if="selectedObject.type === 'alert'" class="alert-details">
+                            <p><strong>类型:</strong> {{ selectedObject.alertType }}</p>
+                            <p><strong>等级:</strong> {{ selectedObject.level }}</p>
+                            <p><strong>时间:</strong> {{ selectedObject.time }}</p>
+                            <p><strong>描述:</strong> {{ selectedObject.description }}</p>
+                            <p><strong>处理状态:</strong> {{ selectedObject.handleStatus }}</p>
+                            <div class="mt-3">
+                                <button class="btn btn-sm btn-primary w-100" @click="handleAlert">
+                                    处理告警
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div v-else class="general-details">
+                            <p v-for="(value, key) in selectedObject" :key="key" v-if="key !== 'name' && key !== 'type' && key !== 'status'">
+                                <strong>{{ formatKey(key) }}:</strong> {{ value }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div v-else class="text-center text-muted py-5">
+                    <i class="bi bi-map display-4 mb-3"></i>
+                    <p>点击地图对象查看详情</p>
+                </div>
+                
+                <!-- 最近告警 -->
+                <div class="mt-4">
+                    <h6>最近告警</h6>
+                    <div class="list-group">
+                        <div v-for="alert in recentAlerts" :key="alert.id" class="list-group-item list-group-item-action" @click="selectAlert(alert)">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">{{ alert.name }}</h6>
+                                    <small class="text-muted">{{ alert.description }}</small>
+                                </div>
+                                <span :class="['badge', getAlertLevelClass(alert.level)]">{{ alert.level }}</span>
+                            </div>
+                            <small class="text-muted">{{ alert.time }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    #map {
+        height: calc(100vh - 120px);
+        width: 100%;
+    }
+    
+    .map-marker {
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    
+    .map-marker:hover {
+        transform: scale(1.2);
+    }
+    
+    .drone-marker {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% {
+            transform: scale(1);
+            opacity: 1;
+        }
+        50% {
+            transform: scale(1.2);
+            opacity: 0.7;
+        }
+        100% {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+    
+    .alert-marker {
+        animation: blink 1s infinite;
+    }
+    
+    @keyframes blink {
+        0% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.3;
+        }
+        100% {
+            opacity: 1;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    new Vue({
+        el: '#mapApp',
+        data: {
+            // 地图实例
+            map: null,
+            
+            // 筛选条件
+            filters: {
+                taskType: '',
+                region: '',
+                alertType: '',
+                droneStatus: ''
+            },
+            
+            // 图层控制
+            layers: {
+                forest: true,
+                agri: true,
+                grid: true,
+                noFly: true,
+                takeoff: true,
+                drone: true,
+                alert: true
+            },
+            
+            // 地图对象
+            objects: {
+                forests: [
+                    {
+                        id: 'forest1',
+                        name: '林区1',
+                        type: 'forest',
+                        status: '正常',
+                        area: 1200,
+                        treeType: '针叶林',
+                        patrolStatus: '已完成',
+                        lastPatrol: '2026-04-10 14:30',
+                        riskLevel: '低',
+                        coordinates: [106.54, 29.56]
+                    },
+                    {
+                        id: 'forest2',
+                        name: '林区2',
+                        type: 'forest',
+                        status: '告警',
+                        area: 850,
+                        treeType: '阔叶林',
+                        patrolStatus: '进行中',
+                        lastPatrol: '2026-04-11 09:15',
+                        riskLevel: '中',
+                        coordinates: [106.60, 29.58]
+                    }
+                ],
+                
+                agriculture: [
+                    {
+                        id: 'agri1',
+                        name: '农田1',
+                        type: 'agri',
+                        status: '正常',
+                        area: 500,
+                        cropType: '水稻',
+                        monitorStatus: '已完成',
+                        lastMonitor: '2026-04-10 10:00',
+                        pestStatus: '无',
+                        coordinates: [106.50, 29.52]
+                    },
+                    {
+                        id: 'agri2',
+                        name: '农田2',
+                        type: 'agri',
+                        status: '告警',
+                        area: 350,
+                        cropType: '玉米',
+                        monitorStatus: '进行中',
+                        lastMonitor: '2026-04-11 08:30',
+                        pestStatus: '轻度',
+                        coordinates: [106.55, 29.50]
+                    }
+                ],
+                
+                noFlyZones: [
+                    {
+                        id: 'noFly1',
+                        name: '禁飞区1',
+                        type: 'noFly',
+                        status: '有效',
+                        reason: '军事区域',
+                        coordinates: [106.65, 29.60]
+                    }
+                ],
+                
+                takeoffPoints: [
+                    {
+                        id: 'takeoff1',
+                        name: '起降点1',
+                        type: 'takeoff',
+                        status: '可用',
+                        capacity: 5,
+                        coordinates: [106.52, 29.55]
+                    },
+                    {
+                        id: 'takeoff2',
+                        name: '起降点2',
+                        type: 'takeoff',
+                        status: '可用',
+                        capacity: 3,
+                        coordinates: [106.58, 29.57]
+                    }
+                ],
+                
+                drones: [
+                    {
+                        id: 'drone1',
+                        name: '无人机1',
+                        type: 'drone',
+                        status: '在线',
+                        model: 'DJI Mavic 3',
+                        pilot: '张三',
+                        battery: 85,
+                        altitude: 120,
+                        speed: 8,
+                        task: '林区巡检',
+                        coordinates: [106.54, 29.56]
+                    },
+                    {
+                        id: 'drone2',
+                        name: '无人机2',
+                        type: 'drone',
+                        status: '在线',
+                        model: 'DJI Phantom 4',
+                        pilot: '李四',
+                        battery: 60,
+                        altitude: 80,
+                        speed: 6,
+                        task: '农田监测',
+                        coordinates: [106.50, 29.52]
+                    },
+                    {
+                        id: 'drone3',
+                        name: '无人机3',
+                        type: 'drone',
+                        status: '告警',
+                        model: 'DJI Mini 2',
+                        pilot: '王五',
+                        battery: 15,
+                        altitude: 50,
+                        speed: 4,
+                        task: '地形测绘',
+                        coordinates: [106.60, 29.58]
+                    }
+                ],
+                
+                alerts: [
+                    {
+                        id: 'alert1',
+                        name: '火点告警',
+                        type: 'alert',
+                        status: '未处理',
+                        alertType: '火情',
+                        level: '紧急',
+                        time: '2026-04-11 10:30',
+                        description: '林区2发现疑似火点',
+                        handleStatus: '未处理',
+                        coordinates: [106.60, 29.58]
+                    },
+                    {
+                        id: 'alert2',
+                        name: '病虫害告警',
+                        type: 'alert',
+                        status: '处理中',
+                        alertType: '病虫害',
+                        level: '警告',
+                        time: '2026-04-11 09:15',
+                        description: '农田2发现病虫害',
+                        handleStatus: '处理中',
+                        coordinates: [106.55, 29.50]
+                    },
+                    {
+                        id: 'alert3',
+                        name: '无人机低电量',
+                        type: 'alert',
+                        status: '未处理',
+                        alertType: '无人机异常',
+                        level: '警告',
+                        time: '2026-04-11 10:00',
+                        description: '无人机3电量低于20%',
+                        handleStatus: '未处理',
+                        coordinates: [106.60, 29.58]
+                    }
+                ]
+            },
+            
+            // 选中的对象
+            selectedObject: null,
+            
+            // 最近告警
+            recentAlerts: []
+        },
+        computed: {
+            onlineDrones() {
+                return this.objects.drones.filter(drone => drone.status === '在线').length;
+            },
+            offlineDrones() {
+                return this.objects.drones.filter(drone => drone.status === '离线').length;
+            },
+            warningDrones() {
+                return this.objects.drones.filter(drone => drone.status === '告警').length;
+            }
+        },
+        methods: {
+            // 初始化地图
+            initMap() {
+                // 这里使用示例地图初始化，实际项目中可以使用百度地图、高德地图或OpenLayers等
+                // 示例代码，实际项目中需要替换为真实的地图API
+                console.log('初始化地图');
+                this.loadMapData();
+            },
+            
+            // 加载地图数据
+            loadMapData() {
+                // 模拟从后端获取地图数据
+                // Http.get('/api/map/data/')
+                //     .done(function(data) {
+                //         this.objects = data;
+                //         this.recentAlerts = data.alerts.slice(0, 3);
+                //         this.renderMapObjects();
+                //     }.bind(this));
+                
+                // 使用模拟数据
+                this.recentAlerts = this.objects.alerts.slice(0, 3);
+                this.renderMapObjects();
+            },
+            
+            // 渲染地图对象
+            renderMapObjects() {
+                // 示例代码，实际项目中需要根据使用的地图API进行实现
+                console.log('渲染地图对象');
+                
+                // 渲染林区
+                if (this.layers.forest) {
+                    this.objects.forests.forEach(forest => {
+                        console.log('渲染林区:', forest.name);
+                    });
+                }
+                
+                // 渲染农田
+                if (this.layers.agri) {
+                    this.objects.agriculture.forEach(agri => {
+                        console.log('渲染农田:', agri.name);
+                    });
+                }
+                
+                // 渲染禁飞区
+                if (this.layers.noFly) {
+                    this.objects.noFlyZones.forEach(noFly => {
+                        console.log('渲染禁飞区:', noFly.name);
+                    });
+                }
+                
+                // 渲染起降点
+                if (this.layers.takeoff) {
+                    this.objects.takeoffPoints.forEach(takeoff => {
+                        console.log('渲染起降点:', takeoff.name);
+                    });
+                }
+                
+                // 渲染无人机
+                if (this.layers.drone) {
+                    this.objects.drones.forEach(drone => {
+                        console.log('渲染无人机:', drone.name);
+                    });
+                }
+                
+                // 渲染告警点
+                if (this.layers.alert) {
+                    this.objects.alerts.forEach(alert => {
+                        console.log('渲染告警点:', alert.name);
+                    });
+                }
+            },
+            
+            // 更新图层
+            updateLayers() {
+                this.renderMapObjects();
+            },
+            
+            // 应用筛选
+            applyFilters() {
+                console.log('应用筛选:', this.filters);
+                // 实际项目中需要根据筛选条件重新获取数据
+                this.renderMapObjects();
+            },
+            
+            // 选择对象
+            selectObject(object) {
+                this.selectedObject = object;
+                console.log('选中对象:', object);
+            },
+            
+            // 选择告警
+            selectAlert(alert) {
+                this.selectedObject = alert;
+                // 实际项目中需要定位到告警位置
+                console.log('选中告警:', alert);
+            },
+            
+            // 处理告警
+            handleAlert() {
+                if (this.selectedObject && this.selectedObject.type === 'alert') {
+                    this.selectedObject.status = '处理中';
+                    this.selectedObject.handleStatus = '处理中';
+                    Common.showMessage('告警处理中', 'info');
+                    
+                    // 模拟处理过程
+                    setTimeout(() => {
+                        this.selectedObject.status = '已处理';
+                        this.selectedObject.handleStatus = '已处理';
+                        Common.showMessage('告警处理完成', 'success');
+                    }, 2000);
+                }
+            },
+            
+            // 查看无人机航线
+            viewDroneRoute() {
+                if (this.selectedObject && this.selectedObject.type === 'drone') {
+                    Common.showMessage('显示无人机航线', 'info');
+                    // 实际项目中需要绘制航线
+                }
+            },
+            
+            // 地图控制
+            centerMap() {
+                console.log('定位到地图中心');
+            },
+            
+            zoomIn() {
+                console.log('地图放大');
+            },
+            
+            zoomOut() {
+                console.log('地图缩小');
+            },
+            
+            // 获取对象状态样式
+            getObjectStatusClass(object) {
+                if (object.status === '在线' || object.status === '正常' || object.status === '可用') {
+                    return 'bg-success';
+                } else if (object.status === '告警' || object.status === '警告') {
+                    return 'bg-warning';
+                } else if (object.status === '离线' || object.status === '不可用') {
+                    return 'bg-danger';
+                } else {
+                    return 'bg-info';
+                }
+            },
+            
+            // 获取告警等级样式
+            getAlertLevelClass(level) {
+                if (level === '紧急') {
+                    return 'bg-danger';
+                } else if (level === '警告') {
+                    return 'bg-warning';
+                } else if (level === '提示') {
+                    return 'bg-info';
+                } else {
+                    return 'bg-secondary';
+                }
+            },
+            
+            // 格式化键名
+            formatKey(key) {
+                const keyMap = {
+                    id: '编号',
+                    model: '型号',
+                    pilot: '飞手',
+                    battery: '电量',
+                    altitude: '高度',
+                    speed: '速度',
+                    task: '任务',
+                    area: '面积',
+                    treeType: '树种',
+                    patrolStatus: '巡林状态',
+                    lastPatrol: '最近巡检',
+                    riskLevel: '风险等级',
+                    cropType: '作物类型',
+                    monitorStatus: '监测状态',
+                    lastMonitor: '最近监测',
+                    pestStatus: '病虫害情况',
+                    alertType: '告警类型',
+                    level: '等级',
+                    time: '时间',
+                    description: '描述',
+                    handleStatus: '处理状态',
+                    reason: '原因',
+                    capacity: '容量'
+                };
+                return keyMap[key] || key;
+            },
+            
+            // 实时更新无人机位置
+            updateDronePositions() {
+                // 模拟无人机位置更新
+                this.objects.drones.forEach(drone => {
+                    // 随机生成微小的位置变化
+                    drone.coordinates[0] += (Math.random() - 0.5) * 0.001;
+                    drone.coordinates[1] += (Math.random() - 0.5) * 0.001;
+                    // 随机更新电量
+                    if (drone.status === '在线') {
+                        drone.battery = Math.max(0, drone.battery - Math.random() * 0.5);
+                        if (drone.battery < 20) {
+                            drone.status = '告警';
+                        }
+                    }
+                });
+                
+                // 重新渲染地图
+                this.renderMapObjects();
+            }
+        },
+        mounted() {
+            this.initMap();
+            
+            // 每5秒更新一次无人机位置
+            setInterval(this.updateDronePositions, 5000);
+            
+            // 每10秒更新一次告警信息
+            setInterval(() => {
+                // 模拟从后端获取最新告警
+                // Http.get('/api/alerts/latest/')
+                //     .done(function(data) {
+                //         this.objects.alerts = data;
+                //         this.recentAlerts = data.slice(0, 3);
+                //         this.renderMapObjects();
+                //     }.bind(this));
+            }, 10000);
+        }
+    });
+</script>
+{% endblock %}

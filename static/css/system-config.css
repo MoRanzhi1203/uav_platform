@@ -1,0 +1,108 @@
+.config-section-card,
+.config-side-card {
+  border: 1px solid #e9edf5;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.config-section-header,
+.config-side-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.config-section-header .card-title,
+.config-side-header .card-title {
+  margin-bottom: 4px;
+}
+
+.config-switch {
+  min-height: 52px;
+  padding: 14px 16px 14px 48px;
+  border: 1px solid #edf1fa;
+  border-radius: 14px;
+  background: #f8fafe;
+  display: flex;
+  align-items: center;
+}
+
+.config-switch .form-check-input {
+  margin-top: 0;
+}
+
+.config-summary-list,
+.config-highlight-list,
+.config-advice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.config-summary-item,
+.config-highlight-item,
+.config-advice-item {
+  border: 1px solid #edf1fa;
+  border-radius: 14px;
+  background: #fbfcff;
+  padding: 14px 16px;
+}
+
+.config-summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.config-summary-item strong,
+.config-highlight-item strong {
+  color: #012970;
+}
+
+.config-summary-item span,
+.config-highlight-item span,
+.config-advice-item span {
+  color: #6c757d;
+  font-size: 13px;
+}
+
+.config-highlight-item,
+.config-advice-item {
+  line-height: 1.65;
+}
+
+.config-highlight-item em {
+  color: #4154f1;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.config-summary-anchor {
+  color: inherit;
+  text-decoration: none;
+}
+
+.config-summary-anchor:hover strong {
+  color: #4154f1;
+}
+
+.config-section-card .form-label {
+  font-weight: 600;
+  color: #344054;
+}
+
+.config-section-card .form-control,
+.config-section-card .form-select {
+  min-height: 44px;
+}
+
+@media (max-width: 991.98px) {
+  .config-section-header,
+  .config-side-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

@@ -1,0 +1,135 @@
+.log-filter-card,
+.log-table-card {
+  border: 1px solid #e9edf5;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.log-list-count {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f4f7fe;
+  color: #4154f1;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.log-table thead th {
+  white-space: nowrap;
+  font-size: 13px;
+  color: #6c757d;
+  border-bottom-width: 1px;
+}
+
+.log-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.log-table tbody tr:hover {
+  background: #f8fafe;
+}
+
+.log-time {
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.log-operator {
+  white-space: nowrap;
+}
+
+.operator-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.operator-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6c8cff, #4154f1);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+
+.log-module-badge,
+.log-action-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.log-module-badge {
+  background: #eef2ff;
+  color: #4154f1;
+}
+
+.log-action-badge {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.log-path {
+  max-width: 250px;
+}
+
+.path-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.log-ip {
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.log-detail-item {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f8fafe;
+  border: 1px solid #edf1fa;
+}
+
+.log-detail-item label {
+  display: block;
+  font-size: 12px;
+  color: #6c757d;
+  margin-bottom: 6px;
+}
+
+.log-detail-item div,
+.log-detail-item pre {
+  color: #1f2d3d;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.log-detail-item pre {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  font-weight: normal;
+}
+
+.btn-view-detail:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
