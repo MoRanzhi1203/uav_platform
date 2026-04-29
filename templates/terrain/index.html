@@ -58,15 +58,15 @@
     <div class="col-lg-3 col-md-6">
       <div class="card info-card">
         <div class="card-body">
-          <h5 class="card-title">危险区域 <span class="text-muted">| 高风险</span></h5>
+          <h5 class="card-title">危险区域 <span class="text-muted" id="dangerAreaScope">| 高风险 + 中风险</span></h5>
           <div class="d-flex align-items-center">
             <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
               <i class="bi bi-exclamation-octagon text-danger"></i>
             </div>
             <div class="ps-3">
-              <h6 id="highRiskAreas">12</h6>
-              <span class="text-danger small pt-1 fw-bold">2%</span>
-              <span class="text-muted small pt-2 ps-1">较上周</span>
+              <h6 id="highRiskAreas">0</h6>
+              <span class="text-danger small pt-1 fw-bold" id="dangerAreaBreakdown">高风险 0 个</span>
+              <span class="text-muted small pt-2 ps-1" id="dangerAreaDetail">中风险 0 个，低风险 0 个，未评估 0 个</span>
             </div>
           </div>
         </div>
@@ -136,6 +136,7 @@
               <option value="low">低风险</option>
               <option value="medium">中风险</option>
               <option value="high">高风险</option>
+              <option value="none">未评估</option>
             </select>
           </div>
           <div class="col-sm-6 col-lg-2">
@@ -309,6 +310,24 @@
                   <div class="info-item">
                     <label class="text-muted small">地块数量</label>
                     <div class="fw-bold" id="infoPlotCount">-</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="info-item">
+                    <label class="text-muted small">风险构成</label>
+                    <div class="fw-bold" id="infoRiskComposition">-</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="info-item">
+                    <label class="text-muted small">风险分值</label>
+                    <div class="fw-bold" id="infoRiskScore">-</div>
+                  </div>
+                </div>
+                <div class="col-md-6 col-sm-12">
+                  <div class="info-item">
+                    <label class="text-muted small">判定原因</label>
+                    <div class="info-description-text" id="infoRiskReason">暂无风险判定说明</div>
                   </div>
                 </div>
                 <div class="col-md-3 col-sm-6">

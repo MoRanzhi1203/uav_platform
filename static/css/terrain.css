@@ -449,6 +449,7 @@
 .risk-high { background: #fee2e2; color: #dc2626; }
 .risk-medium { background: #ffedd5; color: #ea580c; }
 .risk-low { background: #dcfce7; color: #16a34a; }
+.risk-none { background: #e5e7eb; color: #4b5563; }
 
 /* 地图容器 */
 .map-container {

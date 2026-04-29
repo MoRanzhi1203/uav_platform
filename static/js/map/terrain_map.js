@@ -532,10 +532,12 @@ class TerrainMap {
     return null;
   }
 
-  getTerrainBoundaryStyle() {
+  getTerrainBoundaryStyle(terrain = null) {
+    const riskLevel = terrain?.risk_level || terrain?.computed_risk_level || terrain?.riskLevelRaw || 'none';
+    const borderColor = this.getRiskBorderColor(riskLevel);
     return {
-      color: '#2563eb',
-      weight: 2,
+      color: borderColor,
+      weight: this.normalizeRiskLevel(riskLevel) === 'high' ? 3 : 2,
       opacity: 0.95,
       fillColor: '#60a5fa',
       fill: false,
@@ -561,21 +563,71 @@ class TerrainMap {
     });
   }
 
+  normalizeRiskLevel(value) {
+    const rawValue = String(value || '').trim();
+    const mapping = {
+      high: 'high',
+      medium: 'medium',
+      low: 'low',
+      none: 'none',
+      '高风险': 'high',
+      '中风险': 'medium',
+      '低风险': 'low',
+      '未评估': 'none',
+      '未标记': 'none',
+      '高': 'high',
+      '中': 'medium',
+      '低': 'low',
+      '普通': 'low',
+      '一般': 'low',
+      '': 'none'
+    };
+    return mapping[rawValue] || mapping[rawValue.toLowerCase?.()] || 'none';
+  }
+
+  getRiskDisplayLabel(value) {
+    const mapping = {
+      high: '高风险',
+      medium: '中风险',
+      low: '低风险',
+      none: '未评估'
+    };
+    return mapping[this.normalizeRiskLevel(value)] || '未评估';
+  }
+
+  getRiskBorderColor(value) {
+    const mapping = {
+      high: '#dc2626',
+      medium: '#ea580c',
+      low: '#16a34a',
+      none: '#64748b'
+    };
+    return mapping[this.normalizeRiskLevel(value)] || '#64748b';
+  }
+
   getTerrainPopupHtml(terrain) {
     const areaValue = terrain?.area ?? terrain?.area_ha ?? null;
     const areaLabel = Number.isFinite(Number(areaValue))
       ? `${Number(areaValue).toFixed(2)} 公顷`
       : (terrain?.areaLabel || '-');
-    const riskLabel = terrain?.risk_label || terrain?.riskLabel || terrain?.risk_level || '-';
+    const riskLabel = terrain?.risk_level_display
+      || terrain?.computed_risk_level_display
+      || terrain?.risk_label
+      || terrain?.riskLabel
+      || this.getRiskDisplayLabel(terrain?.risk_level || terrain?.computed_risk_level)
+      || '-';
     const plotCount = Array.isArray(terrain?.plots)
       ? terrain.plots.length
       : (terrain?.plot_count ?? terrain?.plotCountLabel ?? '-');
+    const riskScore = Number(terrain?.risk_score ?? terrain?.riskScore ?? 0);
+    const riskReason = terrain?.risk_reason || terrain?.riskReason || '';
     return `
       <div class="terrain-map-popup">
         <strong>${terrain.name}</strong><br>
         面积：${areaLabel}<br>
         风险：${riskLabel}<br>
-        地块数量：${plotCount}
+        风险分值：${riskScore}<br>
+        地块数量：${plotCount}${riskReason ? `<br>原因：${riskReason}` : ''}
       </div>
     `;
   }
@@ -603,10 +655,16 @@ class TerrainMap {
   getPlotStyle(plot) {
     const typeKey = this.getPlotTypeKey(plot);
     const color = this.plotTypeMeta[typeKey]?.color || '#64748b';
+    const riskBorderColor = this.getRiskBorderColor(
+      plot?.risk_level
+      || plot?.riskLevel
+      || plot?.properties?.risk_level
+      || plot?.properties?.riskLevel
+    );
     return {
-      color,
+      color: riskBorderColor,
       weight: 2,
-      opacity: 0.88,
+      opacity: 0.92,
       fillColor: color,
       fillOpacity: 0.28,
       className: 'terrain-plot-layer'
@@ -620,7 +678,7 @@ class TerrainMap {
         地块类型：${this.getPlotTypeLabel(plot)}<br>
         子类：${plot.subtype_label || plot.subtype || plot.sub_type || '-'}<br>
         面积：${plot.area || '-'} 公顷<br>
-        风险：${plot.risk_level || '-'}
+        风险：${this.getRiskDisplayLabel(plot.risk_level || plot.riskLevel)}
       </div>
     `;
   }
@@ -811,7 +869,7 @@ class TerrainMap {
       return null;
     }
 
-    const boundaryStyle = this.getTerrainBoundaryStyle();
+    const boundaryStyle = this.getTerrainBoundaryStyle(terrain);
     const boundaryLayer = L.geoJSON(normalizedGeoJSON, {
       style: () => boundaryStyle,
       onEachFeature: (_feature, featureLayer) => {
@@ -839,7 +897,13 @@ class TerrainMap {
   }
 
   async fetchTerrainPlots(areaId) {
-    const response = await fetch(`/terrain/api/areas/${areaId}/plots/`);
+    const response = await fetch(`/terrain/api/areas/${areaId}/plots/?_ts=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    });
     const result = await response.json();
     if (result.code !== 0) {
       throw new Error(result.message || '加载地块失败');

@@ -7,6 +7,7 @@ const terrainData = {
   surveys: [],
   riskAnalysis: [],
   currentTerrain: null,
+  pendingRiskTerrainId: null,
   appliedFilters: {
     name: '',
     riskLevel: '',
@@ -76,9 +77,7 @@ const TERRAIN_PLOT_TYPE_ALIASES = {
 };
 
 function initPage() {
-  if (localStorage.getItem('terrain_list_should_refresh') === '1') {
-    localStorage.removeItem('terrain_list_should_refresh');
-  }
+  terrainData.pendingRiskTerrainId = consumeTerrainRiskUpdateFlag();
 
   initVue();
   syncTerrainMainLayoutBySidebarState();
@@ -92,25 +91,74 @@ function initPage() {
   initFilterForm();
   initTables();
   initEvents();
-  loadRealData();
+  loadRealData({ preferredTerrainId: terrainData.pendingRiskTerrainId });
+}
+
+function normalizeTerrainRiskLevel(level) {
+  const rawLevel = String(level || '').trim();
+  const normalized = {
+    high: 'high',
+    medium: 'medium',
+    low: 'low',
+    none: 'none',
+    '高风险': 'high',
+    '中风险': 'medium',
+    '低风险': 'low',
+    '未评估': 'none',
+    '未标记': 'none',
+    '高': 'high',
+    '中': 'medium',
+    '低': 'low',
+    '普通': 'low',
+    '一般': 'low',
+    '': 'none'
+  };
+  return normalized[rawLevel] || normalized[rawLevel.toLowerCase?.()] || 'none';
 }
 
 function translateRiskLevel(level) {
   const mapping = {
     high: '高风险',
     medium: '中风险',
-    low: '低风险'
+    low: '低风险',
+    none: '未评估'
   };
-  return mapping[level] || '未评估';
+  return mapping[normalizeTerrainRiskLevel(level)] || '未评估';
 }
 
 function getRiskBadgeClass(level) {
   const mapping = {
     high: 'risk-high',
     medium: 'risk-medium',
-    low: 'risk-low'
+    low: 'risk-low',
+    none: 'risk-none'
   };
-  return mapping[level] || 'risk-low';
+  return mapping[normalizeTerrainRiskLevel(level)] || 'risk-none';
+}
+
+function consumeTerrainRiskUpdateFlag() {
+  const updatedTerrainId = sessionStorage.getItem('terrainRiskUpdated');
+  if (updatedTerrainId) {
+    sessionStorage.removeItem('terrainRiskUpdated');
+  }
+  if (localStorage.getItem('terrain_list_should_refresh') === '1') {
+    localStorage.removeItem('terrain_list_should_refresh');
+  }
+  return updatedTerrainId || null;
+}
+
+function buildTerrainRiskComposition(summary) {
+  return [
+    `高风险地块 ${summary.high_risk_plot_count || 0} 个`,
+    `中风险地块 ${summary.medium_risk_plot_count || 0} 个`,
+    `低风险地块 ${summary.low_risk_plot_count || 0} 个`,
+    `未标记 ${summary.unknown_risk_plot_count || 0} 个`
+  ].join('，');
+}
+
+function buildTerrainRiskHoverText(summary) {
+  const score = Number(summary.risk_score || 0);
+  return `${buildTerrainRiskComposition(summary)}，风险分值 ${score}${summary.risk_reason ? `，${summary.risk_reason}` : ''}`;
 }
 
 function escapeHtml(value) {
@@ -166,8 +214,10 @@ function updateTerrainBottomRefreshLabel(value) {
 
 async function fetchTerrainDashboardJson(url) {
   const response = await fetch(url, {
+    cache: 'no-store',
     headers: {
-      Accept: 'application/json'
+      Accept: 'application/json',
+      'Cache-Control': 'no-cache'
     }
   });
   const result = await response.json();
@@ -837,14 +887,43 @@ function standardizeTerrainRecord(rawItem) {
   if (!isPositiveNumber(areaHa) && normalizedBoundary && typeof utils.getAreaHaFromGeoJSON === 'function') {
     areaHa = utils.getAreaHaFromGeoJSON(normalizedBoundary);
   }
-  const plotCount = Math.max(plots.length, Number(pickFirstDefined(rawItem.plot_count, 0)) || 0);
+  const riskLevel = normalizeTerrainRiskLevel(pickFirstDefined(
+    rawItem.computed_risk_level,
+    rawItem.risk_level,
+    rawItem.risk
+  ));
+  const highRiskPlotCount = Number(pickFirstDefined(rawItem.high_risk_plot_count, rawItem.high_count, 0)) || 0;
+  const mediumRiskPlotCount = Number(pickFirstDefined(rawItem.medium_risk_plot_count, rawItem.medium_count, 0)) || 0;
+  const lowRiskPlotCount = Number(pickFirstDefined(rawItem.low_risk_plot_count, rawItem.low_count, 0)) || 0;
+  const unknownRiskPlotCount = Number(pickFirstDefined(rawItem.unknown_risk_plot_count, rawItem.unknown_count, 0)) || 0;
+  const totalPlotCount = Math.max(
+    plots.length,
+    Number(pickFirstDefined(rawItem.total_plot_count, rawItem.plot_count, 0)) || 0
+  );
   const hasBoundary = Boolean(rawItem.has_boundary ?? normalizedBoundary ?? bbox);
 
   return {
     id: rawItem.id,
     name: pickFirstDefined(rawItem.name, '未命名地形'),
     area_ha: isPositiveNumber(areaHa) ? areaHa : null,
-    risk_level: pickFirstDefined(rawItem.risk_level, 'low'),
+    risk_level: riskLevel,
+    risk_level_display: pickFirstDefined(
+      rawItem.risk_level_display,
+      rawItem.computed_risk_level_display,
+      rawItem.risk_label,
+      translateRiskLevel(riskLevel)
+    ),
+    risk_score: Number(pickFirstDefined(rawItem.risk_score, 0)) || 0,
+    risk_reason: pickFirstDefined(rawItem.risk_reason, rawItem.reason, ''),
+    high_risk_plot_count: highRiskPlotCount,
+    medium_risk_plot_count: mediumRiskPlotCount,
+    low_risk_plot_count: lowRiskPlotCount,
+    unknown_risk_plot_count: unknownRiskPlotCount,
+    total_plot_count: totalPlotCount,
+    high_risk_area: coerceNumber(rawItem.high_risk_area) ?? 0,
+    medium_risk_area: coerceNumber(rawItem.medium_risk_area) ?? 0,
+    low_risk_area: coerceNumber(rawItem.low_risk_area) ?? 0,
+    total_risk_area: coerceNumber(pickFirstDefined(rawItem.total_risk_area, rawItem.total_area)) ?? 0,
     updated_at: rawItem.updated_at || rawItem.created_at || null,
     description: rawItem.description || '',
     boundary_geojson: normalizedBoundary,
@@ -854,7 +933,7 @@ function standardizeTerrainRecord(rawItem) {
     bbox_max_lat: bbox?.maxLat ?? null,
     bbox,
     plots,
-    plot_count: plotCount,
+    plot_count: totalPlotCount,
     data_accuracy: pickFirstDefined(rawItem.data_accuracy, '待补充'),
     has_boundary: hasBoundary,
     center_lat: isValidLatLng(centerLat, centerLng) ? centerLat : null,
@@ -875,9 +954,17 @@ function normalizeTerrainItem(item) {
     ...standardized,
     area: standardized.area_ha,
     areaLabel: formatArea(standardized.area_ha),
-    riskLabel: translateRiskLevel(standardized.risk_level),
+    riskLabel: standardized.risk_level_display || translateRiskLevel(standardized.risk_level),
     riskLevelRaw: standardized.risk_level,
     riskClass: getRiskBadgeClass(standardized.risk_level),
+    riskScore: standardized.risk_score,
+    riskReason: standardized.risk_reason || '暂无风险判定说明',
+    highRiskPlotCount: standardized.high_risk_plot_count,
+    mediumRiskPlotCount: standardized.medium_risk_plot_count,
+    lowRiskPlotCount: standardized.low_risk_plot_count,
+    unknownRiskPlotCount: standardized.unknown_risk_plot_count,
+    riskCompositionText: buildTerrainRiskComposition(standardized),
+    riskHoverText: buildTerrainRiskHoverText(standardized),
     boundary_json: standardized.boundary_geojson,
     plots: standardized.plots,
     center: isValidLatLng(standardized.center_lat, standardized.center_lng)
@@ -885,8 +972,8 @@ function normalizeTerrainItem(item) {
       : null,
     centerLabel: formatCenterLabel(standardized.center_lat, standardized.center_lng),
     updatedAtLabel: formatDateTime(standardized.updated_at),
-    plotCount: standardized.plot_count,
-    plotCountLabel: `${standardized.plot_count} 个地块`,
+    plotCount: standardized.total_plot_count,
+    plotCountLabel: `${standardized.total_plot_count} 个地块`,
     hasBoundary: standardized.has_boundary,
     dataAccuracyLabel: standardized.data_accuracy ? `${standardized.data_accuracy}` : '待补充',
     bbox: {
@@ -923,17 +1010,18 @@ function updateMapSelectionHint(terrain, options = {}) {
   }
 
   titleNode.textContent = `当前地形：${terrain.name}`;
+  const riskSummary = `${terrain.riskLabel || '未评估'} / ${terrain.riskCompositionText || '暂无风险构成'} / 分值 ${terrain.riskScore || 0}`;
   if (terrain.hasBoundary) {
-    hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 已按真实边界加载专题与混合地块`;
+    hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 已按真实边界加载专题与混合地块，${riskSummary}`;
     return;
   }
 
   if (terrain.center) {
-    hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 缺少边界数据，当前仅保留中心点参考`;
+    hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 缺少边界数据，当前仅保留中心点参考，${riskSummary}`;
     return;
   }
 
-  hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 缺少有效空间数据，地图保持当前视图`;
+  hintNode.innerHTML = `<span class="terrain-map-selection-chip">${terrain.name}</span> 缺少有效空间数据，地图保持当前视图，${riskSummary}`;
 }
 
 function getTerrainById(terrainId) {
@@ -1032,9 +1120,18 @@ async function syncDefaultTerrainSelection(options = {}) {
   });
 }
 
-async function loadRealData() {
+async function loadRealData(options = {}) {
+  const {
+    preferredTerrainId = null
+  } = options;
   try {
-    const response = await fetch('/terrain/api/areas/');
+    const response = await fetch(`/terrain/api/areas/?_ts=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    });
     const result = await response.json();
 
     if (result.code !== 0) {
@@ -1051,12 +1148,22 @@ async function loadRealData() {
 
     updateEmptyStateMessage();
     if (terrainData.hasActiveFilters) {
-      await applyFilters();
+      await applyFilters({ preferredTerrainId });
       return;
     }
 
     updatePageData();
-    await syncDefaultTerrainSelection();
+    const preferredTerrain = preferredTerrainId ? getTerrainById(preferredTerrainId) : null;
+    if (preferredTerrain) {
+      await selectTerrainRow(preferredTerrain.id, {
+        syncMap: true,
+        fit: true,
+        openPopup: false
+      });
+    } else {
+      await syncDefaultTerrainSelection();
+    }
+    terrainData.pendingRiskTerrainId = null;
     scheduleTerrainDetailElasticHeightSync();
   } catch (error) {
     console.error('请求区域数据异常:', error);
@@ -1119,6 +1226,9 @@ function resetDetailPanel() {
     infoAccuracy: '-',
     infoUpdatedAt: '-',
     infoPlotCount: '-',
+    infoRiskComposition: '-',
+    infoRiskScore: '-',
+    infoRiskReason: '暂无风险判定说明',
     infoBboxMin: '-',
     infoBboxMax: '-',
     infoDescription: '无补充描述'
@@ -1134,7 +1244,7 @@ function resetDetailPanel() {
   const riskNode = document.getElementById('infoRisk');
   if (riskNode) {
     riskNode.textContent = '-';
-    riskNode.className = 'fw-bold';
+    riskNode.className = 'fw-bold risk-none';
   }
 }
 
@@ -1173,7 +1283,10 @@ function isWithinTimeRange(updatedAt, filters) {
   return diffMs <= days * 24 * 60 * 60 * 1000;
 }
 
-async function applyFilters() {
+async function applyFilters(options = {}) {
+  const {
+    preferredTerrainId = null
+  } = options;
   const filters = getFilterValues();
   setAppliedFilters(filters);
   terrainData.filteredTerrains = terrainData.terrains.filter(terrain => {
@@ -1188,10 +1301,19 @@ async function applyFilters() {
     vueInstances.terrainTable.currentPage = 1;
   }
   updatePageData();
-  await syncDefaultTerrainSelection({
-    preserveMapWhenEmpty: true,
-    emptyMessage: '未找到符合条件的地形，地图保留当前视图。'
-  });
+  const preferredTerrain = preferredTerrainId ? getTerrainById(preferredTerrainId) : null;
+  if (preferredTerrain && terrainData.filteredTerrains.some(item => String(item.id) === String(preferredTerrain.id))) {
+    await selectTerrainRow(preferredTerrain.id, {
+      syncMap: true,
+      fit: true,
+      openPopup: false
+    });
+  } else {
+    await syncDefaultTerrainSelection({
+      preserveMapWhenEmpty: true,
+      emptyMessage: '未找到符合条件的地形，地图保留当前视图。'
+    });
+  }
 }
 
 function scheduleNameAutoFilter() {
@@ -1249,10 +1371,14 @@ function initTables() {
 }
 
 function initEvents() {
-  window.addEventListener('focus', function onWindowFocus() {
-    if (localStorage.getItem('terrain_plot_changed') === '1') {
-      loadRealData();
+  window.addEventListener('focus', async function onWindowFocus() {
+    const pendingTerrainId = consumeTerrainRiskUpdateFlag();
+    if (localStorage.getItem('terrain_plot_changed') === '1' || pendingTerrainId) {
       localStorage.removeItem('terrain_plot_changed');
+      await refreshTerrainData({
+        preferredTerrainId: pendingTerrainId || terrainData.currentTerrain?.id || null,
+        silent: true
+      });
     }
   });
 
@@ -1601,7 +1727,11 @@ function exportTerrainData() {
   showToast(`已导出 ${exportList.length} 条地形数据`, 'success');
 }
 
-async function refreshTerrainData() {
+async function refreshTerrainData(options = {}) {
+  const {
+    preferredTerrainId = null,
+    silent = false
+  } = options;
   const btnRefresh = document.getElementById('btnRefreshTerrain');
   const originalHtml = btnRefresh ? btnRefresh.innerHTML : '';
   
@@ -1611,12 +1741,16 @@ async function refreshTerrainData() {
   }
 
   try {
-    await loadRealData(); // 内部已包含应用筛选条件和更新页面逻辑
+    await loadRealData({ preferredTerrainId });
     await loadTerrainDashboardModules({ silent: true });
-    showToast('刷新成功', 'success');
+    if (!silent) {
+      showToast('刷新成功', 'success');
+    }
   } catch (error) {
     console.error('刷新失败:', error);
-    showToast('刷新失败，请重试', 'danger');
+    if (!silent) {
+      showToast('刷新失败，请重试', 'danger');
+    }
   } finally {
     if (btnRefresh) {
       btnRefresh.disabled = false;
@@ -1793,6 +1927,7 @@ function initVue() {
               <tr
                 v-for="(terrain, index) in pagedTerrains"
                 :key="terrain.id"
+                :title="terrain.riskHoverText"
                 :class="{ 'is-selected': selectedTerrainId === terrain.id }"
                 @click="selectTerrain(terrain)"
               >
@@ -1906,13 +2041,29 @@ function updatePageData() {
     )
     : 0;
 
+  const riskCounts = terrainData.terrains.reduce((accumulator, item) => {
+    const key = normalizeTerrainRiskLevel(item.riskLevelRaw);
+    accumulator[key] = (accumulator[key] || 0) + 1;
+    return accumulator;
+  }, { high: 0, medium: 0, low: 0, none: 0 });
+  const dangerousTerrainCount = riskCounts.high + riskCounts.medium;
+
   document.getElementById('totalTerrains').textContent = terrainData.terrains.length;
-  document.getElementById('highRiskAreas').textContent = terrainData.terrains.filter(item => item.riskLevelRaw === 'high').length;
+  document.getElementById('highRiskAreas').textContent = dangerousTerrainCount;
   document.getElementById('activeTasks').textContent = terrainData.surveys.filter((survey) => {
     const status = String(survey.status || '').toLowerCase();
     return ['running', 'in_progress', 'processing'].includes(status);
   }).length;
   document.getElementById('dataAccuracy').textContent = averageAccuracy ? `${averageAccuracy}%` : '-';
+
+  const dangerAreaBreakdown = document.getElementById('dangerAreaBreakdown');
+  if (dangerAreaBreakdown) {
+    dangerAreaBreakdown.textContent = `高风险 ${riskCounts.high} 个`;
+  }
+  const dangerAreaDetail = document.getElementById('dangerAreaDetail');
+  if (dangerAreaDetail) {
+    dangerAreaDetail.textContent = `中风险 ${riskCounts.medium} 个，低风险 ${riskCounts.low} 个，未评估 ${riskCounts.none} 个`;
+  }
 
   updateTerrainListCount(terrainData.filteredTerrains.length, terrainData.terrains.length);
   updateFilterSummary();
@@ -1942,6 +2093,9 @@ function updateDetailPanel(terrain) {
   setText('infoAccuracy', terrain.dataAccuracyLabel);
   setText('infoUpdatedAt', terrain.updatedAtLabel);
   setText('infoPlotCount', terrain.plotCountLabel);
+  setText('infoRiskComposition', terrain.riskCompositionText);
+  setText('infoRiskScore', `${terrain.riskScore}`);
+  setText('infoRiskReason', terrain.riskReason);
   setText('infoBboxMin', `${terrain.bbox.minLng}, ${terrain.bbox.minLat}`);
   setText('infoBboxMax', `${terrain.bbox.maxLng}, ${terrain.bbox.maxLat}`);
   setText('infoDescription', terrain.description || '无补充描述');
@@ -1956,6 +2110,16 @@ function updateDetailPanel(terrain) {
 }
 
 window.addEventListener('DOMContentLoaded', initPage);
+window.addEventListener('pageshow', async (event) => {
+  const pendingTerrainId = consumeTerrainRiskUpdateFlag();
+  if (event.persisted || pendingTerrainId || localStorage.getItem('terrain_plot_changed') === '1') {
+    localStorage.removeItem('terrain_plot_changed');
+    await refreshTerrainData({
+      preferredTerrainId: pendingTerrainId || terrainData.currentTerrain?.id || null,
+      silent: true
+    });
+  }
+});
 window.addEventListener('beforeunload', () => {
   if (terrainBottomRefreshTimer) {
     window.clearInterval(terrainBottomRefreshTimer);

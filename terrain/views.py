@@ -19,6 +19,12 @@ from .serializers import (
     GeoJSONCompatibilityMixin, TerrainAreaSerializer, TerrainZoneSerializer, TerrainAreaPlotSerializer,
     TerrainElementSerializer, TerrainSubCategorySerializer
 )
+from .services import (
+    attach_terrain_risk,
+    get_risk_level_display,
+    normalize_risk_level,
+    sync_terrain_risk_fields,
+)
 from common.responses import api_response, api_error
 
 logger = logging.getLogger(__name__)
@@ -81,6 +87,7 @@ RISK_LEVEL_LABELS = {
     "low": "低风险",
     "medium": "中风险",
     "high": "高风险",
+    "none": "未评估",
 }
 
 TASK_STATUS_LABELS = {
@@ -153,14 +160,14 @@ def _get_zone_area_ha(zone):
 
 def _serialize_risk_zone(zone):
     area_ha = _get_zone_area_ha(zone)
-    risk_level = str(getattr(zone, "risk_level", "") or "low")
+    risk_level = normalize_risk_level(getattr(zone, "risk_level", None))
     return {
         "id": zone.id,
         "terrain_id": getattr(zone, "area_obj_id", None),
         "terrain_name": getattr(getattr(zone, "area_obj", None), "name", "") or "未绑定地形",
         "plot_name": getattr(zone, "name", "") or f"地块 {zone.id}",
         "risk_level": risk_level,
-        "risk_level_label": RISK_LEVEL_LABELS.get(risk_level, "未评估"),
+        "risk_level_label": get_risk_level_display(risk_level),
         "area_ha": area_ha,
         "area_label": f"{area_ha:.2f} 公顷" if area_ha > 0 else "-",
         "updated_at": zone.updated_at.isoformat() if getattr(zone, "updated_at", None) else None,
@@ -839,6 +846,7 @@ def list_areas(request):
         for area in queryset:
             active_plots = get_area_active_plots(area)
             build_area_spatial_from_active_plots(area, active_plots=active_plots)
+            attach_terrain_risk(area, sync_terrain_risk_fields(area, save=False, plots=active_plots))
 
         serializer = TerrainAreaSerializer(
             queryset,
@@ -873,6 +881,8 @@ def area_edit_detail(request, area_id):
         zones = get_editor_active_zones(area)
         area.active_zones = zones
         area.plot_count = len(zones)
+        terrain_risk = sync_terrain_risk_fields(area, save=False, plots=zones)
+        attach_terrain_risk(area, terrain_risk)
 
         area_serializer = TerrainAreaSerializer(area)
         zones_serializer = TerrainZoneSerializer(zones, many=True)
@@ -881,10 +891,12 @@ def area_edit_detail(request, area_id):
             "area": area_serializer.data,
             "zones": zones_serializer.data,
             "plots": area_serializer.data.get("plots", []),
+            "terrain_risk": terrain_risk,
             "editor_payload": {
                 "area": area_serializer.data,
                 "zones": zones_serializer.data,
                 "plots": area_serializer.data.get("plots", []),
+                "terrain_risk": terrain_risk,
                 "view_meta": {
                     "area_id": area.id,
                     "plot_count": len(zones_serializer.data),
@@ -1431,6 +1443,7 @@ def import_areas(request):
                             )
                             terrain.active_zones = saved_plots
                             terrain.plot_count = len(saved_plots)
+                            sync_terrain_risk_fields(terrain, save=True, plots=saved_plots)
                         elif plots:
                             result["warnings"].append("当前模型未配置地块保存字段，plots 已跳过")
 
@@ -1559,9 +1572,15 @@ def unified_save_terrain(request):
             ).quantize(Decimal('0.01'))
             terrain.save(update_fields=['area', 'updated_at'])
 
+            active_plots = get_area_active_plots(terrain)
+            terrain = build_area_spatial_from_active_plots(terrain, active_plots=active_plots)
+            terrain_risk = sync_terrain_risk_fields(terrain, save=True, plots=active_plots)
+            terrain_serializer = TerrainAreaSerializer(terrain)
+
             return api_response(data={
-                "terrain": TerrainAreaSerializer(terrain).data,
-                "plots": TerrainZoneSerializer(saved_plots, many=True).data
+                "terrain": terrain_serializer.data,
+                "plots": TerrainZoneSerializer(saved_plots, many=True).data,
+                "terrain_risk": terrain_risk,
             }, msg=msg)
 
     except Exception as e:
@@ -1584,7 +1603,13 @@ def create_or_update_zone(request):
 
         if serializer.is_valid():
             zone = serializer.save()
-            return api_response(data=TerrainZoneSerializer(zone).data, msg=msg)
+            terrain_risk = None
+            if getattr(zone, "area_obj", None):
+                terrain_risk = sync_terrain_risk_fields(zone.area_obj, save=True)
+            return api_response(data={
+                "zone": TerrainZoneSerializer(zone).data,
+                "terrain_risk": terrain_risk,
+            }, msg=msg)
         return api_error(msg="数据校验失败", data=serializer.errors)
     except Exception as e:
         logger.error(f"保存地块异常: {str(e)}")
@@ -1596,9 +1621,11 @@ def delete_zone(request, pk):
     """地块逻辑删除"""
     try:
         zone = get_object_or_404(TerrainZone, id=pk)
+        terrain = getattr(zone, "area_obj", None)
         zone.is_deleted = True
         zone.save()
-        return api_response(msg="地块已删除")
+        terrain_risk = sync_terrain_risk_fields(terrain, save=True) if terrain else None
+        return api_response(data={"terrain_risk": terrain_risk}, msg="地块已删除")
     except Exception as e:
         return api_error(msg=str(e), status=500)
 

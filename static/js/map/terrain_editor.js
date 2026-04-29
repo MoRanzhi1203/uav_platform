@@ -1950,7 +1950,7 @@ class TerrainEditor {
     }
 
     const layerOptions = {
-      style: this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)),
+      style: this.getPlotStyle(plot.properties, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)),
       interactive: this.currentTool === 'move-layer' && !plot.locked
     };
     if (!plot.db_id) {
@@ -2366,7 +2366,7 @@ class TerrainEditor {
     this.userPlots.forEach(plot => {
       if (!plot?.layer?.setStyle) return;
       plot.layer.setStyle(this.getPlotStyle(
-        plot.properties?.type,
+        plot.properties,
         plot.id === this.activePlotId,
         this.multiSelectedPlotIds.has(plot.id)
       ));
@@ -2839,7 +2839,7 @@ class TerrainEditor {
           if (plot.layer) {
             plot.layer.clearLayers();
             L.geoJSON(diff, {
-              style: this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)),
+              style: this.getPlotStyle(plot.properties, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)),
               renderer: this.canvasRenderer
             }).eachLayer(l => plot.layer.addLayer(l));
           }
@@ -3093,9 +3093,12 @@ class TerrainEditor {
     const plot = this.userPlots.find(p => p.id === this.activePlotId);
     if (plot) {
       plot.properties = { ...plot.properties, ...newProps };
-      // 如果类型改变，更新样式
-      if (newProps.type && plot.layer) {
-        plot.layer.setStyle(this.getPlotStyle(newProps.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
+      if (plot.layer) {
+        plot.layer.setStyle(this.getPlotStyle(
+          plot.properties,
+          plot.id === this.activePlotId,
+          this.multiSelectedPlotIds.has(plot.id)
+        ));
       }
       this.updateSelectedPlotsList();
     }
@@ -3352,7 +3355,7 @@ class TerrainEditor {
 
     snapshot.plots.forEach(p => {
       const layer = L.geoJSON(p.geojson, {
-        style: this.getPlotStyle(p.properties?.type, p.id === this.activePlotId, this.multiSelectedPlotIds.has(p.id)),
+        style: this.getPlotStyle(p.properties, p.id === this.activePlotId, this.multiSelectedPlotIds.has(p.id)),
         interactive: !p.locked,
         renderer: this.canvasRenderer // 使用 Canvas 渲染以提升性能
       });
@@ -3518,6 +3521,7 @@ class TerrainEditor {
         }
 
         this.alertAction(`成功保存地形 "${terrainName}" 及其 ${terrainPayload.plots.length} 个地块！`);
+        sessionStorage.setItem('terrainRiskUpdated', String(this.areaId));
         localStorage.setItem('terrain_plot_changed', '1');
         localStorage.setItem('terrain_list_should_refresh', '1');
         // 保存成功后自动返回列表页
@@ -3666,14 +3670,19 @@ class TerrainEditor {
       }
     };
 
-    const requestUrl = `/terrain/api/areas/${areaId}/edit/`;
+    const requestUrl = `/terrain/api/areas/${areaId}/edit/?_ts=${Date.now()}`;
     const maxAttempts = 3;
     let result = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         const response = await fetch(requestUrl, {
-          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          cache: 'no-store',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
+          }
         });
         result = await response.json();
         break;
@@ -3952,7 +3961,7 @@ class TerrainEditor {
     };
     properties.areaHa = this.calculateGeoJSONAreaHa(normalizedGeoJSON, data?.area || meta?.area || 0);
 
-    const baseStyle = this.getPlotStyle(properties.type, false, false);
+    const baseStyle = this.getPlotStyle(properties, false, false);
     const layerStyle = {
       ...baseStyle
     };
@@ -4131,27 +4140,78 @@ class TerrainEditor {
     return this.colorScheme.selected;
   }
 
-  getPlotStyle(type, isActive, isMultiSelected = false) {
-    const fill = this.getPlotColor(type);
+  normalizeRiskLevel(value) {
+    const rawValue = String(value || '').trim();
+    const mapping = {
+      high: 'high',
+      medium: 'medium',
+      low: 'low',
+      none: 'none',
+      '高风险': 'high',
+      '中风险': 'medium',
+      '低风险': 'low',
+      '未评估': 'none',
+      '未标记': 'none',
+      '高': 'high',
+      '中': 'medium',
+      '低': 'low',
+      '普通': 'low',
+      '一般': 'low',
+      '': 'none'
+    };
+    return mapping[rawValue] || mapping[rawValue.toLowerCase?.()] || 'none';
+  }
+
+  getRiskDisplayLabel(value) {
+    const mapping = {
+      high: '高风险',
+      medium: '中风险',
+      low: '低风险',
+      none: '未评估'
+    };
+    return mapping[this.normalizeRiskLevel(value)] || '未评估';
+  }
+
+  getRiskBorderColor(value) {
+    const mapping = {
+      high: '#dc2626',
+      medium: '#ea580c',
+      low: '#16a34a',
+      none: '#64748b'
+    };
+    return mapping[this.normalizeRiskLevel(value)] || '#64748b';
+  }
+
+  getPlotStyle(typeOrProperties, isActive, isMultiSelected = false) {
+    const properties = typeOrProperties && typeof typeOrProperties === 'object'
+      ? typeOrProperties
+      : { type: typeOrProperties };
+    const fill = this.getPlotColor(properties.type);
+    const riskBorder = this.getRiskBorderColor(properties.riskLevel);
     if (isActive) {
       return {
-        color: this.colorScheme.selected,
-        weight: 3,
+        color: riskBorder,
+        weight: 4,
+        opacity: 0.98,
         fillColor: fill,
-        fillOpacity: 0.45
+        fillOpacity: 0.45,
+        dashArray: '8 4'
       };
     }
     if (isMultiSelected) {
       return {
-        color: this.colorScheme.highlight,
-        weight: 3,
+        color: riskBorder,
+        weight: 4,
+        opacity: 0.96,
         fillColor: fill,
-        fillOpacity: 0.42
+        fillOpacity: 0.42,
+        dashArray: '6 4'
       };
     }
     return {
-      color: fill,
-      weight: 1,
+      color: riskBorder,
+      weight: 2,
+      opacity: 0.92,
       fillColor: fill,
       fillOpacity: 0.35
     };
@@ -4191,7 +4251,7 @@ class TerrainEditor {
     nextProperties.areaHa = this.calculateGeoJSONAreaHa(geojson, nextProperties.areaHa || 0);
     const id = `plot_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const layer = L.geoJSON(geojson, {
-      style: this.getPlotStyle(nextProperties.type, false, false),
+      style: this.getPlotStyle(nextProperties, false, false),
       interactive: this.currentTool === 'move-layer',
       renderer: this.canvasRenderer
     });
@@ -4299,6 +4359,9 @@ class TerrainEditor {
           if (result.code !== 0) {
             this.alertAction('删除失败: ' + result.msg);
             return;
+          }
+          if (this.areaId) {
+            sessionStorage.setItem('terrainRiskUpdated', String(this.areaId));
           }
           localStorage.setItem('terrain_plot_changed', '1');
           
@@ -4501,7 +4564,7 @@ class TerrainEditor {
   updateLayerColors() {
     this.userPlots.forEach(plot => {
       if (plot.layer && plot.layer.setStyle) {
-        plot.layer.setStyle(this.getPlotStyle(plot.properties?.type, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
+        plot.layer.setStyle(this.getPlotStyle(plot.properties, plot.id === this.activePlotId, this.multiSelectedPlotIds.has(plot.id)));
       }
     });
   }
