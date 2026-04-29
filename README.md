@@ -257,3 +257,4 @@ python manage.py runserver
 <div align="right">
   <i>本项目由 Trae 智能辅助开发构建。</i>
 </div>
+# redesigned-guacamole
