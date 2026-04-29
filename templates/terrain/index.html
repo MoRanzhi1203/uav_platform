@@ -240,7 +240,7 @@
             </div>
 
             <div id="terrainDetailPanel" class="detail-content-area">
-              <div class="row g-3">
+              <div class="row g-3 terrain-detail-grid">
                 <div class="col-md-3 col-sm-6">
                   <div class="info-item">
                     <label class="text-muted small">地形名称</label>
@@ -264,6 +264,12 @@
                   <div class="info-item">
                     <label class="text-muted small">地块数量</label>
                     <div class="fw-bold" id="infoPlotCount">-</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="info-item">
+                    <label class="text-muted small">绑定无人机</label>
+                    <div class="fw-bold" id="infoDrone">未绑定</div>
                   </div>
                 </div>
                 <div class="col-md-3 col-sm-6">
@@ -308,11 +314,11 @@
                     <div class="fw-bold" id="infoUpdatedAt">-</div>
                   </div>
                 </div>
-                <div class="col-md-12">
-                  <div class="info-item terrain-description-block" id="terrainDescriptionBlock">
-                    <label class="text-muted small">描述</label>
-                    <div class="info-description-text" id="infoDescription">无补充描述</div>
-                  </div>
+              </div>
+              <div class="terrain-description-region">
+                <div class="info-item terrain-description-block" id="terrainDescriptionBlock">
+                  <label class="text-muted small">描述</label>
+                  <div class="info-description-text" id="infoDescription">无补充描述</div>
                 </div>
               </div>
             </div>

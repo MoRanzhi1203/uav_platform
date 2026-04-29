@@ -5,6 +5,7 @@ const terrainData = {
   filteredTerrains: [],
   riskAreas: [],
   surveys: [],
+  surveyMessage: '',
   riskAnalysis: [],
   riskAnalysisDetails: [],
   currentTerrain: null,
@@ -230,7 +231,15 @@ async function fetchTerrainDashboardJson(url) {
       'Cache-Control': 'no-cache'
     }
   });
-  const result = await response.json();
+  let result = null;
+  try {
+    result = await response.json();
+  } catch (error) {
+    throw new Error(response.ok ? '服务返回格式异常' : `请求失败(${response.status})`);
+  }
+  if (!response.ok) {
+    throw new Error(result?.message || `请求失败(${response.status})`);
+  }
   if (result.code !== 0) {
     throw new Error(result.message || '请求失败');
   }
@@ -264,12 +273,23 @@ async function loadSurveyRecordModule(options = {}) {
   if (listNode && !silent) {
     listNode.innerHTML = '<div class="terrain-module-loading">测绘记录加载中...</div>';
   }
+  terrainData.surveyMessage = '';
 
-  const data = await fetchTerrainDashboardJson(`/terrain/api/dashboard/survey-records/?page=${page}&page_size=${terrainDashboardState.survey.pageSize}`);
-  terrainData.surveys = Array.isArray(data.items) ? data.items : [];
-  terrainDashboardState.survey.page = data.pagination?.page || page;
-  terrainDashboardState.survey.pagination = data.pagination || null;
-  terrainDashboardState.lastRefreshedAt = data.refreshed_at || terrainDashboardState.lastRefreshedAt;
+  try {
+    const data = await fetchTerrainDashboardJson(`/terrain/api/dashboard/survey-records/?page=${page}&page_size=${terrainDashboardState.survey.pageSize}`);
+    terrainData.surveys = Array.isArray(data.items) ? data.items : [];
+    terrainData.surveyMessage = terrainData.surveys.length ? '' : '暂无测绘记录';
+    terrainDashboardState.survey.page = data.pagination?.page || page;
+    terrainDashboardState.survey.pagination = data.pagination || null;
+    terrainDashboardState.lastRefreshedAt = data.refreshed_at || terrainDashboardState.lastRefreshedAt;
+  } catch (error) {
+    console.error('加载测绘记录失败:', error);
+    terrainData.surveys = [];
+    terrainData.surveyMessage = '暂无测绘记录';
+    terrainDashboardState.survey.page = page;
+    terrainDashboardState.survey.pagination = null;
+  }
+
   renderSurveyRecordModule();
 }
 
@@ -482,7 +502,7 @@ function renderSurveyRecordModule() {
   if (!listNode) return;
 
   if (!terrainData.surveys.length) {
-    listNode.innerHTML = '<div class="terrain-module-empty">暂无测绘任务记录</div>';
+    listNode.innerHTML = `<div class="terrain-module-empty">${escapeHtml(terrainData.surveyMessage || '暂无测绘记录')}</div>`;
   } else {
     listNode.innerHTML = terrainData.surveys.map((survey, index) => `
       <article class="terrain-module-item">
@@ -646,17 +666,10 @@ function scheduleTerrainDetailElasticHeightSync() {
 }
 
 function syncTerrainDetailElasticHeight() {
-  const listCard = document.getElementById('terrainListCard');
-  const topicCard = document.getElementById('terrainTopicCard');
   const descriptionBlock = document.getElementById('terrainDescriptionBlock');
-  if (!listCard || !topicCard || !descriptionBlock) return;
-  
-  descriptionBlock.style.minHeight = '60px';
-  const leftHeight = listCard.offsetHeight;
-  const rightHeight = topicCard.offsetHeight;
-  if (leftHeight > rightHeight) {
-    descriptionBlock.style.minHeight = (60 + leftHeight - rightHeight) + 'px';
-  }
+  if (!descriptionBlock) return;
+  descriptionBlock.style.minHeight = '';
+  requestTerrainMapResize();
 }
 
 function bindTerrainLayoutResizeSync() {
@@ -697,12 +710,20 @@ function buildBBoxObject(raw) {
   const minLat = Number(raw.bbox_min_lat);
   const maxLng = Number(raw.bbox_max_lng);
   const maxLat = Number(raw.bbox_max_lat);
-  if (!isFinite(minLng) || !isFinite(minLat)) return null;
+  const values = [raw.bbox_min_lng, raw.bbox_min_lat, raw.bbox_max_lng, raw.bbox_max_lat];
+  const hasMissingValue = values.some(value => value === null || value === undefined || value === '');
+  if (hasMissingValue) return null;
+  if (![minLng, minLat, maxLng, maxLat].every(Number.isFinite)) return null;
   return { minLng, minLat, maxLng, maxLat };
 }
 
 function getTerrainById(id) {
   return terrainData.terrains.find(item => String(item.id) === String(id));
+}
+
+function openTerrainEditor(terrain) {
+  if (!terrain?.id) return;
+  window.location.href = `/terrain/editor/?area_id=${terrain.id}`;
 }
 
 async function selectTerrainRow(id, options = {}) {
@@ -800,7 +821,7 @@ function initVue() {
     `,
     methods: {
       select(t) { selectTerrainRow(t.id, { syncMap: true, fit: true }); },
-      edit(t) { openEditModal(t); }
+      edit(t) { openTerrainEditor(t); }
     }
   });
 
@@ -842,11 +863,15 @@ function updatePageData() {
 
 function updateDetailPanel(terrain) {
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const droneInfo = terrain.drone
+    ? `${terrain.drone.drone_name || '未命名无人机'}${terrain.drone.model_name ? ` (${terrain.drone.model_name})` : ''}`
+    : '未绑定';
   setText('infoName', terrain.name);
   setText('infoArea', terrain.areaLabel);
   setText('infoAccuracy', terrain.dataAccuracyLabel);
   setText('infoUpdatedAt', terrain.updatedAtLabel);
   setText('infoPlotCount', terrain.plotCountLabel);
+  setText('infoDrone', droneInfo);
   setText('infoRiskComposition', terrain.riskCompositionText);
   setText('infoRiskScore', terrain.risk_score || 0);
   setText('infoRiskReason', terrain.risk_reason || '暂无风险判定说明');
@@ -860,7 +885,7 @@ function updateDetailPanel(terrain) {
 function initEvents() {
   document.getElementById('addTerrainBtn').addEventListener('click', () => { window.location.href = '/terrain/editor/'; });
   document.getElementById('editTerrainMapBtn').addEventListener('click', () => {
-    if (terrainData.currentTerrain) window.location.href = `/terrain/editor/?area_id=${terrainData.currentTerrain.id}`;
+    openTerrainEditor(terrainData.currentTerrain);
   });
 
   document.getElementById('terrainBottomRefreshBtn').addEventListener('click', async () => {
@@ -904,19 +929,30 @@ async function openEditModal(terrain) {
   document.getElementById('area').value = terrain.area;
   document.getElementById('editRiskLevel').value = terrain.riskLevelRaw;
   document.getElementById('description').value = terrain.description || '';
-  
-  // 加载可用无人机
-  const resp = await fetch(`/terrain/api/drones/available/?terrain_id=${terrain.id}`);
-  const result = await resp.json();
   const select = document.getElementById('editDroneId');
   select.innerHTML = '<option value="0">暂不绑定</option>';
-  result.data.forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d.id;
-    opt.textContent = `${d.drone_name} (${d.model_name})`;
-    if (d.terrain_id == terrain.id) opt.selected = true;
-    select.appendChild(opt);
-  });
+
+  try {
+    const resp = await fetch(`/terrain/api/drones/available/?terrain_id=${terrain.id}`, {
+      headers: { Accept: 'application/json' }
+    });
+    const result = await resp.json();
+    if (!resp.ok || result.code !== 0) {
+      throw new Error(result.message || '无人机列表加载失败');
+    }
+
+    const drones = Array.isArray(result.data) ? result.data : [];
+    drones.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = `${d.drone_name} (${d.model_name})`;
+      if (d.terrain_id == terrain.id) opt.selected = true;
+      select.appendChild(opt);
+    });
+  } catch (error) {
+    console.error('加载可用无人机失败:', error);
+    showToast('无人机列表加载失败，当前可先编辑地形信息', 'warning');
+  }
 
   new bootstrap.Modal(document.getElementById('editModal')).show();
 }
@@ -1008,13 +1044,14 @@ function showTaskDetail(taskId) {
   statusEl.className = `badge ${getTaskBadgeClass(task.status)}`;
   
   const body = document.getElementById('shiftListBody');
-  body.innerHTML = (task.shifts || []).map((s, i) => `
+  const shifts = Array.isArray(task.shifts) ? task.shifts : [];
+  body.innerHTML = shifts.map((s, i) => `
     <tr>
       <td>班次 ${i + 1}</td>
-      <td>${s.drone_name}</td>
-      <td>${s.start_time_label}</td>
-      <td>${s.end_time_label}</td>
-      <td><span class="badge bg-info">${s.status}</span></td>
+      <td>${escapeHtml(s.drone_name || '-')}</td>
+      <td>${escapeHtml(s.start_time_label || '--')}</td>
+      <td>${escapeHtml(s.end_time_label || '--')}</td>
+      <td><span class="badge bg-info">${escapeHtml(s.status || 'pending')}</span></td>
     </tr>
   `).join('') || '<tr><td colspan="5" class="text-center text-muted">暂无班次信息</td></tr>';
   
@@ -1121,6 +1158,8 @@ function resetDetailPanel() {
   ['infoName','infoArea','infoAccuracy','infoUpdatedAt','infoPlotCount','infoRiskComposition','infoRiskScore','infoRiskReason','infoBboxMin','infoBboxMax','infoDescription'].forEach(id => {
     const el = document.getElementById(id); if (el) el.textContent = '-';
   });
+  const droneEl = document.getElementById('infoDrone');
+  if (droneEl) droneEl.textContent = '未绑定';
   const r = document.getElementById('infoRisk'); if (r) { r.textContent = '-'; r.className = 'badge bg-secondary'; }
 }
 

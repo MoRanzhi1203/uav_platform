@@ -107,7 +107,7 @@
 
 .terrain-topic-map-section {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   min-height: 0;
 }
@@ -502,8 +502,9 @@
 }
 
 .terrain-topic-map {
-  flex: 1 1 auto;
-  min-height: 430px;
+  flex: 0 0 auto;
+  height: clamp(460px, 56vh, 680px);
+  min-height: 460px;
 }
 
 /* 地图标题与指示 */
@@ -518,7 +519,30 @@
 
 /* 地图下方信息面板 */
 .terrain-info-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.terrain-info-panel .card-body {
+  min-height: 0;
+}
+
+.detail-content-area {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.terrain-detail-grid {
   flex: 0 0 auto;
+}
+
+.terrain-description-region {
+  flex: 1 1 auto;
+  min-height: 120px;
+  margin-top: 1rem;
+  min-width: 0;
 }
 
 .info-item {
@@ -545,7 +569,13 @@
 .terrain-description-block {
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 132px;
+}
+
+.terrain-description-block .info-description-text {
+  overflow-y: auto;
+  padding-right: 0.25rem;
 }
 
 /* NiceAdmin 风格分页 */
@@ -661,6 +691,7 @@
   }
 
   .terrain-topic-map {
+    height: clamp(400px, 50vh, 560px);
     min-height: 400px;
   }
 }
@@ -688,7 +719,8 @@
   }
 
   .terrain-topic-map {
-    min-height: 320px;
+    height: 340px;
+    min-height: 340px;
   }
 
   .terrain-edit-btn {

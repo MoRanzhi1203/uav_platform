@@ -7,7 +7,7 @@ from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import Case, Count, IntegerField, When
+from django.db.models import Case, Count, IntegerField, Q, When
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -205,15 +205,17 @@ def _serialize_survey_task(task, terrain_names):
     shifts = SurveyShift.objects.filter(task_id=task.id).order_by("start_time")
     serialized_shifts = []
     for s in shifts:
+        start_time = getattr(s, "start_time", None)
+        end_time = getattr(s, "end_time", None)
         serialized_shifts.append({
             "id": s.id,
             "drone_id": s.drone_id,
             "drone_name": s.drone_name,
-            "start_time": s.start_time.isoformat(),
-            "end_time": s.end_time.isoformat(),
-            "start_time_label": _format_datetime_label(s.start_time),
-            "end_time_label": _format_datetime_label(s.end_time),
-            "status": s.status,
+            "start_time": start_time.isoformat() if start_time else None,
+            "end_time": end_time.isoformat() if end_time else None,
+            "start_time_label": _format_datetime_label(start_time),
+            "end_time_label": _format_datetime_label(end_time),
+            "status": getattr(s, "status", "") or "pending",
         })
 
     return {
@@ -515,6 +517,23 @@ def build_area_spatial_from_active_plots(area, active_plots=None):
         if existing_boundary_geometry and not existing_boundary_geometry.is_empty
         else None
     )
+    derived_geometry = existing_boundary_geometry or merged_geometry
+    area._derived_boundary_geojson = (
+        {
+            "type": "Feature",
+            "geometry": mapping(derived_geometry),
+            "properties": {},
+        }
+        if derived_geometry and not derived_geometry.is_empty
+        else None
+    )
+    if derived_geometry and not derived_geometry.is_empty:
+        centroid = derived_geometry.centroid
+        area._derived_center_lat = SPATIAL_COMPAT._coerce_float(getattr(centroid, "y", None))
+        area._derived_center_lng = SPATIAL_COMPAT._coerce_float(getattr(centroid, "x", None))
+    else:
+        area._derived_center_lat = None
+        area._derived_center_lng = None
 
     area.active_zones = plots
     area.plot_count = len(plots)
@@ -1110,7 +1129,7 @@ def get_available_drones(request):
         # 返回未绑定或已绑定到当前地形的无人机
         terrain_id = request.GET.get('terrain_id')
         if terrain_id:
-            queryset = Drone.objects.filter(models.Q(terrain_id=0) | models.Q(terrain_id=terrain_id))
+            queryset = Drone.objects.filter(Q(terrain_id=0) | Q(terrain_id=terrain_id))
         else:
             queryset = Drone.objects.filter(terrain_id=0)
             
@@ -1704,7 +1723,19 @@ def unified_save_terrain(request):
             terrain.area = (
                 total_plot_area if total_plot_area > 0 else declared_area_decimal
             ).quantize(Decimal('0.01'))
-            terrain.save(update_fields=['area', 'updated_at'])
+
+            derived_boundary_geojson = getattr(terrain, "_derived_boundary_geojson", None)
+            if derived_boundary_geojson:
+                terrain.boundary_json = derived_boundary_geojson
+
+            derived_center_lat = getattr(terrain, "_derived_center_lat", None)
+            derived_center_lng = getattr(terrain, "_derived_center_lng", None)
+            if derived_center_lat is not None:
+                terrain.center_lat = derived_center_lat
+            if derived_center_lng is not None:
+                terrain.center_lng = derived_center_lng
+
+            terrain.save(update_fields=['area', 'boundary_json', 'center_lat', 'center_lng', 'updated_at'])
 
             active_plots = get_area_active_plots(terrain)
             terrain = build_area_spatial_from_active_plots(terrain, active_plots=active_plots)

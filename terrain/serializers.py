@@ -297,13 +297,17 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         if cache_key in self._spatial_meta_cache:
             return self._spatial_meta_cache[cache_key]
 
-        normalized_geojson = self._normalize_geojson(getattr(obj, 'boundary_json', None))
+        raw_boundary_geojson = getattr(obj, 'boundary_json', None) or getattr(obj, '_derived_boundary_geojson', None)
+        normalized_geojson = self._normalize_geojson(raw_boundary_geojson)
         geometry = self._geometry_from_geojson(normalized_geojson)
-        bbox = geometry.bounds if geometry else None
+        bbox = geometry.bounds if geometry else getattr(obj, '_active_plot_bbox', None)
         stored_area = self._coerce_float(getattr(obj, 'area', None))
 
         center_lat = self._coerce_float(getattr(obj, 'center_lat', None))
         center_lng = self._coerce_float(getattr(obj, 'center_lng', None))
+        if not self._is_valid_center(center_lat, center_lng):
+            center_lat = self._coerce_float(getattr(obj, '_derived_center_lat', None))
+            center_lng = self._coerce_float(getattr(obj, '_derived_center_lng', None))
         if not self._is_valid_center(center_lat, center_lng) and geometry:
             centroid = geometry.centroid
             centroid_lat = self._coerce_float(getattr(centroid, 'y', None))
