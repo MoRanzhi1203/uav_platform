@@ -879,7 +879,7 @@ def list_areas(request):
     """区域列表接口"""
     try:
         page = _parse_positive_int(request.GET.get("page"), 1)
-        page_size = _parse_positive_int(request.GET.get("page_size"), 20, maximum=100)
+        page_size = _parse_positive_int(request.GET.get("page_size"), 10, maximum=100)
         
         queryset = (
             TerrainArea.objects.filter(is_deleted=False)

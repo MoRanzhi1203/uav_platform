@@ -113,14 +113,16 @@
 
 .terrain-list-header {
   flex: 0 0 auto;
+  margin-bottom: 0.75rem !important;
 }
 
 .terrain-topic-map-section {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  height: 100%;
 }
 
 .terrain-list-card .card-body,
@@ -132,9 +134,14 @@
   padding: 1.25rem;
 }
 
+.terrain-list-card .card-body {
+  padding: 0.95rem 1.25rem 0.9rem;
+}
+
 .terrain-list-shell {
   flex: 1 1 auto;
   min-height: 0;
+  max-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid #e5e7eb;
@@ -147,11 +154,19 @@
   min-height: 0;
 }
 
+.terrain-table-wrap .table {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
 .terrain-pagination-wrap {
   flex: 0 0 auto;
-  min-height: 56px;
-  margin-top: 12px;
-  padding: 12px 0 4px;
+  margin-top: auto;
+  min-height: 44px;
+  padding: 6px 0 2px;
   border-top: 1px solid #e5e7eb;
   background: #fff;
   position: relative;
@@ -161,6 +176,39 @@
 
 .terrain-pagination-wrap:empty {
   display: none;
+}
+
+.terrain-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+}
+
+.terrain-pagination-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.terrain-pagination-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.55rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #f8fafc;
+}
+
+.terrain-pagination-input {
+  width: 54px;
+  min-width: 54px;
+  padding: 0.15rem 0.35rem;
+  text-align: center;
+  border-radius: 6px;
 }
 
 .terrain-bottom-insights {
@@ -266,8 +314,114 @@
 /* 表格行高统一 */
 .terrain-table-wrap .table td, 
 .terrain-table-wrap .table th {
-  height: 52px;
   vertical-align: middle;
+}
+
+.terrain-table-wrap .table thead,
+.terrain-table-wrap .table tbody {
+  display: block;
+  width: 100%;
+}
+
+.terrain-table-wrap .table thead th {
+  background: #f8f9fa;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4b5563;
+  padding: 12px 8px;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terrain-table-wrap .table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #f8f9fa;
+}
+
+.terrain-table-wrap .table thead tr,
+.terrain-table-wrap .table tbody tr {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+}
+
+.terrain-table-wrap .table tbody td {
+  min-height: 60px;
+  padding: 8px 8px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.875rem;
+  min-width: 0;
+}
+
+.terrain-table-wrap .table tbody tr {
+  min-height: 60px;
+}
+
+.terrain-table-wrap .table th:nth-child(1),
+.terrain-table-wrap .table td:nth-child(1) {
+  flex: 0.7 0.7 0;
+  min-width: 52px;
+  justify-content: center;
+  text-align: center;
+}
+
+.terrain-table-wrap .table th:nth-child(2),
+.terrain-table-wrap .table td:nth-child(2) {
+  flex: 4.8 4.8 0;
+  min-width: 0;
+  text-align: left;
+}
+
+.terrain-table-wrap .table th:nth-child(3),
+.terrain-table-wrap .table td:nth-child(3) {
+  flex: 1.35 1.35 0;
+  min-width: 88px;
+  justify-content: center;
+  text-align: center;
+}
+
+.terrain-table-wrap .table th:nth-child(4),
+.terrain-table-wrap .table td:nth-child(4) {
+  flex: 1.55 1.55 0;
+  min-width: 104px;
+  justify-content: center;
+  text-align: center;
+}
+
+.terrain-table-wrap .table th:nth-child(5),
+.terrain-table-wrap .table td:nth-child(5) {
+  flex: 1 1 0;
+  min-width: 72px;
+  justify-content: center;
+  text-align: center;
+}
+
+.terrain-table-wrap .table tbody td:nth-child(2) {
+  min-width: 0;
+}
+
+.terrain-table-wrap .table tbody td:nth-child(2) .fw-bold {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+  max-height: calc(1.35em * 2);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.terrain-table-wrap .table tbody td:nth-child(3) .badge,
+.terrain-table-wrap .table tbody td:nth-child(5) .btn {
+  white-space: nowrap;
 }
 
 .terrain-module-list {
@@ -517,9 +671,10 @@
 }
 
 .terrain-topic-map {
-  flex: 0 0 auto;
-  height: clamp(380px, 44vh, 460px);
-  min-height: 380px;
+  flex: 1 1 auto;
+  height: clamp(420px, 46vh, 460px);
+  min-height: 420px;
+  max-height: 460px;
 }
 
 /* 地图标题与指示 */
@@ -593,7 +748,11 @@
 
 .terrain-command-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    "overview risk"
+    "device device"
+    "description description";
   gap: 1rem;
 }
 
@@ -672,6 +831,7 @@
 }
 
 .terrain-detail-overview {
+  grid-area: overview;
   padding: 1.1rem 1.2rem;
   background: linear-gradient(135deg, #f8fbff 0%, #edf5ff 58%, #f8fafc 100%);
   border-color: #d6e4ff;
@@ -717,6 +877,10 @@
   letter-spacing: 0.02em;
   color: #64748b;
   margin-bottom: 0.35rem;
+}
+
+.terrain-map-header .terrain-detail-caption {
+  display: none;
 }
 
 .terrain-detail-title-row {
@@ -785,9 +949,17 @@
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
+.terrain-risk-card {
+  grid-area: risk;
+}
+
 .terrain-device-card,
 .terrain-description-block {
   min-height: 300px;
+}
+
+.terrain-device-card {
+  grid-area: device;
 }
 
 .terrain-drone-status {
@@ -1214,6 +1386,7 @@
 }
 
 .terrain-description-block {
+  grid-area: description;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1321,7 +1494,7 @@
 }
 
 .page-item .page-link {
-  padding: 5px 12px;
+  padding: 4px 10px;
   color: #012970;
   border: 1px solid #dee2e6;
   font-size: 0.875rem;
@@ -1420,8 +1593,9 @@
   }
 
   .terrain-topic-map {
-    height: clamp(340px, 38vh, 420px);
-    min-height: 340px;
+    height: clamp(350px, 40vh, 400px);
+    min-height: 350px;
+    max-height: 400px;
   }
 
   .terrain-detail-metrics {
@@ -1430,15 +1604,29 @@
 
   .terrain-map-brief-strip,
   .terrain-risk-tiles,
-  .terrain-command-grid,
   .terrain-drone-group-body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .terrain-command-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "overview"
+      "risk"
+      "device"
+      "description";
   }
 }
 
 @media (max-width: 767.98px) {
   .terrain-filter-card .card-body {
     padding: 0.9rem;
+  }
+
+  .terrain-list-shell {
+    overflow-x: auto;
   }
 
   .terrain-filter-actions {
@@ -1459,8 +1647,9 @@
   }
 
   .terrain-topic-map {
-    height: 300px;
-    min-height: 300px;
+    height: clamp(280px, 42vh, 320px);
+    min-height: 280px;
+    max-height: 320px;
   }
 
   .terrain-edit-btn {
@@ -1499,7 +1688,6 @@
 
   .terrain-map-brief-strip,
   .terrain-risk-tiles,
-  .terrain-command-grid,
   .terrain-drone-group-body {
     grid-template-columns: 1fr;
   }

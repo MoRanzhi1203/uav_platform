@@ -51,7 +51,7 @@ const terrainDashboardState = {
   },
   terrain: {
     page: 1,
-    pageSize: 20,
+    pageSize: 10,
     pagination: null
   }
 };
@@ -671,6 +671,7 @@ function requestTerrainMapResize() {
   if (!terrainMap?.map) return;
   window.requestAnimationFrame(() => terrainMap.map.invalidateSize());
   window.setTimeout(() => terrainMap?.map?.invalidateSize(), 260);
+  window.setTimeout(() => terrainMap?.map?.invalidateSize(), 520);
 }
 
 function getTerrainSidebarState() {
@@ -1340,6 +1341,8 @@ async function selectTerrainRow(id, options = {}) {
   if (options.syncMap && terrainMap) {
     terrainMap.selectTerrain(terrain, options);
   }
+
+  requestTerrainMapResize();
   
   setTerrainEditButtonDisabled(false);
 }
@@ -1356,6 +1359,7 @@ function clearCurrentSelection(options = {}) {
   renderRiskAnalysisModule();
   const hintNode = document.getElementById('terrainMapSelectionHint');
   if (hintNode) hintNode.textContent = options.emptyMessage || '当前未选中地形。';
+  requestTerrainMapResize();
   setTerrainEditButtonDisabled(true);
 }
 
@@ -1369,15 +1373,20 @@ async function loadRealData(options = {}) {
     terrainData.terrains = result.data.items.map(normalizeTerrainItem);
     terrainData.filteredTerrains = [...terrainData.terrains];
     terrainDashboardState.terrain.pagination = result.data.pagination;
+    terrainDashboardState.terrain.page = result.data.pagination?.page || page;
 
     if (terrainMap) terrainMap.loadTerrains(terrainData.terrains);
+    requestTerrainMapResize();
     
     updatePageData();
-    const preferredTerrain = preferredTerrainId ? getTerrainById(preferredTerrainId) : null;
+    const fallbackTerrainId = preferredTerrainId || terrainData.currentTerrain?.id || null;
+    const preferredTerrain = fallbackTerrainId ? getTerrainById(fallbackTerrainId) : null;
     if (preferredTerrain) {
       await selectTerrainRow(preferredTerrain.id, { syncMap: true, fit: true });
     } else if (terrainData.terrains.length) {
       await selectTerrainRow(terrainData.terrains[0].id, { syncMap: true, fit: true });
+    } else {
+      clearCurrentSelection({ emptyMessage: '当前页暂无地形数据。' });
     }
   } catch (error) {
     console.error('加载地形列表异常:', error);
@@ -1431,11 +1440,31 @@ function initVue() {
 
   vueInstances.pagination = new Vue({
     el: '#pagination',
-    data: { pagination: null },
+    data: {
+      pagination: null,
+      jumpPage: ''
+    },
     template: `
-      <div v-if="pagination && pagination.total_pages > 1" class="d-flex justify-content-between align-items-center w-100">
-        <div class="small text-muted">共 {{ pagination.total }} 条</div>
-        <ul class="pagination pagination-sm mb-0">
+      <div v-if="pagination" class="terrain-pagination-bar">
+        <div class="terrain-pagination-meta">
+          <div class="small text-muted">共 {{ pagination.total }} 条</div>
+          <div v-if="pagination.total_pages > 1" class="terrain-pagination-jump">
+            <label class="small text-muted mb-0" for="terrainJumpPageInput">跳至</label>
+            <input
+              id="terrainJumpPageInput"
+              class="form-control form-control-sm terrain-pagination-input"
+              type="number"
+              min="1"
+              :max="pagination.total_pages"
+              inputmode="numeric"
+              v-model.trim="jumpPage"
+              @keyup.enter="jumpToPage"
+              @blur="jumpToPage"
+            >
+            <span class="small text-muted">页</span>
+          </div>
+        </div>
+        <ul v-if="pagination.total_pages > 1" class="pagination pagination-sm mb-0">
           <li class="page-item" :class="{disabled: !pagination.has_previous}">
             <a class="page-link" @click="setPage(pagination.page - 1)">上一页</a>
           </li>
@@ -1449,7 +1478,28 @@ function initVue() {
       </div>
     `,
     methods: {
-      setPage(p) { loadRealData({ page: p }); }
+      setPage(p) {
+        if (!this.pagination || p < 1 || p > this.pagination.total_pages) return;
+        loadRealData({
+          page: p,
+          preferredTerrainId: terrainData.currentTerrain?.id || null
+        });
+      },
+      jumpToPage() {
+        if (!this.pagination) return;
+        const targetPage = Number(this.jumpPage);
+        if (!Number.isFinite(targetPage)) {
+          this.jumpPage = String(this.pagination.page || 1);
+          return;
+        }
+        const normalizedPage = Math.min(Math.max(Math.trunc(targetPage), 1), this.pagination.total_pages);
+        this.jumpPage = String(normalizedPage);
+        if (normalizedPage === this.pagination.page) return;
+        loadRealData({
+          page: normalizedPage,
+          preferredTerrainId: terrainData.currentTerrain?.id || null
+        });
+      }
     }
   });
 }
@@ -1462,6 +1512,9 @@ function updatePageData() {
   }
   if (vueInstances.pagination) {
     vueInstances.pagination.pagination = terrainDashboardState.terrain.pagination;
+    vueInstances.pagination.jumpPage = terrainDashboardState.terrain.pagination?.page
+      ? String(terrainDashboardState.terrain.pagination.page)
+      : '';
   }
 }
 
@@ -1524,9 +1577,11 @@ function initEvents() {
   document.getElementById('saveBindDroneBtn').addEventListener('click', saveBindDroneBinding);
   document.getElementById('btn-boundary').addEventListener('click', () => {
     if (terrainData.currentTerrain) updateTerrainMapSummary(terrainData.currentTerrain);
+    requestTerrainMapResize();
   });
   document.getElementById('btn-plot').addEventListener('click', () => {
     if (terrainData.currentTerrain) updateTerrainMapSummary(terrainData.currentTerrain);
+    requestTerrainMapResize();
   });
 
   document.addEventListener('click', (e) => {
