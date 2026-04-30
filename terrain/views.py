@@ -1072,6 +1072,7 @@ def execute_survey_task(request):
     try:
         data = request.data
         terrain_id = data.get('terrain_id')
+        terrain_area_id = data.get('terrain_area_id')
         task_name = data.get('task_name')
         description = data.get('description', '')
         primary_drone_id = data.get('primary_drone_id')
@@ -1086,8 +1087,14 @@ def execute_survey_task(request):
             primary_drone_id = int(primary_drone_id) if primary_drone_id not in (None, '', 'null', 'None') else None
         except (TypeError, ValueError):
             primary_drone_id = None
+        try:
+            terrain_area_id = int(terrain_area_id) if terrain_area_id not in (None, '', 'null', 'None') else None
+        except (TypeError, ValueError):
+            terrain_area_id = None
         if primary_drone_id is None and drones:
             primary_drone_id = drones[0].id
+        if terrain_area_id is None:
+            terrain_area_id = terrain.id
             
         # 创建全局任务
         task_code = f"SURVEY-{timezone.now().strftime('%Y%m%d%H%M%S')}-{terrain.id}"
@@ -1098,6 +1105,7 @@ def execute_survey_task(request):
             scene_type="mixed",
             status="pending",
             description=description,
+            terrain_area_id=terrain_area_id,
             primary_drone_id=primary_drone_id,
             planned_start=now,
             planned_end=now + timezone.timedelta(hours=4) # 默认4小时

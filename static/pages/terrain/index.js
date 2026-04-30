@@ -1826,6 +1826,7 @@ async function startSurveyTask() {
   const primary = drones.length ? Number(drones[0].id) : null;
   const data = {
     terrain_id: terrainId,
+    terrain_area_id: terrainId,
     task_name: document.getElementById('taskName').value,
     description: document.getElementById('taskDescription').value,
     primary_drone_id: primary

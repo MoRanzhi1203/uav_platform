@@ -18,6 +18,7 @@ class GlobalTask(models.Model):
     description = models.CharField(max_length=255, blank=True)
     planned_start = models.DateTimeField(null=True, blank=True)
     planned_end = models.DateTimeField(null=True, blank=True)
+    terrain_area_id = models.BigIntegerField(null=True, blank=True, default=None)
     primary_drone_id = models.BigIntegerField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
