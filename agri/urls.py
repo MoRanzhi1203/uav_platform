@@ -9,6 +9,9 @@ from agri.views import (
     overview,
     pest_monitor_detail,
     pest_monitor_list_create,
+    dashboard_pest_alerts,
+    dashboard_agri_tasks,
+    dashboard_risk_analysis,
 )
 
 urlpatterns = [
@@ -20,4 +23,8 @@ urlpatterns = [
     path("tasks/<int:pk>/", agri_task_detail, name="agri-task-detail"),
     path("pest-monitors/", pest_monitor_list_create, name="agri-pest-monitor-list-create"),
     path("pest-monitors/<int:pk>/", pest_monitor_detail, name="agri-pest-monitor-detail"),
+    # Dashboard endpoints
+    path("dashboard/pest-alerts/", dashboard_pest_alerts, name="agri-dashboard-pest-alerts"),
+    path("dashboard/tasks/", dashboard_agri_tasks, name="agri-dashboard-tasks"),
+    path("dashboard/risk-analysis/", dashboard_risk_analysis, name="agri-dashboard-risk-analysis"),
 ]

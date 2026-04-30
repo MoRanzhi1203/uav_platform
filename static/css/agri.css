@@ -1,116 +1,229 @@
-/* 农田管理页面样式 */
+/* 农业管理页面样式增强 - 仿照地形管理风格 */
 
-/* 橙绿混合配色 */
-.agri-primary {
-  color: #10b981;
+/* 紧凑型筛选工具栏 */
+.agri-filter-card .card-body {
+  padding: 1rem 1.25rem;
 }
 
-.agri-secondary {
-  color: #f97316;
+.agri-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
 }
 
-.agri-bg-primary {
-  background-color: #10b981;
+.agri-filter-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
-.agri-bg-secondary {
-  background-color: #f97316;
+.agri-filter-label {
+  margin-bottom: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1b5e20; /* 农业深绿 */
 }
 
-.agri-card {
-  border-left: 4px solid #10b981;
+.agri-filter-toolbar .form-control,
+.agri-filter-toolbar .form-select,
+.agri-filter-toolbar .btn,
+.agri-advanced-filters .form-control,
+.agri-advanced-filters .form-select,
+.agri-advanced-filters .input-group-text {
+  min-height: 38px;
 }
 
-/* 地图容器样式 */
-.map-container {
-  border-radius: 0.5rem;
+.agri-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.agri-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: auto;
+  min-width: 88px;
+  padding-inline: 0.9rem;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.agri-advanced-filters {
+  margin-top: 0.75rem;
+}
+
+.agri-advanced-filters-inner {
+  padding-top: 0.75rem;
+  border-top: 1px dashed #c8e6c9;
+}
+
+.agri-advanced-note {
+  margin-top: 0.75rem;
+}
+
+/* 主业务区布局 */
+.agri-main-layout {
+  align-items: stretch;
+  min-height: clamp(700px, calc(100vh - 280px), 860px);
+  position: relative;
+}
+
+.agri-main-panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.agri-main-col {
+  display: flex;
+}
+
+.agri-list-card,
+.agri-topic-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.agri-list-card {
   overflow: hidden;
-  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  border-left: 4px solid #2e7d32;
 }
 
-/* 详情面板样式 */
-.detail-panel {
-  border-radius: 0.5rem;
-  padding: 1rem;
-  background-color: #f8fafc;
+.agri-topic-card {
+  overflow: hidden;
 }
 
-/* 统计卡片样式 */
-.info-card {
-  transition: all 0.3s ease;
+.agri-list-card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.info-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+.agri-topic-map-section {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
-/* 表格样式 */
-.table-hover tbody tr:hover {
-  background-color: rgba(16, 185, 129, 0.1);
+.agri-list-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid #e8f5e9;
+  border-radius: 8px;
+  background: #fff;
+  position: relative;
 }
 
-/* 按钮样式 */
-.btn-success {
-  background-color: #10b981;
-  border-color: #10b981;
+.agri-pagination-wrap {
+  flex: 0 0 auto;
+  min-height: 56px;
+  margin-top: 12px;
+  padding: 12px 0 4px;
+  border-top: 1px solid #e8f5e9;
+  background: #fff;
 }
 
-.btn-success:hover {
-  background-color: #059669;
-  border-color: #059669;
+/* 地图容器 */
+.agri-topic-map {
+  flex: 1;
+  min-height: 400px;
+  background: #f1f8e9;
 }
 
-/* 标签样式 */
-.badge-success {
-  background-color: #10b981;
+/* 信息面板 */
+.agri-info-panel {
+  background: #fff;
+  border-top: 1px solid #e8f5e9;
 }
 
-.badge-warning {
-  background-color: #f59e0b;
+.info-item {
+  padding: 0.5rem;
+  border-radius: 4px;
+  background: #f9fbf9;
+  height: 100%;
 }
 
-.badge-danger {
-  background-color: #ef4444;
+.info-item label {
+  display: block;
+  color: #666;
+  margin-bottom: 2px;
 }
 
-/* 表单样式 */
-.form-control:focus {
-  border-color: #10b981;
-  box-shadow: 0 0 0 0.25rem rgba(16, 185, 129, 0.25);
+/* 底部业务模块 */
+.agri-bottom-insights {
+  margin-top: 24px;
+  border-top: 4px solid #1b5e20;
 }
 
-/* 分页样式 */
-.pagination .page-item.active .page-link {
-  background-color: #10b981;
-  border-color: #10b981;
+.agri-bottom-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
 }
 
-/* Tab 样式 */
-.nav-tabs .nav-item .nav-link.active {
-  color: #10b981;
-  border-bottom: 2px solid #10b981;
+.agri-module-card {
+  border: 1px solid #e8f5e9;
+  transition: transform 0.2s;
 }
 
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .map-container {
-    height: 300px;
-  }
+.agri-module-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(27, 94, 32, 0.08);
 }
 
-/* 动画效果 */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.agri-module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
 }
 
-.detail-panel {
-  animation: fadeIn 0.3s ease-in-out;
+/* 列表样式 */
+.agri-module-list {
+  min-height: 200px;
+}
+
+.agri-item {
+  padding: 10px;
+  border-bottom: 1px solid #f1f8e9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.agri-item:last-child {
+  border-bottom: none;
+}
+
+.agri-item:hover {
+  background-color: #f1f8e9;
+}
+
+/* 风险等级标签 */
+.risk-high { color: #d32f2f; font-weight: bold; }
+.risk-medium { color: #f57c00; font-weight: bold; }
+.risk-low { color: #388e3c; font-weight: bold; }
+
+/* 图表容器 */
+.agri-analysis-chart {
+  height: 300px;
+  width: 100%;
 }
