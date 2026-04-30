@@ -70,21 +70,21 @@
     <li class="nav-heading">系统设置</li>
 
     <li class="nav-item" data-nav-id="user-management">
-      <a class="nav-link collapsed sidebar-link" href="#">
+      <a class="nav-link collapsed sidebar-link" href="{% url 'page-system-user-list' %}">
         <i class="bi bi-person"></i>
         <span>用户管理</span>
       </a>
     </li><!-- End User Management Nav -->
 
     <li class="nav-item" data-nav-id="system-config">
-      <a class="nav-link collapsed sidebar-link" href="#">
+      <a class="nav-link collapsed sidebar-link" href="{% url 'page-system-config' %}">
         <i class="bi bi-gear"></i>
         <span>系统配置</span>
       </a>
     </li><!-- End System Configuration Nav -->
 
     <li class="nav-item" data-nav-id="operation-log">
-      <a class="nav-link collapsed sidebar-link" href="#">
+      <a class="nav-link collapsed sidebar-link" href="{% url 'page-system-log-list' %}">
         <i class="bi bi-clock-history"></i>
         <span>操作日志</span>
       </a>

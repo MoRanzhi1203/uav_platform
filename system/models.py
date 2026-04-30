@@ -92,3 +92,32 @@ class OperationLog(models.Model):
 
     def __str__(self):
         return f"{self.module}:{self.action}"
+
+
+class SystemSetting(models.Model):
+    VALUE_TYPE_CHOICES = (
+        ("string", "string"),
+        ("int", "int"),
+        ("float", "float"),
+        ("bool", "bool"),
+        ("select", "select"),
+    )
+
+    config_key = models.CharField(max_length=64, unique=True)
+    config_group = models.CharField(max_length=64)
+    config_name = models.CharField(max_length=128)
+    value_type = models.CharField(max_length=16, choices=VALUE_TYPE_CHOICES, default="string")
+    config_value = models.JSONField(default=dict)
+    options = models.JSONField(default=list, blank=True)
+    description = models.CharField(max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    updated_by = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "system_setting"
+        ordering = ["config_group", "sort_order", "id"]
+
+    def __str__(self):
+        return f"{self.config_group}:{self.config_key}"

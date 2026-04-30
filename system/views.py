@@ -1,11 +1,243 @@
 from django.contrib.auth import authenticate, login, logout
+from django.db import models
 from django.http import JsonResponse, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from common.request_utils import parse_request_data
-from system.models import OperationLog, RolePermission, SystemUser
+from common.responses import api_error, api_response
+from system.models import OperationLog, RolePermission, SystemSetting, SystemUser
+
+
+SYSTEM_SETTING_GROUPS = {
+    "platform": {
+        "title": "平台基础配置",
+        "description": "维护平台名称、部署区域、时区与地图初始化参数。",
+    },
+    "security": {
+        "title": "安全策略",
+        "description": "统一维护登录会话、密码强度和账号安全策略。",
+    },
+    "notification": {
+        "title": "通知告警",
+        "description": "控制风险预警、短信邮件通知和处置时效。",
+    },
+    "dispatch": {
+        "title": "调度与地图",
+        "description": "配置任务调度限制、返航阈值和默认底图显示。",
+    },
+    "data": {
+        "title": "数据与日志",
+        "description": "定义日志保留、遥测保留、备份与导出策略。",
+    },
+}
+
+
+SYSTEM_SETTING_DEFAULTS = [
+    {
+        "config_key": "platform_name",
+        "config_group": "platform",
+        "config_name": "平台名称",
+        "value_type": "string",
+        "default_value": "无人机群林农协同系统",
+        "description": "显示在登录页、导航栏和系统页签中的平台名称。",
+        "sort_order": 10,
+    },
+    {
+        "config_key": "deployment_region",
+        "config_group": "platform",
+        "config_name": "部署区域",
+        "value_type": "string",
+        "default_value": "重庆山地示范区",
+        "description": "用于标识当前平台服务的主要区域。",
+        "sort_order": 20,
+    },
+    {
+        "config_key": "timezone",
+        "config_group": "platform",
+        "config_name": "系统时区",
+        "value_type": "select",
+        "default_value": "Asia/Shanghai",
+        "options": ["Asia/Shanghai", "UTC", "Asia/Chongqing"],
+        "description": "影响页面时间显示与日志换算。",
+        "sort_order": 30,
+    },
+    {
+        "config_key": "data_refresh_interval",
+        "config_group": "platform",
+        "config_name": "数据刷新间隔(秒)",
+        "value_type": "int",
+        "default_value": 30,
+        "description": "页面自动刷新关键业务数据的周期。",
+        "sort_order": 40,
+    },
+    {
+        "config_key": "default_map_zoom",
+        "config_group": "platform",
+        "config_name": "默认地图缩放级别",
+        "value_type": "int",
+        "default_value": 12,
+        "description": "进入地图页面时的初始缩放等级。",
+        "sort_order": 50,
+    },
+    {
+        "config_key": "session_timeout_hours",
+        "config_group": "security",
+        "config_name": "会话过期时长(小时)",
+        "value_type": "int",
+        "default_value": 8,
+        "description": "用户登录后的会话有效时长。",
+        "sort_order": 60,
+    },
+    {
+        "config_key": "password_min_length",
+        "config_group": "security",
+        "config_name": "密码最小长度",
+        "value_type": "int",
+        "default_value": 8,
+        "description": "新增和重置密码时的最小长度要求。",
+        "sort_order": 70,
+    },
+    {
+        "config_key": "require_strong_password",
+        "config_group": "security",
+        "config_name": "启用强密码策略",
+        "value_type": "bool",
+        "default_value": True,
+        "description": "要求密码包含数字、字母等更强规则。",
+        "sort_order": 80,
+    },
+    {
+        "config_key": "enable_login_captcha",
+        "config_group": "security",
+        "config_name": "启用登录验证码",
+        "value_type": "bool",
+        "default_value": False,
+        "description": "登录时增加验证码校验。",
+        "sort_order": 90,
+    },
+    {
+        "config_key": "allow_multi_login",
+        "config_group": "security",
+        "config_name": "允许多端同时登录",
+        "value_type": "bool",
+        "default_value": True,
+        "description": "关闭后同一账号新登录会挤掉旧会话。",
+        "sort_order": 100,
+    },
+    {
+        "config_key": "enable_risk_alert",
+        "config_group": "notification",
+        "config_name": "启用风险告警",
+        "value_type": "bool",
+        "default_value": True,
+        "description": "控制高风险区域和异常飞行告警总开关。",
+        "sort_order": 110,
+    },
+    {
+        "config_key": "enable_sms_notice",
+        "config_group": "notification",
+        "config_name": "启用短信通知",
+        "value_type": "bool",
+        "default_value": False,
+        "description": "高优先级事件通过短信发送通知。",
+        "sort_order": 120,
+    },
+    {
+        "config_key": "enable_email_notice",
+        "config_group": "notification",
+        "config_name": "启用邮件通知",
+        "value_type": "bool",
+        "default_value": True,
+        "description": "任务、日志和风险信息支持邮件通知。",
+        "sort_order": 130,
+    },
+    {
+        "config_key": "alert_response_minutes",
+        "config_group": "notification",
+        "config_name": "告警响应时限(分钟)",
+        "value_type": "int",
+        "default_value": 15,
+        "description": "用于页面展示和业务提醒的建议响应时限。",
+        "sort_order": 140,
+    },
+    {
+        "config_key": "enable_auto_dispatch",
+        "config_group": "dispatch",
+        "config_name": "启用自动调度",
+        "value_type": "bool",
+        "default_value": True,
+        "description": "允许系统根据规则自动派发任务。",
+        "sort_order": 150,
+    },
+    {
+        "config_key": "task_concurrency_limit",
+        "config_group": "dispatch",
+        "config_name": "并发任务上限",
+        "value_type": "int",
+        "default_value": 12,
+        "description": "系统允许同时运行的任务数量上限。",
+        "sort_order": 160,
+    },
+    {
+        "config_key": "return_home_battery",
+        "config_group": "dispatch",
+        "config_name": "返航电量阈值(%)",
+        "value_type": "int",
+        "default_value": 25,
+        "description": "低于该值时建议执行返航策略。",
+        "sort_order": 170,
+    },
+    {
+        "config_key": "default_map_layer",
+        "config_group": "dispatch",
+        "config_name": "默认地图底图",
+        "value_type": "select",
+        "default_value": "satellite",
+        "options": ["satellite", "vector", "terrain"],
+        "description": "地图页面默认显示的底图类型。",
+        "sort_order": 180,
+    },
+    {
+        "config_key": "log_retention_days",
+        "config_group": "data",
+        "config_name": "操作日志保留天数",
+        "value_type": "int",
+        "default_value": 180,
+        "description": "系统操作日志建议保留的时间长度。",
+        "sort_order": 190,
+    },
+    {
+        "config_key": "telemetry_retention_days",
+        "config_group": "data",
+        "config_name": "遥测数据保留天数",
+        "value_type": "int",
+        "default_value": 90,
+        "description": "飞行轨迹和实时遥测数据保留周期。",
+        "sort_order": 200,
+    },
+    {
+        "config_key": "enable_auto_backup",
+        "config_group": "data",
+        "config_name": "启用自动备份",
+        "value_type": "bool",
+        "default_value": True,
+        "description": "定期执行系统备份任务。",
+        "sort_order": 210,
+    },
+    {
+        "config_key": "backup_cycle",
+        "config_group": "data",
+        "config_name": "备份周期",
+        "value_type": "select",
+        "default_value": "daily",
+        "options": ["daily", "weekly", "monthly"],
+        "description": "自动备份任务的执行频率。",
+        "sort_order": 220,
+    },
+]
 
 
 def _write_log(request, module, action, extra_data=None):
@@ -20,6 +252,131 @@ def _write_log(request, module, action, extra_data=None):
         request_ip=request.META.get("REMOTE_ADDR", ""),
         extra_data=extra_data or {},
     )
+
+
+def _serialize_user(item):
+    return {
+        "id": item.id,
+        "username": item.username,
+        "real_name": item.real_name,
+        "email": item.email,
+        "phone": item.phone,
+        "user_type": item.user_type,
+        "roles": item.roles,
+        "department": item.department,
+        "region": item.region,
+        "remark": item.remark,
+        "is_active": item.is_active,
+        "last_login": item.last_login.strftime("%Y-%m-%d %H:%M:%S") if item.last_login else "",
+        "last_login_ip": item.last_login_ip,
+        "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S") if item.created_at else "",
+        "updated_at": item.updated_at.strftime("%Y-%m-%d %H:%M:%S") if item.updated_at else "",
+    }
+
+
+def _normalize_roles(raw_roles):
+    if isinstance(raw_roles, list):
+        roles = raw_roles
+    elif isinstance(raw_roles, str):
+        roles = [item.strip() for item in raw_roles.split(",") if item.strip()]
+    else:
+        roles = []
+    return list(dict.fromkeys(roles))
+
+
+def _get_setting_definition_map():
+    return {item["config_key"]: item for item in SYSTEM_SETTING_DEFAULTS}
+
+
+def _coerce_setting_value(raw_value, value_type):
+    if value_type == "bool":
+        if isinstance(raw_value, bool):
+            return raw_value
+        if isinstance(raw_value, (int, float)):
+            return bool(raw_value)
+        return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+    if value_type == "int":
+        return int(raw_value)
+    if value_type == "float":
+        return float(raw_value)
+    return "" if raw_value is None else str(raw_value).strip()
+
+
+def _ensure_system_settings():
+    existing_keys = set(SystemSetting.objects.using("default").values_list("config_key", flat=True))
+    missing_items = []
+    for item in SYSTEM_SETTING_DEFAULTS:
+        if item["config_key"] in existing_keys:
+            continue
+        missing_items.append(
+            SystemSetting(
+                config_key=item["config_key"],
+                config_group=item["config_group"],
+                config_name=item["config_name"],
+                value_type=item["value_type"],
+                config_value=item["default_value"],
+                options=item.get("options", []),
+                description=item.get("description", ""),
+                sort_order=item.get("sort_order", 0),
+            )
+        )
+    if missing_items:
+        SystemSetting.objects.using("default").bulk_create(missing_items)
+    return list(SystemSetting.objects.using("default").all().order_by("config_group", "sort_order", "id"))
+
+
+def _serialize_system_settings_bundle(items):
+    groups = []
+    values = {}
+    updated_timestamps = []
+
+    for group_key, group_meta in SYSTEM_SETTING_GROUPS.items():
+        group_items = []
+        for item in items:
+            if item.config_group != group_key:
+                continue
+            values[item.config_key] = item.config_value
+            group_items.append(
+                {
+                    "key": item.config_key,
+                    "group": item.config_group,
+                    "name": item.config_name,
+                    "value_type": item.value_type,
+                    "value": item.config_value,
+                    "options": item.options,
+                    "description": item.description,
+                    "sort_order": item.sort_order,
+                    "updated_by": item.updated_by,
+                    "updated_at": item.updated_at.strftime("%Y-%m-%d %H:%M:%S") if item.updated_at else "",
+                }
+            )
+            if item.updated_at:
+                updated_timestamps.append(item.updated_at)
+
+        groups.append(
+            {
+                "key": group_key,
+                "title": group_meta["title"],
+                "description": group_meta["description"],
+                "item_count": len(group_items),
+                "items": group_items,
+            }
+        )
+
+    enabled_switch_count = sum(
+        1 for item in items if item.value_type == "bool" and bool(item.config_value)
+    )
+    last_updated = max(updated_timestamps).strftime("%Y-%m-%d %H:%M:%S") if updated_timestamps else ""
+    return {
+        "groups": groups,
+        "values": values,
+        "stats": {
+            "group_count": len(groups),
+            "item_count": len(items),
+            "enabled_switch_count": enabled_switch_count,
+            "last_updated": last_updated,
+        },
+    }
 
 
 @api_view(["GET"])
@@ -145,22 +502,169 @@ def me_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def user_list(request):
+    keyword = (request.GET.get("keyword") or "").strip()
+    role = (request.GET.get("role") or "").strip()
+    status = (request.GET.get("status") or "").strip()
+    department = (request.GET.get("department") or "").strip()
+
     users = SystemUser.objects.using("default").all().order_by("-id")
-    data = [
-        {
-            "id": item.id,
-            "username": item.username,
-            "real_name": item.real_name,
-            "phone": item.phone,
-            "user_type": item.user_type,
-            "roles": item.roles,
-            "department": item.department,
-            "region": item.region,
-            "is_active": item.is_active,
-        }
-        for item in users
-    ]
+    if keyword:
+        lowered = keyword.lower()
+        users = [
+            item for item in users
+            if lowered in (item.username or "").lower()
+            or lowered in (item.real_name or "").lower()
+            or lowered in (item.phone or "").lower()
+            or lowered in (item.email or "").lower()
+            or lowered in (item.region or "").lower()
+        ]
+    if role:
+        users = [item for item in users if role in (item.roles or []) or item.user_type == role]
+    if status in {"active", "inactive"}:
+        expected = status == "active"
+        users = [item for item in users if item.is_active == expected]
+    if department:
+        department_lower = department.lower()
+        users = [item for item in users if department_lower in (item.department or "").lower()]
+
+    data = [_serialize_user(item) for item in users]
     return api_response(data=data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def user_create(request):
+    payload = parse_request_data(request)
+    username = (payload.get("username") or "").strip()
+    if not username:
+        return api_error(msg="用户名不能为空")
+    if SystemUser.objects.using("default").filter(username=username).exists():
+        return api_error(msg="用户名已存在")
+
+    password = payload.get("password") or "123456"
+    user = SystemUser(
+        username=username,
+        real_name=(payload.get("real_name") or "").strip(),
+        email=(payload.get("email") or "").strip(),
+        phone=(payload.get("phone") or "").strip(),
+        user_type=(payload.get("user_type") or "dispatcher").strip() or "dispatcher",
+        roles=_normalize_roles(payload.get("roles")),
+        department=(payload.get("department") or "").strip(),
+        region=(payload.get("region") or "").strip(),
+        remark=(payload.get("remark") or "").strip(),
+        is_active=bool(payload.get("is_active", True)),
+    )
+    user.set_password(password)
+    user.save(using="default")
+    _write_log(
+        request,
+        module="system",
+        action="create_user",
+        extra_data={"target_user_id": user.id, "target_username": user.username},
+    )
+    return api_response(data=_serialize_user(user), msg="用户创建成功")
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def user_detail(request, user_id):
+    user = get_object_or_404(SystemUser.objects.using("default"), pk=user_id)
+    payload = parse_request_data(request)
+    username = (payload.get("username") or user.username).strip()
+
+    if not username:
+        return api_error(msg="用户名不能为空")
+    if SystemUser.objects.using("default").exclude(pk=user.id).filter(username=username).exists():
+        return api_error(msg="用户名已存在")
+
+    user.username = username
+    user.real_name = (payload.get("real_name") or "").strip()
+    user.email = (payload.get("email") or "").strip()
+    user.phone = (payload.get("phone") or "").strip()
+    user.user_type = (payload.get("user_type") or "dispatcher").strip() or "dispatcher"
+    user.roles = _normalize_roles(payload.get("roles"))
+    user.department = (payload.get("department") or "").strip()
+    user.region = (payload.get("region") or "").strip()
+    user.remark = (payload.get("remark") or "").strip()
+    if "is_active" in payload:
+        if request.user.id == user.id and not payload.get("is_active"):
+            return api_error(msg="当前登录用户不能停用自己")
+        user.is_active = bool(payload.get("is_active"))
+
+    password = (payload.get("password") or "").strip()
+    if password:
+        user.set_password(password)
+
+    user.save(using="default")
+    _write_log(
+        request,
+        module="system",
+        action="update_user",
+        extra_data={"target_user_id": user.id, "target_username": user.username},
+    )
+    return api_response(data=_serialize_user(user), msg="用户更新成功")
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def user_delete(request, user_id):
+    user = get_object_or_404(SystemUser.objects.using("default"), pk=user_id)
+    if request.user.id == user.id:
+        return api_error(msg="当前登录用户不能删除自己")
+    username = user.username
+    user.delete()
+    _write_log(
+        request,
+        module="system",
+        action="delete_user",
+        extra_data={"target_user_id": user_id, "target_username": username},
+    )
+    return api_response(data={"deleted": True}, msg="用户删除成功")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def user_toggle_active(request, user_id):
+    user = get_object_or_404(SystemUser.objects.using("default"), pk=user_id)
+    payload = parse_request_data(request)
+    is_active = payload.get("is_active")
+    if is_active is None:
+        is_active = not user.is_active
+    else:
+        is_active = bool(is_active)
+
+    if request.user.id == user.id and not is_active:
+        return api_error(msg="当前登录用户不能停用自己")
+
+    user.is_active = is_active
+    user.save(using="default", update_fields=["is_active", "updated_at"])
+    _write_log(
+        request,
+        module="system",
+        action="toggle_user_status",
+        extra_data={"target_user_id": user.id, "target_username": user.username, "is_active": is_active},
+    )
+    return api_response(data=_serialize_user(user), msg="账号状态已更新")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def user_reset_password(request, user_id):
+    user = get_object_or_404(SystemUser.objects.using("default"), pk=user_id)
+    payload = parse_request_data(request)
+    new_password = (payload.get("password") or "123456").strip()
+    if not new_password:
+        return api_error(msg="新密码不能为空")
+
+    user.set_password(new_password)
+    user.save(using="default", update_fields=["password", "updated_at"])
+    _write_log(
+        request,
+        module="system",
+        action="reset_user_password",
+        extra_data={"target_user_id": user.id, "target_username": user.username},
+    )
+    return api_response(data={"id": user.id}, msg="密码重置成功")
 
 
 @api_view(["GET"])
@@ -182,8 +686,127 @@ def role_list(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def setting_list(request):
+    items = _ensure_system_settings()
+    return api_response(data=_serialize_system_settings_bundle(items))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def setting_save(request):
+    payload = parse_request_data(request)
+    values = payload.get("values", payload)
+    if not isinstance(values, dict):
+        return api_error(msg="配置数据格式错误")
+
+    definition_map = _get_setting_definition_map()
+    items = _ensure_system_settings()
+    setting_map = {item.config_key: item for item in items}
+    changed_keys = []
+
+    for config_key, raw_value in values.items():
+        definition = definition_map.get(config_key)
+        setting = setting_map.get(config_key)
+        if not definition or not setting:
+            continue
+        try:
+            normalized_value = _coerce_setting_value(raw_value, definition["value_type"])
+        except (TypeError, ValueError):
+            return api_error(msg=f"{definition['config_name']} 配置值无效")
+
+        if normalized_value == setting.config_value:
+            continue
+
+        setting.config_value = normalized_value
+        setting.updated_by = request.user.username
+        setting.save(using="default", update_fields=["config_value", "updated_by", "updated_at"])
+        changed_keys.append(config_key)
+
+    if changed_keys:
+        _write_log(
+            request,
+            module="system",
+            action="save_settings",
+            extra_data={"changed_keys": changed_keys},
+        )
+
+    items = list(SystemSetting.objects.using("default").all().order_by("config_group", "sort_order", "id"))
+    return api_response(
+        data=_serialize_system_settings_bundle(items),
+        msg="系统配置已保存" if changed_keys else "未检测到配置变更",
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def setting_reset(request):
+    payload = parse_request_data(request)
+    group = (payload.get("group") or "").strip()
+    definition_map = _get_setting_definition_map()
+    items = _ensure_system_settings()
+    reset_keys = []
+
+    for item in items:
+        definition = definition_map.get(item.config_key)
+        if not definition:
+            continue
+        if group and item.config_group != group:
+            continue
+        item.config_value = definition["default_value"]
+        item.updated_by = request.user.username
+        item.save(using="default", update_fields=["config_value", "updated_by", "updated_at"])
+        reset_keys.append(item.config_key)
+
+    _write_log(
+        request,
+        module="system",
+        action="reset_settings",
+        extra_data={"group": group or "all", "reset_keys": reset_keys},
+    )
+
+    items = list(SystemSetting.objects.using("default").all().order_by("config_group", "sort_order", "id"))
+    return api_response(data=_serialize_system_settings_bundle(items), msg="系统配置已恢复默认值")
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def operation_log_list(request):
-    logs = OperationLog.objects.using("default").all()[:100]
+    logs = OperationLog.objects.using("default").all()
+    
+    keyword = (request.GET.get("keyword") or "").strip()
+    module = (request.GET.get("module") or "").strip()
+    action = (request.GET.get("action") or "").strip()
+    operator = (request.GET.get("operator") or "").strip()
+    start_date = (request.GET.get("start_date") or "").strip()
+    end_date = (request.GET.get("end_date") or "").strip()
+    
+    if keyword:
+        logs = logs.filter(
+            models.Q(operator_name__icontains=keyword) |
+            models.Q(module__icontains=keyword) |
+            models.Q(action__icontains=keyword) |
+            models.Q(request_path__icontains=keyword)
+        )
+    if module:
+        logs = logs.filter(module__icontains=module)
+    if action:
+        logs = logs.filter(action__icontains=action)
+    if operator:
+        logs = logs.filter(operator_name__icontains=operator)
+    if start_date:
+        logs = logs.filter(created_at__gte=f"{start_date} 00:00:00")
+    if end_date:
+        logs = logs.filter(created_at__lte=f"{end_date} 23:59:59")
+    
+    logs = logs.order_by("-created_at")
+    
+    page = int(request.GET.get("page", 1))
+    page_size = int(request.GET.get("page_size", 20))
+    total = logs.count()
+    start = (page - 1) * page_size
+    end = start + page_size
+    logs_page = logs[start:end]
+    
     data = [
         {
             "id": item.id,
@@ -197,9 +820,25 @@ def operation_log_list(request):
             "extra_data": item.extra_data,
             "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S"),
         }
-        for item in logs
+        for item in logs_page
     ]
-    return api_response(data=data)
+    
+    modules = list(OperationLog.objects.using("default").values_list("module", flat=True).distinct())
+    actions = list(OperationLog.objects.using("default").values_list("action", flat=True).distinct())
+    
+    return api_response(data={
+        "logs": data,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": (total + page_size - 1) // page_size if total > 0 else 1
+        },
+        "filters": {
+            "modules": modules,
+            "actions": actions
+        }
+    })
 
 
 @csrf_exempt

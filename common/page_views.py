@@ -80,3 +80,18 @@ def terrain_list_page(request):
 @login_required(login_url="/login/")
 def terrain_detail_page(request):
     return render(request, "terrain_detail.html")
+
+
+@login_required(login_url="/login/")
+def system_user_page(request):
+    return render(request, "system/user_management.html")
+
+
+@login_required(login_url="/login/")
+def system_config_page(request):
+    return render(request, "system/configuration.html")
+
+
+@login_required(login_url="/login/")
+def system_log_page(request):
+    return render(request, "system/operation_log.html")
