@@ -1820,10 +1820,15 @@ async function openTaskModal() {
 }
 
 async function startSurveyTask() {
+  const terrainId = Number(document.getElementById('taskTerrainId').value);
+  const terrain = getTerrainById(terrainId);
+  const drones = terrain ? getTerrainBoundDrones(terrain) : [];
+  const primary = drones.length ? Number(drones[0].id) : null;
   const data = {
-    terrain_id: document.getElementById('taskTerrainId').value,
+    terrain_id: terrainId,
     task_name: document.getElementById('taskName').value,
-    description: document.getElementById('taskDescription').value
+    description: document.getElementById('taskDescription').value,
+    primary_drone_id: primary
   };
 
   const resp = await fetch('/terrain/api/terrain/execute-task/', {

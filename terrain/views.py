@@ -1074,12 +1074,20 @@ def execute_survey_task(request):
         terrain_id = data.get('terrain_id')
         task_name = data.get('task_name')
         description = data.get('description', '')
+        primary_drone_id = data.get('primary_drone_id')
         
         terrain = get_object_or_404(TerrainArea, id=terrain_id, is_deleted=False)
         drones = list(Drone.objects.filter(terrain_id=terrain.id).order_by('id'))
         
         if not drones:
             return api_error(msg="该地形尚未绑定无人机，请先绑定无人机后再执行任务")
+        
+        try:
+            primary_drone_id = int(primary_drone_id) if primary_drone_id not in (None, '', 'null', 'None') else None
+        except (TypeError, ValueError):
+            primary_drone_id = None
+        if primary_drone_id is None and drones:
+            primary_drone_id = drones[0].id
             
         # 创建全局任务
         task_code = f"SURVEY-{timezone.now().strftime('%Y%m%d%H%M%S')}-{terrain.id}"
@@ -1090,6 +1098,7 @@ def execute_survey_task(request):
             scene_type="mixed",
             status="pending",
             description=description,
+            primary_drone_id=primary_drone_id,
             planned_start=now,
             planned_end=now + timezone.timedelta(hours=4) # 默认4小时
         )
