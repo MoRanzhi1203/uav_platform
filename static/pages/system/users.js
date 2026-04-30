@@ -39,7 +39,7 @@
         event.preventDefault();
         collectFilters();
         state.page = 1;
-        applyFilters();
+        loadUsers();
       });
     }
 
@@ -124,8 +124,20 @@
 
   function loadBaseData() {
     renderRoleCheckboxes([]);
-    Promise.all([loadRoles(), loadUsers()]).catch(function(error) {
+    Promise.all([loadRoles(), loadUsers(), loadStats()]).catch(function(error) {
       console.error('初始化用户管理模块失败:', error);
+    });
+  }
+
+  function loadStats() {
+    return new Promise(function(resolve, reject) {
+      Http.get('/api/system/users/stats/', {}, function(data) {
+        setText('statTotalUsers', data.total_users || 0);
+        setText('statActiveUsers', data.active_users || 0);
+        setText('statAdminUsers', data.admin_users || 0);
+        setText('statRecentUsers', data.recent_active_users || 0);
+        resolve(data);
+      }).fail(reject);
     });
   }
 
@@ -153,6 +165,10 @@
         resolve(state.users);
       }).fail(function(xhr, status, error) {
         Common.hideLoading('.user-table-card .card-body');
+        const tbody = document.getElementById('userTableBody');
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-5">用户数据加载失败，请稍后重试</td></tr>';
+        }
         reject(error || status || xhr);
       });
     });
@@ -187,32 +203,30 @@
     if (updateRemote !== false) {
       collectFilters();
     }
-    state.filteredUsers = state.users.slice();
+    const keyword = (state.filters.keyword || '').trim().toLowerCase();
+    const role = state.filters.role || '';
+    const status = state.filters.status || '';
+    const department = (state.filters.department || '').trim().toLowerCase();
+
+    state.filteredUsers = state.users.filter(function(item) {
+      const matchKeyword = !keyword || [
+        item.username,
+        item.real_name,
+        item.phone,
+        item.email,
+        item.region
+      ].some(function(value) {
+        return String(value || '').toLowerCase().includes(keyword);
+      });
+      const matchRole = !role || item.user_type === role || (item.roles || []).indexOf(role) !== -1;
+      const matchStatus = !status || (status === 'active' ? item.is_active : !item.is_active);
+      const matchDepartment = !department || String(item.department || '').toLowerCase().includes(department);
+      return matchKeyword && matchRole && matchStatus && matchDepartment;
+    });
     syncSelectedUser();
-    renderStats();
     renderUserTable();
     renderSummaries();
     updateFilterSummary();
-  }
-
-  function renderStats() {
-    const total = state.users.length;
-    const active = state.users.filter(function(item) {
-      return item.is_active;
-    }).length;
-    const admin = state.users.filter(function(item) {
-      return item.user_type === 'super_admin' || (item.roles || []).indexOf('super_admin') !== -1;
-    }).length;
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const recent = state.users.filter(function(item) {
-      const time = item.last_login ? new Date(item.last_login).getTime() : 0;
-      return time && !Number.isNaN(time) && time >= sevenDaysAgo;
-    }).length;
-
-    setText('statTotalUsers', total);
-    setText('statActiveUsers', active);
-    setText('statAdminUsers', admin);
-    setText('statRecentUsers', recent);
   }
 
   function renderUserTable() {

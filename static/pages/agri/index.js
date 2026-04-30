@@ -44,89 +44,69 @@ function initPage() {
 
 async function loadRealData() {
   console.log('开始加载 API 数据...');
-  // 统一使用 /agri 前缀，匹配 urls.py 中的配置
+  Common.showLoading('.agri-list-card');
   const baseUrl = '/agri'; 
-  console.log(`使用 API 基础路径: ${baseUrl}`);
-
+  
   try {
     // 1. 加载概览统计
-    console.log(`请求概览: ${baseUrl}/overview/`);
-    const overviewRes = await fetch(`${baseUrl}/overview/`);
-    if (!overviewRes.ok) throw new Error(`概览接口请求失败: ${overviewRes.status}`);
-    const overviewData = await overviewRes.json();
-    console.log('概览响应:', overviewData);
-    if (overviewData.code === 0) {
-      const stats = overviewData.data;
+    const overviewRes = await Http.safeFetchJson(`${baseUrl}/overview/`);
+    if (overviewRes.success) {
+      const stats = overviewRes.data;
       const updateStat = (id, val) => {
           const el = document.getElementById(id);
           if (el) el.textContent = val;
       };
-      updateStat('totalAgriAreas', stats.farm_area_count);
-      updateStat('totalPlots', stats.farm_plot_count);
-      updateStat('pestAlerts', stats.pest_monitor_count);
-      updateStat('activeTasks', stats.agri_task_count);
-    } else {
-      console.warn('概览接口返回错误代码:', overviewData);
+      updateStat('totalAgriAreas', stats.farm_area_count || 0);
+      updateStat('totalPlots', stats.farm_plot_count || 0);
+      updateStat('pestAlerts', stats.pest_monitor_count || 0);
+      updateStat('activeTasks', stats.agri_task_count || 0);
     }
 
     // 2. 加载区域列表
-    console.log(`请求区域列表: ${baseUrl}/farm-plots/`);
-    const areasRes = await fetch(`${baseUrl}/farm-plots/`);
-    if (!areasRes.ok) throw new Error(`区域列表接口请求失败: ${areasRes.status}`);
-    const areasData = await areasRes.json();
-    console.log('区域列表响应:', areasData);
-    if (areasData.code === 0) {
-      agriData.areas = areasData.data;
-      agriData.filteredAreas = [...areasData.data];
+    const areasRes = await Http.safeFetchJson(`${baseUrl}/farm-plots/`);
+    if (areasRes.success) {
+      const areas = Array.isArray(areasRes.data) ? areasRes.data : (areasRes.data?.results || []);
+      agriData.areas = areas;
+      agriData.filteredAreas = [...areas];
       renderAgriTable();
-      if (agriMap && areasData.data.length > 0) {
-        agriMap.loadAreas(areasData.data);
+      if (agriMap && areas.length > 0) {
+        try {
+          agriMap.loadAreas(areas);
+        } catch (mapError) {
+          console.error('农业地图数据加载失败:', mapError);
+        }
       }
-      
-      // 如果有数据，默认选择第一个
-      if (areasData.data.length > 0) {
-          selectArea(areasData.data[0].id);
+      if (areas.length > 0) {
+          selectArea(areas[0].id);
       }
-    } else {
-      console.warn('区域列表接口返回错误代码:', areasData);
     }
 
     // 3. 加载今日病虫害
-    console.log(`请求病虫害: ${baseUrl}/dashboard/pest-alerts/`);
-    const pestRes = await fetch(`${baseUrl}/dashboard/pest-alerts/`);
-    if (pestRes.ok) {
-        const pestData = await pestRes.json();
-        if (pestData.code === 0) {
-          agriData.pestAlerts = pestData.data.items;
-          renderPestAlerts();
-        }
+    const pestRes = await Http.safeFetchJson(`${baseUrl}/dashboard/pest-alerts/`);
+    if (pestRes.success) {
+      agriData.pestAlerts = pestRes.data.items || [];
+      renderPestAlerts();
     }
 
     // 4. 加载植保记录
-    console.log(`请求任务: ${baseUrl}/dashboard/tasks/`);
-    const taskRes = await fetch(`${baseUrl}/dashboard/tasks/`);
-    if (taskRes.ok) {
-        const taskData = await taskRes.json();
-        if (taskData.code === 0) {
-          agriData.tasks = taskData.data.items;
-          renderTaskRecords();
-        }
+    const taskRes = await Http.safeFetchJson(`${baseUrl}/dashboard/tasks/`);
+    if (taskRes.success) {
+      agriData.tasks = taskRes.data.items || [];
+      renderTaskRecords();
     }
 
     // 5. 加载风险分析数据
-    console.log(`请求风险分析: ${baseUrl}/dashboard/risk-analysis/`);
-    const analysisRes = await fetch(`${baseUrl}/dashboard/risk-analysis/`);
-    if (analysisRes.ok) {
-        const analysisData = await analysisRes.json();
-        if (analysisData.code === 0) {
-          agriData.riskAnalysis = analysisData.data.stats;
-          renderRiskAnalysisChart();
-        }
+    const analysisRes = await Http.safeFetchJson(`${baseUrl}/dashboard/risk-analysis/`);
+    if (analysisRes.success) {
+      agriData.riskAnalysis = analysisRes.data.stats || [];
+      renderRiskAnalysisChart();
     }
 
   } catch (error) { 
     console.error('加载农业数据过程中发生严重错误:', error);
-    alert('农业数据加载失败，请检查网络或后端服务。详情见控制台日志。');
+    Common.showMessage('农业数据加载失败，请检查网络或后端服务。', 'error');
+  } finally {
+    Common.hideLoading('.agri-list-card');
   }
 }
 
@@ -241,17 +221,20 @@ async function selectArea(id) {
   updateDetailPanel(areaBasic);
 
   try {
-    const res = await fetch(`/agri/farm-plots/${id}/`);
-    const data = await res.json();
-    if (data.code === 0) {
-      const areaFull = data.data;
+    const response = await Http.safeFetchJson(`/agri/farm-plots/${id}/`);
+    if (response.success) {
+      const areaFull = response.data;
       agriData.currentArea = areaFull;
       updateDetailPanel(areaFull);
       
       if (agriMap) {
-        agriMap.focusOnArea(id);
-        if (areaFull.plots) {
-          agriMap.loadPlots(areaFull.plots);
+        try {
+          agriMap.focusOnArea(id);
+          if (areaFull.plots) {
+            agriMap.loadPlots(areaFull.plots);
+          }
+        } catch (mapError) {
+          console.error('农业地图详情加载失败:', mapError);
         }
       }
     }
@@ -386,7 +369,7 @@ function applyFilters() {
   if (!nameInput || !riskInput) return;
 
   const name = nameInput.value.toLowerCase();
-  const riskLevel = riskInput.value;
+  const riskLevel = ['all', '全部等级', 'undefined', 'null'].includes(riskInput.value) ? '' : riskInput.value;
 
   agriData.filteredAreas = agriData.areas.filter(f => {
     const matchName = (f.area_name || '').toLowerCase().includes(name);

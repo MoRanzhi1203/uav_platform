@@ -27,6 +27,16 @@
   function initPage() {
     bindEvents();
     loadLogs();
+    loadStats();
+  }
+
+  function loadStats() {
+    Http.get('/api/system/logs/stats/', {}, function(data) {
+      setText('statTodayCount', data.today_count || 0);
+      setText('statTotalCount', data.total_count || 0);
+      setText('statActiveUsers', data.active_user_count || 0);
+      setText('statModuleCount', data.module_count || 0);
+    });
   }
 
   function bindEvents() {
@@ -80,7 +90,12 @@
     const params = {
       page: state.page,
       page_size: state.pageSize,
-      ...state.filters
+      keyword: state.filters.keyword,
+      module: state.filters.module,
+      action: state.filters.action,
+      operator: state.filters.operator,
+      start_date: state.filters.startDate,
+      end_date: state.filters.endDate
     };
     
     Http.get('/api/system/logs/', params, function(response) {
@@ -98,14 +113,17 @@
         populateActionFilter();
         document.getElementById('filterAction').dataset.initialized = 'true';
       }
-      
-      renderStats();
+
       renderLogTable();
       updatePaginationButtons();
       Common.hideLoading('.log-table-card .card-body');
-    }).fail(function() {
+    }).fail(function(xhr) {
       Common.hideLoading('.log-table-card .card-body');
-      Common.showMessage('加载日志失败', 'error');
+      const tbody = document.getElementById('logTableBody');
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-5">操作日志加载失败，请稍后重试</td></tr>';
+      }
+      Http.showFriendlyError(xhr.responseJSON?.message || xhr.responseJSON?.msg || '加载日志失败', xhr.responseText);
     });
   }
 
@@ -128,33 +146,6 @@
     collectFilters();
     state.page = 1;
     loadLogs();
-  }
-
-  function renderStats() {
-    const today = new Date().toISOString().split('T')[0];
-    const todayLogs = state.logs.filter(log => log.created_at && log.created_at.startsWith(today));
-    const totalLogs = state.total;
-    
-    const uniqueOperators = new Set();
-    const uniqueModules = new Set();
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    
-    state.logs.forEach(log => {
-      if (log.operator_name) {
-        const logDate = log.created_at ? new Date(log.created_at).getTime() : 0;
-        if (logDate >= sevenDaysAgo) {
-          uniqueOperators.add(log.operator_name);
-        }
-      }
-      if (log.module) {
-        uniqueModules.add(log.module);
-      }
-    });
-    
-    setText('statTodayCount', todayLogs.length || '--');
-    setText('statTotalCount', totalLogs || '--');
-    setText('statActiveUsers', uniqueOperators.size || '--');
-    setText('statModuleCount', Math.max(uniqueModules.size, state.modules.length) || '--');
   }
 
   function renderLogTable() {

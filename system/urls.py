@@ -5,6 +5,7 @@ from system.views import (
     logout_view,
     me_view,
     operation_log_list,
+    operation_log_stats,
     overview,
     role_list,
     setting_list,
@@ -15,6 +16,7 @@ from system.views import (
     user_detail,
     user_list,
     user_reset_password,
+    user_stats,
     user_toggle_active,
 )
 
@@ -24,6 +26,7 @@ urlpatterns = [
     path("logout/", logout_view, name="system-logout"),
     path("me/", me_view, name="system-me"),
     path("users/", user_list, name="system-user-list"),
+    path("users/stats/", user_stats, name="system-user-stats"),
     path("users/create/", user_create, name="system-user-create"),
     path("users/<int:user_id>/", user_detail, name="system-user-detail"),
     path("users/<int:user_id>/delete/", user_delete, name="system-user-delete"),
@@ -34,4 +37,5 @@ urlpatterns = [
     path("settings/reset/", setting_reset, name="system-setting-reset"),
     path("roles/", role_list, name="system-role-list"),
     path("logs/", operation_log_list, name="system-log-list"),
+    path("logs/stats/", operation_log_stats, name="system-log-stats"),
 ]

@@ -37,6 +37,15 @@ def _area_queryset(request):
     return queryset
 
 
+def _normalize_filter_value(value):
+    text = str(value or "").strip()
+    if text.lower() in {"", "all", "undefined", "null"}:
+        return ""
+    if text in {"全部等级", "全部时间"}:
+        return ""
+    return text
+
+
 def _task_queryset(request):
     queryset = AgriTask.objects.using(DB_ALIAS).all()
     return queryset
@@ -89,13 +98,28 @@ def farm_plot_list_create(request):
     """农田示范区列表 (对应 TerrainArea)"""
     if request.method == "GET":
         try:
-            areas = list(_area_queryset(request))
+            name = _normalize_filter_value(request.GET.get("name") or request.GET.get("keyword"))
+            risk_level = _normalize_filter_value(request.GET.get("risk_level"))
+            page = int(request.GET.get("page", 1) or 1)
+            page_size = int(request.GET.get("page_size", 100) or 100)
+
+            queryset = _area_queryset(request)
+            if name:
+                queryset = queryset.filter(name__icontains=name)
+            if risk_level:
+                queryset = queryset.filter(risk_level=risk_level)
+
+            total_count = queryset.count()
+            start = max(page - 1, 0) * page_size
+            end = start + page_size
+            areas = list(queryset.order_by("-updated_at", "-id")[start:end])
             result = []
             managers = _get_mock_managers()
             regions = _get_mock_regions()
             
             # 如果没有真实数据，生成 5 个模拟区域
             if not areas:
+                total_count = 5
                 for i in range(5):
                     mock_id = 5000 + i
                     result.append({
@@ -117,19 +141,23 @@ def farm_plot_list_create(request):
                     plot_count = TerrainZone.objects.using(TERRAIN_DB).filter(area_obj=area, category="farmland", is_deleted=False).count()
                     result.append({
                         "id": area.id,
+                        "name": area.name,
                         "area_name": area.name,
                         "region": area.description or regions[i % len(regions)],
                         "risk_level": area.risk_level or "low",
+                        "area": float(area.area or 0),
                         "coverage_ha": float(area.area or 0),
+                        "manager": managers[i % len(managers)],
                         "manager_name": managers[i % len(managers)],
-                        "created_at": area.created_at.strftime("%Y-%m-%d %H:%M") if area.created_at else None,
-                        "updated_at": area.updated_at.strftime("%Y-%m-%d %H:%M") if area.updated_at else None,
+                        "description": area.description or "",
+                        "created_at": timezone.localtime(area.created_at).strftime("%Y-%m-%d %H:%M") if area.created_at else None,
+                        "updated_at": timezone.localtime(area.updated_at).strftime("%Y-%m-%d %H:%M") if area.updated_at else None,
                         "boundary_json": area.boundary_json,
                         "plot_count": plot_count,
                         "center_lat": area.center_lat or 29.5628,
                         "center_lng": area.center_lng or 106.5747,
                     })
-            return api_response(data=result)
+            return api_response(data={"count": total_count, "results": result})
         except Exception as e:
             logger.error(f"Agri Area List Error: {str(e)}")
             return api_error(msg="获取示范区列表失败")
@@ -187,13 +215,17 @@ def farm_plot_detail(request, pk):
             plots = TerrainZone.objects.using(TERRAIN_DB).filter(area_obj_id=pk, category="farmland", is_deleted=False)
             data = {
                 "id": instance.id,
+                "name": instance.name,
                 "area_name": instance.name,
                 "region": instance.description or regions[instance.id % len(regions)],
                 "risk_level": instance.risk_level,
+                "area": float(instance.area),
                 "coverage_ha": float(instance.area),
+                "manager": managers[instance.id % len(managers)],
                 "manager_name": managers[instance.id % len(managers)],
-                "created_at": instance.created_at.strftime("%Y-%m-%d %H:%M") if instance.created_at else None,
-                "updated_at": instance.updated_at.strftime("%Y-%m-%d %H:%M") if instance.updated_at else None,
+                "description": instance.description or "",
+                "created_at": timezone.localtime(instance.created_at).strftime("%Y-%m-%d %H:%M") if instance.created_at else None,
+                "updated_at": timezone.localtime(instance.updated_at).strftime("%Y-%m-%d %H:%M") if instance.updated_at else None,
                 "boundary_json": instance.boundary_json,
                 "center_lat": instance.center_lat,
                 "center_lng": instance.center_lng,
@@ -347,8 +379,13 @@ def _pest_monitor_delete(request, instance):
 def dashboard_pest_alerts(request):
     """今日病虫害预警 (如果DB为空则生成模拟数据)"""
     try:
-        today = timezone.now().date()
-        queryset = _pest_queryset(request).filter(created_at__date=today).order_by("-created_at")
+        local_now = timezone.localtime()
+        start_of_day = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = start_of_day + timedelta(days=1)
+        queryset = _pest_queryset(request).filter(
+            detected_at__gte=start_of_day,
+            detected_at__lt=end_of_day,
+        ).order_by("-detected_at")
         
         items = []
         if queryset.exists():
@@ -357,7 +394,7 @@ def dashboard_pest_alerts(request):
                 items.append({
                     "id": alert.id,
                     "location": f"{area_name}",
-                    "time": alert.created_at.strftime("%Y-%m-%d %H:%M"),
+                    "time": timezone.localtime(alert.detected_at).strftime("%Y-%m-%d %H:%M"),
                     "level": alert.severity,
                     "status": alert.pest_type
                 })
@@ -396,7 +433,7 @@ def dashboard_agri_tasks(request):
                 items.append({
                     "id": task.id,
                     "task_code": task.task_code,
-                    "time": task.created_at.strftime("%Y-%m-%d %H:%M"),
+                    "time": timezone.localtime(task.created_at).strftime("%Y-%m-%d %H:%M"),
                     "status": task.status
                 })
         else:

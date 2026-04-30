@@ -2,6 +2,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.db import models
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -242,16 +243,20 @@ SYSTEM_SETTING_DEFAULTS = [
 
 def _write_log(request, module, action, extra_data=None):
     user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
-    OperationLog.objects.using("default").create(
-        operator_id=user.id if user else 0,
-        operator_name=user.username if user else "anonymous",
-        module=module,
-        action=action,
-        request_method=request.method,
-        request_path=request.path,
-        request_ip=request.META.get("REMOTE_ADDR", ""),
-        extra_data=extra_data or {},
-    )
+    try:
+        OperationLog.objects.using("default").create(
+            operator_id=user.id if user else 0,
+            operator_name=user.username if user else "anonymous",
+            module=module,
+            action=action,
+            request_method=request.method,
+            request_path=request.path,
+            request_ip=request.META.get("REMOTE_ADDR", ""),
+            extra_data=extra_data or {},
+        )
+    except Exception:
+        # Logging failures must never break business APIs.
+        return None
 
 
 def _serialize_user(item):
@@ -267,10 +272,10 @@ def _serialize_user(item):
         "region": item.region,
         "remark": item.remark,
         "is_active": item.is_active,
-        "last_login": item.last_login.strftime("%Y-%m-%d %H:%M:%S") if item.last_login else "",
+        "last_login": timezone.localtime(item.last_login).strftime("%Y-%m-%d %H:%M:%S") if item.last_login else "",
         "last_login_ip": item.last_login_ip,
-        "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S") if item.created_at else "",
-        "updated_at": item.updated_at.strftime("%Y-%m-%d %H:%M:%S") if item.updated_at else "",
+        "created_at": timezone.localtime(item.created_at).strftime("%Y-%m-%d %H:%M:%S") if item.created_at else "",
+        "updated_at": timezone.localtime(item.updated_at).strftime("%Y-%m-%d %H:%M:%S") if item.updated_at else "",
     }
 
 
@@ -347,7 +352,7 @@ def _serialize_system_settings_bundle(items):
                     "description": item.description,
                     "sort_order": item.sort_order,
                     "updated_by": item.updated_by,
-                    "updated_at": item.updated_at.strftime("%Y-%m-%d %H:%M:%S") if item.updated_at else "",
+                    "updated_at": timezone.localtime(item.updated_at).strftime("%Y-%m-%d %H:%M:%S") if item.updated_at else "",
                 }
             )
             if item.updated_at:
@@ -366,17 +371,95 @@ def _serialize_system_settings_bundle(items):
     enabled_switch_count = sum(
         1 for item in items if item.value_type == "bool" and bool(item.config_value)
     )
-    last_updated = max(updated_timestamps).strftime("%Y-%m-%d %H:%M:%S") if updated_timestamps else ""
+    last_updated = timezone.localtime(max(updated_timestamps)).strftime("%Y-%m-%d %H:%M:%S") if updated_timestamps else ""
+    values = values or {}
+    suggestions = []
+    if int(values.get("password_min_length") or 0) < 8:
+        suggestions.append("建议将密码最小长度设置为 8 位及以上。")
+    if not values.get("enable_auto_backup"):
+        suggestions.append("建议启用自动备份，降低配置丢失风险。")
+    if not suggestions:
+        suggestions.append("当前系统配置状态良好。")
     return {
         "groups": groups,
         "values": values,
+        "base_config": {
+            "platform_name": values.get("platform_name", "无人机群林农协同系统"),
+            "timezone": values.get("timezone", "Asia/Shanghai"),
+            "default_map_zoom": values.get("default_map_zoom", 12),
+        },
+        "security_policy": {
+            "session_timeout_hours": values.get("session_timeout_hours", 24),
+            "password_min_length": values.get("password_min_length", 8),
+            "require_strong_password": values.get("require_strong_password", True),
+        },
+        "summary": {
+            "platform_name": values.get("platform_name", "无人机群林农协同系统"),
+            "deployment_region": values.get("deployment_region", "重庆山地示范区"),
+            "last_updated": last_updated,
+        },
+        "suggestions": suggestions,
         "stats": {
             "group_count": len(groups),
             "item_count": len(items),
             "enabled_switch_count": enabled_switch_count,
+            "enabled_policy_count": enabled_switch_count,
             "last_updated": last_updated,
         },
     }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_stats(request):
+    from datetime import timedelta
+    
+    total_users = SystemUser.objects.using("default").count()
+    active_users = SystemUser.objects.using("default").filter(is_active=True).count()
+    admin_users = sum(
+        1
+        for item in SystemUser.objects.using("default").all()
+        if item.is_superuser or item.user_type == "super_admin" or "super_admin" in (item.roles or [])
+    )
+    
+    seven_days_ago = timezone.now() - timedelta(days=7)
+    recent_active_users = SystemUser.objects.using("default").filter(last_login__gte=seven_days_ago).count()
+    
+    return api_response(data={
+        "total_users": total_users,
+        "active_users": active_users,
+        "admin_users": admin_users,
+        "recent_active_users": recent_active_users
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def operation_log_stats(request):
+    from datetime import timedelta
+    
+    local_now = timezone.localtime()
+    start_of_day = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    today_count = OperationLog.objects.using("default").filter(
+        created_at__gte=start_of_day,
+        created_at__lt=end_of_day,
+    ).count()
+    total_count = OperationLog.objects.using("default").count()
+    
+    seven_days_ago = timezone.now() - timedelta(days=7)
+    active_user_count = OperationLog.objects.using("default").filter(
+        created_at__gte=seven_days_ago
+    ).values("operator_id").distinct().count()
+    
+    module_count = OperationLog.objects.using("default").values("module").distinct().count()
+    
+    return api_response(data={
+        "today_count": today_count,
+        "total_count": total_count,
+        "active_user_count": active_user_count,
+        "module_count": module_count
+    })
 
 
 @api_view(["GET"])
@@ -407,11 +490,7 @@ def login_view(request):
         user = authenticate(request, username=username, password=password)
         if not user:
             logger.info(f"Login failed: username={username}")
-            return HttpResponse(
-                json.dumps({"code": 1001, "msg": "invalid_credentials", "data": None}),
-                content_type="application/json",
-                status=400
-            )
+            return JsonResponse({"success": False, "code": 1001, "msg": "invalid_credentials", "message": "invalid_credentials", "data": None}, status=400)
         
         logger.info(f"Login success: username={username}")
         login(request, user)
@@ -433,8 +512,10 @@ def login_view(request):
         
         # 创建响应
         response_data = {
+            "success": True,
             "code": 0, 
             "msg": "success", 
+            "message": "success",
             "data": {
                 "id": user.id,
                 "username": user.username,
@@ -466,11 +547,7 @@ def login_view(request):
         
         return response
     else:
-        return HttpResponse(
-            json.dumps({"code": 405, "msg": "Method not allowed", "data": None}),
-            content_type="application/json",
-            status=405
-        )
+        return JsonResponse({"success": False, "code": 405, "msg": "Method not allowed", "message": "Method not allowed", "data": None}, status=405)
 
 
 @api_view(["POST"])
@@ -565,10 +642,12 @@ def user_create(request):
     return api_response(data=_serialize_user(user), msg="用户创建成功")
 
 
-@api_view(["PUT"])
+@api_view(["GET", "PUT"])
 @permission_classes([IsAuthenticated])
 def user_detail(request, user_id):
     user = get_object_or_404(SystemUser.objects.using("default"), pk=user_id)
+    if request.method == "GET":
+        return api_response(data=_serialize_user(user))
     payload = parse_request_data(request)
     username = (payload.get("username") or user.username).strip()
 
@@ -731,8 +810,12 @@ def setting_save(request):
         )
 
     items = list(SystemSetting.objects.using("default").all().order_by("config_group", "sort_order", "id"))
+    bundle = _serialize_system_settings_bundle(items)
     return api_response(
-        data=_serialize_system_settings_bundle(items),
+        data={
+            **bundle,
+            "updated_at": bundle["stats"].get("last_updated", ""),
+        },
         msg="系统配置已保存" if changed_keys else "未检测到配置变更",
     )
 
@@ -765,7 +848,14 @@ def setting_reset(request):
     )
 
     items = list(SystemSetting.objects.using("default").all().order_by("config_group", "sort_order", "id"))
-    return api_response(data=_serialize_system_settings_bundle(items), msg="系统配置已恢复默认值")
+    bundle = _serialize_system_settings_bundle(items)
+    return api_response(
+        data={
+            **bundle,
+            "updated_at": bundle["stats"].get("last_updated", ""),
+        },
+        msg="系统配置已恢复默认值",
+    )
 
 
 @api_view(["GET"])
@@ -810,15 +900,21 @@ def operation_log_list(request):
     data = [
         {
             "id": item.id,
+            "time": timezone.localtime(item.created_at).strftime("%Y-%m-%d %H:%M:%S"),
+            "operator": item.operator_name,
             "operator_id": item.operator_id,
             "operator_name": item.operator_name,
             "module": item.module,
             "action": item.action,
+            "method": item.request_method,
             "request_method": item.request_method,
+            "path": item.request_path,
             "request_path": item.request_path,
+            "ip_address": item.request_ip,
             "request_ip": item.request_ip,
+            "detail": item.extra_data,
             "extra_data": item.extra_data,
-            "created_at": item.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "created_at": timezone.localtime(item.created_at).strftime("%Y-%m-%d %H:%M:%S"),
         }
         for item in logs_page
     ]

@@ -93,7 +93,8 @@
     }).fail(function(xhr) {
       Common.hideLoading("body");
       const message = xhr.responseJSON?.msg || "系统配置加载失败";
-      showAlert(message, "加载失败", "danger");
+      Http.renderEmptyState(document.getElementById("configGroupSummary"), message);
+      Http.showFriendlyError(message, xhr.responseText);
     });
   }
 
@@ -166,7 +167,7 @@
       Common.showMessage("系统配置已保存", "success");
     }).fail(function(xhr) {
       const message = xhr.responseJSON?.msg || "保存失败，请稍后重试";
-      showAlert(message, "保存失败", "danger");
+      Http.showFriendlyError(message, xhr.responseText);
     });
   }
 
@@ -184,7 +185,7 @@
           Common.showMessage("系统配置已恢复默认值", "success");
         }).fail(function(xhr) {
           const text = xhr.responseJSON?.msg || "恢复默认失败";
-          showAlert(text, "操作失败", "danger");
+          Http.showFriendlyError(text, xhr.responseText);
         });
       },
       null,
@@ -197,7 +198,7 @@
     const stats = state.bundle?.stats || {};
     setText("configGroupCount", stats.group_count || 0);
     setText("configItemCount", stats.item_count || 0);
-    setText("configEnabledSwitchCount", stats.enabled_switch_count || 0);
+    setText("configEnabledSwitchCount", stats.enabled_policy_count || stats.enabled_switch_count || 0);
     setText("configLastUpdated", stats.last_updated || "--");
 
     renderGroupSummary(state.bundle?.groups || []);
