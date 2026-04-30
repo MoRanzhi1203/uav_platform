@@ -262,6 +262,9 @@ async function loadRiskAreaModule(options = {}) {
   terrainDashboardState.risk.pagination = data.pagination || null;
   terrainDashboardState.lastRefreshedAt = data.refreshed_at || terrainDashboardState.lastRefreshedAt;
   renderRiskAreaModule();
+  if (terrainData.currentTerrain) {
+    updateDetailPanel(terrainData.currentTerrain);
+  }
 }
 
 async function loadSurveyRecordModule(options = {}) {
@@ -291,6 +294,9 @@ async function loadSurveyRecordModule(options = {}) {
   }
 
   renderSurveyRecordModule();
+  if (terrainData.currentTerrain) {
+    updateDetailPanel(terrainData.currentTerrain);
+  }
 }
 
 async function loadRiskAnalysisModule(options = {}) {
@@ -688,6 +694,11 @@ function formatArea(area) {
   return isFinite(numericArea) && numericArea > 0 ? `${numericArea.toFixed(2)} 公顷` : '-';
 }
 
+function toFiniteNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
 function normalizeTerrainItem(raw) {
   const riskLevel = normalizeTerrainRiskLevel(raw.risk_level);
   const drones = Array.isArray(raw.drones)
@@ -725,6 +736,37 @@ function buildBBoxObject(raw) {
   return { minLng, minLat, maxLng, maxLat };
 }
 
+function formatCoordinateValue(value) {
+  const numericValue = toFiniteNumber(value);
+  return numericValue === null ? '-' : numericValue.toFixed(4);
+}
+
+function formatCenterCoord(terrain) {
+  const centerLng = toFiniteNumber(terrain?.center_lng);
+  const centerLat = toFiniteNumber(terrain?.center_lat);
+  if (centerLng === null || centerLat === null) {
+    return '-';
+  }
+  return `${centerLng.toFixed(4)}, ${centerLat.toFixed(4)}`;
+}
+
+function buildCoverageRangeLabel(terrain) {
+  if (!terrain?.bbox) {
+    return '边界范围待补充';
+  }
+  const lngSpan = terrain.bbox.maxLng - terrain.bbox.minLng;
+  const latSpan = terrain.bbox.maxLat - terrain.bbox.minLat;
+  if (!Number.isFinite(lngSpan) || !Number.isFinite(latSpan)) {
+    return '边界范围待补充';
+  }
+  return `经差 ${lngSpan.toFixed(4)} / 纬差 ${latSpan.toFixed(4)}`;
+}
+
+function getCurrentLayerModeLabel() {
+  const boundaryButton = document.getElementById('btn-boundary');
+  return boundaryButton?.classList.contains('active') ? '边界' : '地块';
+}
+
 function getTerrainById(id) {
   return terrainData.terrains.find(item => String(item.id) === String(id));
 }
@@ -738,9 +780,12 @@ function buildSpatialSummary(terrain) {
   if (!terrain?.bbox) {
     return '当前缺少范围坐标，请先在编辑器中保存有效边界。';
   }
+  if (terrain?.has_boundary === false) {
+    return '当前地形边界待补充，地图仅展示已有地块范围。';
+  }
   return terrain.accuracy
-    ? `范围坐标已生成，精度 ${terrain.dataAccuracyLabel}。`
-    : '范围坐标已生成，可用于地图定位与任务执行。';
+    ? `边界已生成，当前精度 ${terrain.dataAccuracyLabel}，可用于空间定位与任务执行。`
+    : '边界已生成，可用于地图定位与任务执行。';
 }
 
 function formatDroneLabel(drone) {
@@ -758,6 +803,146 @@ function getTerrainBoundDrones(terrain) {
     return [terrain.drone];
   }
   return [];
+}
+
+function getTerrainSurveyPresentation(terrain) {
+  const terrainId = terrain?.id;
+  const terrainName = String(terrain?.name || '').trim();
+  const terrainSurveys = (Array.isArray(terrainData.surveys) ? terrainData.surveys : []).filter((survey) => {
+    if (terrainId && String(survey?.terrain_id || '') === String(terrainId)) {
+      return true;
+    }
+    return terrainName && String(survey?.terrain_name || '').trim() === terrainName;
+  });
+
+  if (!getTerrainBoundDrones(terrain).length) {
+    return { label: '未配置无人机', metricLabel: '未配置无人机' };
+  }
+  if (!terrainSurveys.length) {
+    return { label: '待调度', metricLabel: '待调度' };
+  }
+
+  const firstRunning = terrainSurveys.find((survey) => ['running', 'in_progress', 'processing'].includes(String(survey?.status || '').toLowerCase()));
+  if (firstRunning) {
+    return {
+      label: terrainSurveys.length > 1 ? `执行中 · ${terrainSurveys.length} 个任务` : '执行中',
+      metricLabel: '执行中'
+    };
+  }
+
+  const firstPending = terrainSurveys.find((survey) => ['pending', 'created', 'queued'].includes(String(survey?.status || '').toLowerCase()));
+  if (firstPending) {
+    return {
+      label: terrainSurveys.length > 1 ? `待执行 · ${terrainSurveys.length} 个任务` : '待执行',
+      metricLabel: '待执行'
+    };
+  }
+
+  const latestSurvey = terrainSurveys[0];
+  return {
+    label: latestSurvey?.status_label || '已完成',
+    metricLabel: latestSurvey?.status_label || '已完成'
+  };
+}
+
+function getDroneGroupingMode(drones) {
+  const hasExplicitPurpose = drones.some((drone) => (
+    drone?.purpose || drone?.usage || drone?.usage_type || drone?.scene_type
+  ));
+  return hasExplicitPurpose ? 'purpose' : 'model';
+}
+
+function normalizeDroneGroupLabelByPurpose(rawValue) {
+  const value = String(rawValue || '').trim().toLowerCase();
+  if (!value) return '未分类无人机';
+  if (/(survey|map|测绘)/.test(value)) return '测绘无人机';
+  if (/(patrol|inspect|巡检)/.test(value)) return '巡检无人机';
+  if (/(relay|transport|cargo|中继|运输)/.test(value)) return '运输/中继无人机';
+  if (/(backup|reserve|spare|备用)/.test(value)) return '备用无人机';
+  return '未分类无人机';
+}
+
+function normalizeDroneGroupLabelByModel(drone) {
+  const rawModel = `${drone?.model_name || ''} ${drone?.drone_name || ''}`.toLowerCase();
+  if (!rawModel.trim()) return '未分类机型';
+  if (/(vtol|垂直起降)/.test(rawModel)) return '垂直起降固定翼';
+  if (/(fixed|固定翼)/.test(rawModel)) return '固定翼';
+  if (/(quad|multi|rotor|多旋翼|旋翼)/.test(rawModel)) return '多旋翼';
+  if (/(helicopter|直升机)/.test(rawModel)) return '其他机型';
+  return '其他机型';
+}
+
+function groupDronesForDisplay(drones) {
+  const mode = getDroneGroupingMode(drones);
+  const modeLabel = mode === 'purpose' ? '按用途分组展示当前可调度无人机' : '按机型分组展示当前可调度无人机';
+  const groupsMap = new Map();
+  drones.forEach((drone) => {
+    const explicitPurpose = drone?.purpose || drone?.usage || drone?.usage_type || drone?.scene_type;
+    const groupLabel = mode === 'purpose'
+      ? normalizeDroneGroupLabelByPurpose(explicitPurpose)
+      : normalizeDroneGroupLabelByModel(drone);
+    if (!groupsMap.has(groupLabel)) {
+      groupsMap.set(groupLabel, []);
+    }
+    groupsMap.get(groupLabel).push(drone);
+  });
+
+  const groups = Array.from(groupsMap.entries()).map(([label, items]) => ({ label, items }));
+  return { modeLabel, groups };
+}
+
+function isDroneOnline(drone) {
+  const rawStatus = String(drone?.status || '').trim().toLowerCase();
+  if (!rawStatus) return false;
+  return ['idle', 'ready', 'running', 'processing', 'standby', 'available', 'online'].includes(rawStatus);
+}
+
+function getDroneTaskStatusLabel(drone) {
+  const rawStatus = String(drone?.status || '').trim().toLowerCase();
+  if (!rawStatus) return '状态待同步';
+  if (['running', 'processing'].includes(rawStatus)) return '当前任务：执行中';
+  if (['idle', 'ready', 'available'].includes(rawStatus)) return '当前任务：待命';
+  if (['standby'].includes(rawStatus)) return '当前任务：备用';
+  if (['offline', 'error', 'fault'].includes(rawStatus)) return '当前任务：不可执行';
+  return `当前任务：${rawStatus}`;
+}
+
+function getDroneAvailabilityLabel(drone) {
+  const rawStatus = String(drone?.status || '').trim().toLowerCase();
+  if (['offline', 'error', 'fault'].includes(rawStatus)) return '不可用';
+  if (['running', 'processing'].includes(rawStatus)) return '执行中';
+  return '可用';
+}
+
+function getDroneBatteryLevel(drone) {
+  const candidates = [
+    drone?.battery_level,
+    drone?.battery_percent,
+    drone?.battery,
+    drone?.power_percent,
+    drone?.power_level
+  ];
+  for (const item of candidates) {
+    const numericValue = toFiniteNumber(item);
+    if (numericValue !== null && numericValue >= 0 && numericValue <= 100) {
+      return numericValue;
+    }
+  }
+  return null;
+}
+
+function getDroneBatteryPresentation(drone) {
+  const batteryLevel = getDroneBatteryLevel(drone);
+  if (batteryLevel === null) {
+    return { label: '电量 -', className: '' };
+  }
+  if (batteryLevel < 20) {
+    return { label: `电量 ${batteryLevel.toFixed(0)}%`, className: 'level-low' };
+  }
+  if (batteryLevel <= 50) {
+    return { label: `电量 ${batteryLevel.toFixed(0)}%`, className: 'level-medium' };
+  }
+  return { label: `电量 ${batteryLevel.toFixed(0)}%`, className: 'level-high' };
 }
 
 function getTerrainDronePresentation(terrain) {
@@ -791,15 +976,48 @@ function renderRiskBreakdown(terrain) {
   if (!container) {
     return;
   }
+  const counts = {
+    high: Number(terrain?.high_risk_plot_count || 0),
+    medium: Number(terrain?.medium_risk_plot_count || 0),
+    low: Number(terrain?.low_risk_plot_count || 0),
+    none: Number(terrain?.unknown_risk_plot_count || 0)
+  };
   const items = [
-    { label: '高风险', value: terrain.high_risk_plot_count || 0, className: 'risk-high' },
-    { label: '中风险', value: terrain.medium_risk_plot_count || 0, className: 'risk-medium' },
-    { label: '低风险', value: terrain.low_risk_plot_count || 0, className: 'risk-low' },
-    { label: '未评估', value: terrain.unknown_risk_plot_count || 0, className: 'risk-none' }
+    { label: '高风险', value: counts.high, className: 'risk-high', icon: 'bi-exclamation-diamond', hint: '高风险区域：建议优先测绘或巡检' },
+    { label: '中风险', value: counts.medium, className: 'risk-medium', icon: 'bi-exclamation-triangle', hint: '中风险区域：建议重点巡检或持续关注' },
+    { label: '低风险', value: counts.low, className: 'risk-low', icon: 'bi-shield-check', hint: '低风险区域：保持常规巡检即可' },
+    { label: '未评估', value: counts.none, className: 'risk-none', icon: 'bi-question-diamond', hint: '未评估区域：需要补充风险评估' }
   ];
   container.innerHTML = items.map(item => `
-    <span class="terrain-risk-chip ${item.className}">${item.label} ${item.value}</span>
+    <div class="terrain-risk-tile ${item.className}" title="${escapeHtml(item.hint)}">
+      <span class="terrain-risk-tile-icon"><i class="bi ${item.icon}"></i></span>
+      <strong>${item.value}</strong>
+      <span>${item.label}</span>
+    </div>
   `).join('');
+
+  const assessedCount = counts.high + counts.medium + counts.low;
+  const totalCount = assessedCount + counts.none;
+  let judgement = '未完成风险评估';
+  if (totalCount === 0 && Number(terrain?.plot_count || 0) === 0) {
+    judgement = '暂无地块数据';
+  } else if (counts.high > 0) {
+    judgement = '高风险地形，建议优先测绘';
+  } else if (counts.medium > 0) {
+    judgement = '中风险地形，建议重点巡检';
+  } else if (counts.low > 0 && counts.high === 0 && counts.medium === 0) {
+    judgement = '当前暂无风险区域';
+  } else if (counts.none > 0) {
+    judgement = '未完成风险评估';
+  }
+
+  const sourceText = terrain?.updatedAtLabel && terrain.updatedAtLabel !== '--'
+    ? `风险统计更新于 ${terrain.updatedAtLabel}`
+    : '风险数据来源：当前地块统计结果';
+  const judgementNode = document.getElementById('infoRiskJudgement');
+  const sourceNode = document.getElementById('infoRiskSource');
+  if (judgementNode) judgementNode.textContent = judgement;
+  if (sourceNode) sourceNode.textContent = sourceText;
 }
 
 function renderDroneBindings(terrain) {
@@ -810,19 +1028,51 @@ function renderDroneBindings(terrain) {
   const drones = getTerrainBoundDrones(terrain);
   if (!drones.length) {
     list.innerHTML = '<div class="terrain-drone-empty">当前未绑定无人机</div>';
+    const modeNode = document.getElementById('infoDroneGroupMode');
+    const groupCountNode = document.getElementById('infoDroneGroupCount');
+    if (modeNode) modeNode.textContent = '按机型分组展示当前可调度无人机';
+    if (groupCountNode) groupCountNode.textContent = '0 组';
     return;
   }
 
-  list.innerHTML = drones.map(drone => `
-    <article class="terrain-drone-item">
-      <div class="terrain-drone-item-head">
-        <div class="terrain-drone-item-name">${escapeHtml(drone.drone_name || '未命名无人机')}</div>
-        <span class="terrain-drone-item-model">${escapeHtml(drone.model_name || '未标注机型')}</span>
+  const { modeLabel, groups } = groupDronesForDisplay(drones);
+  const modeNode = document.getElementById('infoDroneGroupMode');
+  const groupCountNode = document.getElementById('infoDroneGroupCount');
+  if (modeNode) modeNode.textContent = modeLabel;
+  if (groupCountNode) groupCountNode.textContent = `${groups.length} 组`;
+
+  list.innerHTML = groups.map(group => `
+    <section class="terrain-drone-group">
+      <div class="terrain-drone-group-head">
+        <div class="terrain-drone-group-title">${escapeHtml(group.label)}</div>
+        <span class="terrain-drone-group-count">${group.items.length} 台</span>
       </div>
-      <div class="terrain-drone-item-meta">
-        <div>设备编号：${escapeHtml(drone.drone_code || '--')}</div>
+      <div class="terrain-drone-group-body">
+        ${group.items.map((drone) => {
+          const online = isDroneOnline(drone);
+          const battery = getDroneBatteryPresentation(drone);
+          return `
+            <article class="terrain-drone-item">
+              <div class="terrain-drone-item-head">
+                <div class="terrain-drone-item-name">${escapeHtml(drone.drone_name || '未命名无人机')}</div>
+                <span class="terrain-drone-item-model">${escapeHtml(drone.model_name || '未标注机型')}</span>
+              </div>
+              <div class="terrain-drone-item-status">
+                <span class="terrain-status-dot ${online ? 'is-online' : 'is-offline'}"></span>
+                <span class="terrain-status-chip">${escapeHtml(online ? '在线' : '离线')}</span>
+                <span class="terrain-battery-chip ${battery.className}">${escapeHtml(battery.label)}</span>
+                <span class="terrain-availability-chip">${escapeHtml(getDroneAvailabilityLabel(drone))}</span>
+              </div>
+              <div class="terrain-drone-item-meta">
+                <div>设备编号：${escapeHtml(drone.drone_code || '--')}</div>
+                <div>${escapeHtml(getDroneTaskStatusLabel(drone))}</div>
+                <div>最近更新：${escapeHtml(formatTimestamp(drone.updated_at) || '--')}</div>
+              </div>
+            </article>
+          `;
+        }).join('')}
       </div>
-    </article>
+    </section>
   `).join('');
 }
 
@@ -861,11 +1111,44 @@ function renderBindDroneChecklist(drones, selectedIds = []) {
         <div class="bind-drone-option-meta">
           <div>机型：${escapeHtml(drone.model_name || '--')}</div>
           <div>编号：${escapeHtml(drone.drone_code || '--')}</div>
+          <div>状态：${escapeHtml(isDroneOnline(drone) ? '在线' : '离线')}</div>
         </div>
       </span>
     </label>
   `).join('');
   updateBindDroneSelectionSummary();
+}
+
+function updateTerrainMapSummary(terrain) {
+  const setText = (id, value) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.textContent = value;
+    }
+  };
+  const layerMode = getCurrentLayerModeLabel();
+  const centerCoord = formatCenterCoord(terrain);
+  const coverageRange = buildCoverageRangeLabel(terrain);
+  const topicStatus = terrain?.id
+    ? (terrain?.has_boundary === false ? '已选中，边界待补充' : '已选中，可进行空间预览')
+    : '待选择地形';
+
+  setText('terrainMapTitle', terrain?.name ? `${terrain.name} 空间预览` : '当前地形空间预览');
+  setText(
+    'terrainMapSelectionHint',
+    terrain?.name
+      ? `已联动当前地形，可切换边界或地块图层查看空间分布。`
+      : '当前未选中地形，请从左侧列表选择。'
+  );
+  setText('terrainMapCenter', centerCoord);
+  setText('terrainMapArea', terrain?.areaLabel || '-');
+  setText('terrainMapRange', coverageRange);
+  setText('terrainMapLayerMode', layerMode);
+  setText('terrainMapStatus', topicStatus);
+  setText('infoCenterCoord', centerCoord);
+  setText('infoCoverageRange', coverageRange);
+  setText('infoLayerModeSummary', `当前图层：${layerMode}`);
+  setText('infoTopicStatus', `状态：${topicStatus}`);
 }
 
 async function selectTerrainRow(id, options = {}) {
@@ -1006,14 +1289,18 @@ function updatePageData() {
 function updateDetailPanel(terrain) {
   const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   const dronePresentation = getTerrainDronePresentation(terrain);
-  setText('infoName', terrain.name);
+  const surveyPresentation = getTerrainSurveyPresentation(terrain);
+  setText('infoName', terrain.name || '未命名地形');
   setText('infoArea', terrain.areaLabel);
   setText('infoAccuracy', terrain.dataAccuracyLabel);
   setText('infoUpdatedAt', terrain.updatedAtLabel);
   setText('infoPlotCount', terrain.plotCountLabel);
   setText('infoDroneCount', `${dronePresentation.count} 台设备`);
+  setText('infoDroneCountMetric', `${dronePresentation.count} 台`);
   setText('infoDroneStatus', dronePresentation.status);
   setText('infoDroneMeta', dronePresentation.meta);
+  setText('infoSurveyStatus', surveyPresentation.label);
+  setText('infoSurveyStatusMetric', surveyPresentation.metricLabel);
   setText('infoRiskComposition', terrain.riskCompositionText);
   setText('infoRiskScore', terrain.risk_score || 0);
   setText('infoRiskReason', terrain.risk_reason || '暂无风险判定说明');
@@ -1025,6 +1312,7 @@ function updateDetailPanel(terrain) {
   if (r) { r.textContent = terrain.riskLabel; r.className = `badge ${terrain.riskClass}`; }
   renderRiskBreakdown(terrain);
   renderDroneBindings(terrain);
+  updateTerrainMapSummary(terrain);
   const droneStatus = document.getElementById('infoDroneStatus');
   if (droneStatus) {
     droneStatus.classList.toggle('is-unbound', !dronePresentation.isBound);
@@ -1050,6 +1338,12 @@ function initEvents() {
   document.getElementById('startTaskBtn').addEventListener('click', startSurveyTask);
   document.getElementById('bindDroneBtn').addEventListener('click', openBindDroneModal);
   document.getElementById('saveBindDroneBtn').addEventListener('click', saveBindDroneBinding);
+  document.getElementById('btn-boundary').addEventListener('click', () => {
+    if (terrainData.currentTerrain) updateTerrainMapSummary(terrainData.currentTerrain);
+  });
+  document.getElementById('btn-plot').addEventListener('click', () => {
+    if (terrainData.currentTerrain) updateTerrainMapSummary(terrainData.currentTerrain);
+  });
 
   document.addEventListener('click', (e) => {
     const detailBtn = e.target.closest('[data-module-toggle="detail"]');
@@ -1247,7 +1541,7 @@ async function openTaskModal() {
   
   if (drones.length) {
     info.innerHTML = `
-      <strong>已绑定无人机 (${drones.length} 台):</strong>
+      <strong>已绑定无人机 (${drones.length} 台，可创建多无人机 / 多班次测绘任务):</strong>
       <div class="mt-2">${drones.map(drone => `<span class="badge bg-light text-dark border me-1 mb-1">${escapeHtml(formatDroneLabel(drone))}</span>`).join('')}</div>
     `;
     info.classList.remove('d-none');
@@ -1277,7 +1571,12 @@ async function startSurveyTask() {
   
   const result = await resp.json();
   if (result.code === 0) {
-    showToast('任务已启动');
+    const droneCount = Number(result.data?.drone_count || 0);
+    const shiftCount = Number(result.data?.shifts_count || 0);
+    const taskMessage = droneCount > 1 || shiftCount > 1
+      ? `已创建多无人机 / 多班次测绘任务（${Math.max(droneCount, 1)} 台无人机，${Math.max(shiftCount, 1)} 个班次）`
+      : '任务已启动';
+    showToast(taskMessage);
     bootstrap.Modal.getInstance(document.getElementById('taskModal')).hide();
     loadSurveyRecordModule();
   } else {
@@ -1408,7 +1707,7 @@ function setTerrainEditButtonDisabled(d) {
 }
 
 function resetDetailPanel() {
-  ['infoName','infoArea','infoAccuracy','infoUpdatedAt','infoPlotCount','infoRiskComposition','infoRiskScore','infoRiskReason','infoBboxMin','infoBboxMax','infoDescription','infoSpatialSummary','infoDroneCount'].forEach(id => {
+  ['infoName','infoArea','infoAccuracy','infoUpdatedAt','infoPlotCount','infoRiskComposition','infoRiskScore','infoRiskReason','infoBboxMin','infoBboxMax','infoDescription','infoSpatialSummary','infoDroneCount','infoDroneCountMetric','infoSurveyStatus','infoSurveyStatusMetric','infoRiskJudgement','infoRiskSource','infoCenterCoord','infoCoverageRange','terrainMapCenter','terrainMapArea','terrainMapRange','terrainMapLayerMode','terrainMapStatus'].forEach(id => {
     const el = document.getElementById(id); if (el) el.textContent = '-';
   });
   const droneStatus = document.getElementById('infoDroneStatus');
@@ -1418,21 +1717,59 @@ function resetDetailPanel() {
   }
   const droneList = document.getElementById('infoDroneList');
   if (droneList) droneList.innerHTML = '<div class="terrain-drone-empty">当前未绑定无人机</div>';
+  const droneGroupMode = document.getElementById('infoDroneGroupMode');
+  if (droneGroupMode) droneGroupMode.textContent = '按机型分组展示当前可调度无人机';
+  const droneGroupCount = document.getElementById('infoDroneGroupCount');
+  if (droneGroupCount) droneGroupCount.textContent = '0 组';
   const droneMeta = document.getElementById('infoDroneMeta');
   if (droneMeta) droneMeta.textContent = '绑定后可直接执行测绘任务，并支持多机协同执行。';
   const spatialSummary = document.getElementById('infoSpatialSummary');
   if (spatialSummary) spatialSummary.textContent = '待选择地形后显示';
+  const coverageRange = document.getElementById('infoCoverageRange');
+  if (coverageRange) coverageRange.textContent = '待选择地形后显示';
   const riskBreakdown = document.getElementById('infoRiskBreakdown');
   if (riskBreakdown) {
     riskBreakdown.innerHTML = `
-      <span class="terrain-risk-chip risk-high">高风险 0</span>
-      <span class="terrain-risk-chip risk-medium">中风险 0</span>
-      <span class="terrain-risk-chip risk-low">低风险 0</span>
-      <span class="terrain-risk-chip risk-none">未评估 0</span>
+      <div class="terrain-risk-tile risk-high" title="高风险区域：建议优先测绘或巡检">
+        <span class="terrain-risk-tile-icon"><i class="bi bi-exclamation-diamond"></i></span>
+        <strong>0</strong>
+        <span>高风险</span>
+      </div>
+      <div class="terrain-risk-tile risk-medium" title="中风险区域：建议重点关注变化情况">
+        <span class="terrain-risk-tile-icon"><i class="bi bi-exclamation-triangle"></i></span>
+        <strong>0</strong>
+        <span>中风险</span>
+      </div>
+      <div class="terrain-risk-tile risk-low" title="低风险区域：保持常规巡检">
+        <span class="terrain-risk-tile-icon"><i class="bi bi-shield-check"></i></span>
+        <strong>0</strong>
+        <span>低风险</span>
+      </div>
+      <div class="terrain-risk-tile risk-none" title="未评估区域：需补充风险评估">
+        <span class="terrain-risk-tile-icon"><i class="bi bi-question-diamond"></i></span>
+        <strong>0</strong>
+        <span>未评估</span>
+      </div>
     `;
   }
+  const riskJudgement = document.getElementById('infoRiskJudgement');
+  if (riskJudgement) riskJudgement.textContent = '未完成风险评估';
+  const riskSource = document.getElementById('infoRiskSource');
+  if (riskSource) riskSource.textContent = '风险数据来源待同步';
   const bindBtn = document.getElementById('bindDroneBtn');
   if (bindBtn) bindBtn.innerHTML = '<i class="bi bi-link-45deg"></i> 管理绑定';
+  const mapTitle = document.getElementById('terrainMapTitle');
+  if (mapTitle) mapTitle.textContent = '当前地形空间预览';
+  const mapHint = document.getElementById('terrainMapSelectionHint');
+  if (mapHint) mapHint.textContent = '当前未选中地形，请从左侧列表选择。';
+  const mapLayerMode = document.getElementById('terrainMapLayerMode');
+  if (mapLayerMode) mapLayerMode.textContent = '地块';
+  const mapStatus = document.getElementById('terrainMapStatus');
+  if (mapStatus) mapStatus.textContent = '待选择地形';
+  const infoLayerModeSummary = document.getElementById('infoLayerModeSummary');
+  if (infoLayerModeSummary) infoLayerModeSummary.textContent = '当前图层：地块';
+  const infoTopicStatus = document.getElementById('infoTopicStatus');
+  if (infoTopicStatus) infoTopicStatus.textContent = '状态：待选择地形';
   const r = document.getElementById('infoRisk'); if (r) { r.textContent = '-'; r.className = 'badge bg-secondary'; }
 }
 

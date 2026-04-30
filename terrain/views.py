@@ -1141,7 +1141,13 @@ def get_available_drones(request):
                 "drone_code": d.drone_code,
                 "drone_name": d.drone_name,
                 "model_name": d.model_name,
-                "terrain_id": d.terrain_id
+                "terrain_id": d.terrain_id,
+                "status": getattr(d, "status", "") or "",
+                "updated_at": d.updated_at.isoformat() if getattr(d, "updated_at", None) else None,
+                "purpose": getattr(d, "purpose", None),
+                "usage": getattr(d, "usage", None),
+                "usage_type": getattr(d, "usage_type", None),
+                "battery_level": getattr(d, "battery_level", None),
             }
             for d in queryset
         ]
@@ -1204,6 +1210,12 @@ def bind_drone(request):
                         "drone_code": drone.drone_code,
                         "drone_name": drone.drone_name,
                         "model_name": drone.model_name,
+                        "status": getattr(drone, "status", "") or "",
+                        "updated_at": drone.updated_at.isoformat() if getattr(drone, "updated_at", None) else None,
+                        "purpose": getattr(drone, "purpose", None),
+                        "usage": getattr(drone, "usage", None),
+                        "usage_type": getattr(drone, "usage_type", None),
+                        "battery_level": getattr(drone, "battery_level", None),
                     }
                     for drone in bound_drones
                 ],

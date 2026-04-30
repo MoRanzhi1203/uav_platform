@@ -514,28 +514,29 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         drone = Drone.objects.filter(terrain_id=obj.id).order_by('id').first()
         return drone.id if drone else 0
 
+    def _serialize_drone_brief(self, drone):
+        return {
+            "id": drone.id,
+            "drone_code": drone.drone_code,
+            "drone_name": drone.drone_name,
+            "model_name": drone.model_name,
+            "status": getattr(drone, "status", "") or "",
+            "updated_at": drone.updated_at.isoformat() if getattr(drone, "updated_at", None) else None,
+            "purpose": getattr(drone, "purpose", None),
+            "usage": getattr(drone, "usage", None),
+            "usage_type": getattr(drone, "usage_type", None),
+            "battery_level": getattr(drone, "battery_level", None),
+        }
+
     def get_drone(self, obj):
         drone = Drone.objects.filter(terrain_id=obj.id).order_by('id').first()
         if drone:
-            return {
-                "id": drone.id,
-                "drone_code": drone.drone_code,
-                "drone_name": drone.drone_name,
-                "model_name": drone.model_name,
-            }
+            return self._serialize_drone_brief(drone)
         return None
 
     def get_drones(self, obj):
         queryset = Drone.objects.filter(terrain_id=obj.id).order_by('id')
-        return [
-            {
-                "id": drone.id,
-                "drone_code": drone.drone_code,
-                "drone_name": drone.drone_name,
-                "model_name": drone.model_name,
-            }
-            for drone in queryset
-        ]
+        return [self._serialize_drone_brief(drone) for drone in queryset]
 
     def get_drone_ids(self, obj):
         return list(Drone.objects.filter(terrain_id=obj.id).order_by('id').values_list('id', flat=True))
