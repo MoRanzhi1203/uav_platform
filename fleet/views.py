@@ -36,6 +36,7 @@ from common.uav_history import (
 )
 from fleet.models import Drone, DroneGroup, DroneGroupMember, LaunchSite, Pilot
 from fleet.serializers import DroneSerializer, PilotSerializer
+from terrain.models import TerrainArea
 
 DB_ALIAS = "default"
 MANAGER_TYPES = {"super_admin", "dispatcher"}
@@ -255,15 +256,19 @@ def _drone_summary_payload(drones, pilots, metrics):
 def _serialize_drone_page(request, drones):
     launch_sites = list(_launch_site_queryset(request))
     pilots = list(_pilot_queryset(request))
+    terrain_ids = {item.terrain_id for item in drones if getattr(item, "terrain_id", 0)}
+    terrains = list(TerrainArea.objects.filter(id__in=terrain_ids, is_deleted=False)) if terrain_ids else []
     assignment_context = build_assignment_context(DB_ALIAS)
     _normalize_instances_datetimes(drones)
     _normalize_instances_datetimes(pilots)
     _normalize_instances_datetimes(launch_sites)
+    _normalize_instances_datetimes(terrains)
     _normalize_instances_datetimes(assignment_context["tasks"])
     metrics = _build_drone_metrics(drones, assignment_context)
     serializer_context = {
         "launch_site_map": {item.id: item for item in launch_sites},
         "pilot_map": {item.id: item for item in pilots},
+        "terrain_map": {item.id: item for item in terrains},
         "drone_task_count_map": metrics["drone_task_count_map"],
         "drone_flight_duration_map": metrics["drone_flight_duration_map"],
         "drone_completion_rate_map": metrics["drone_completion_rate_map"],

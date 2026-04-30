@@ -13,287 +13,190 @@
 {% endblock %}
 {% block content %}
 <section class="section">
+    <div class="ops-page-header">
+        <div>
+            <h1 class="ops-page-title">无人机管理</h1>
+            <p class="ops-page-subtitle mb-0">联动地形、任务、飞手、起降点与历史轨迹，统一查看机群资源状态与执行能力。</p>
+        </div>
+        <div class="ops-toolbar-actions">
+            <a class="btn btn-outline-primary btn-sm" href="/terrain/">
+                <i class="bi bi-geo-alt"></i> 查看地形联动
+            </a>
+            <a class="btn btn-outline-secondary btn-sm" href="/tasking/">
+                <i class="bi bi-diagram-3"></i> 查看任务调度
+            </a>
+            <button type="button" class="btn btn-primary btn-sm fleet-refresh-btn">
+                <i class="bi bi-arrow-repeat"></i> 刷新态势
+            </button>
+        </div>
+    </div>
+
+    {% if not ops_health_ok %}
+    <div class="alert alert-danger ops-page-alert" role="alert">
+        <i class="bi bi-exclamation-octagon me-2"></i>
+        <strong>数据库连接异常：</strong>{{ ops_health_error }}
+    </div>
+    {% endif %}
+
     <div class="row g-3 ops-stat-grid">
-        <div class="col-lg-3 col-md-6 d-flex">
+        <div class="col-lg-3 col-md-6">
             <div class="card info-card ops-stat-card ops-tone-primary">
                 <div class="card-body">
-                    <div class="ops-stat-header">
-                        <h5 class="card-title">无人机总数 <span>| Fleet</span></h5>
-                        <a class="ops-quick-link" href="/fleet/detail/">
-                            <i class="bi bi-eye"></i> 详情
-                        </a>
+                    <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                        <i class="bi bi-airplane-engines"></i>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
-                            <i class="bi bi-airplane-engines text-primary"></i>
-                        </div>
-                        <div class="ps-3">
-                            <h6 id="fleet-stat-total">0</h6>
-                            <div class="trend-text">无人机资产总量</div>
-                                <div class="ops-stat-meta">
-                                    <span class="ops-chip">关键指标</span>
-                                </div>
-                        </div>
-                    </div>
+                    <h5 class="card-title">无人机总数</h5>
+                    <h6 id="fleet-stat-total">0</h6>
+                    <div class="trend-text">无人机资产总量</div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6 d-flex">
+        <div class="col-lg-3 col-md-6">
             <div class="card info-card ops-stat-card ops-tone-success">
                 <div class="card-body">
-                    <div class="ops-stat-header">
-                        <h5 class="card-title">在线率 <span>| 实时</span></h5>
-                        <button type="button" class="ops-quick-link border-0" id="fleet-card-refresh-btn">
-                            <i class="bi bi-arrow-repeat"></i> 刷新
-                        </button>
+                    <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                        <i class="bi bi-broadcast"></i>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
-                            <i class="bi bi-broadcast text-success"></i>
-                        </div>
-                        <div class="ps-3">
-                            <h6 id="fleet-stat-online">0%</h6>
-                            <div class="trend-text">自动刷新在线状态与电量</div>
-                            <div class="ops-stat-meta">
-                                <span class="ops-chip">在线态势</span>
-                            </div>
-                        </div>
-                    </div>
+                    <h5 class="card-title">在线率</h5>
+                    <h6 id="fleet-stat-online">0%</h6>
+                    <div class="trend-text">实时在线态势</div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6 d-flex">
+        <div class="col-lg-3 col-md-6">
             <div class="card info-card ops-stat-card ops-tone-warning">
                 <div class="card-body">
-                    <div class="ops-stat-header">
-                        <h5 class="card-title">飞手总数 <span>| Crew</span></h5>
-                        <a class="ops-quick-link" href="/fleet/detail/">
-                            <i class="bi bi-person-lines-fill"></i> 资质
-                        </a>
+                    <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                        <i class="bi bi-person-badge"></i>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
-                            <i class="bi bi-person-badge text-warning"></i>
-                        </div>
-                        <div class="ps-3">
-                            <h6 id="fleet-stat-pilot">0</h6>
-                            <div class="trend-text">关联飞手资质与执飞机型</div>
-                            <div class="ops-stat-meta">
-                                <span class="ops-chip">机组协同</span>
-                            </div>
-                        </div>
-                    </div>
+                    <h5 class="card-title">飞手总数</h5>
+                    <h6 id="fleet-stat-pilot">0</h6>
+                    <div class="trend-text">机组协同规模</div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6 d-flex">
+        <div class="col-lg-3 col-md-6">
             <div class="card info-card ops-stat-card ops-tone-danger">
                 <div class="card-body">
-                    <div class="ops-stat-header">
-                        <h5 class="card-title">活跃任务数 <span>| 今日</span></h5>
-                        <a class="ops-quick-link" href="/tasking/">
-                            <i class="bi bi-send-check"></i> 调度
-                        </a>
+                    <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                        <i class="bi bi-list-task"></i>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
-                            <i class="bi bi-list-task text-danger"></i>
-                        </div>
-                        <div class="ps-3">
-                            <h6 id="fleet-stat-active">0</h6>
-                            <div class="trend-text">任务执行链路联动调度模块</div>
-                            <div class="ops-stat-meta">
-                                <span class="ops-chip">任务联动</span>
-                            </div>
-                        </div>
-                    </div>
+                    <h5 class="card-title">活跃任务数</h5>
+                    <h6 id="fleet-stat-active">0</h6>
+                    <div class="trend-text">今日任务联动</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card ops-filter-card">
-        <div class="card-body">
-            <div class="ops-filter-shell">
-                <div class="ops-filter-summary">
-                    <div>
-                        <h5 class="card-title mb-1">历史数据筛选与导出</h5>
-                        <div class="trend-text">时间、状态、区域、飞手多维过滤，支持导出与详情联动。</div>
-                    </div>
-                    <div class="ops-filter-chips">
-                        <span class="ops-chip">日期范围</span>
-                        <span class="ops-chip">机组维度</span>
-                        <span class="ops-chip">关键词检索</span>
-                    </div>
-                </div>
-            <div class="ops-toolbar mb-3">
-                <h5 class="card-title mb-0">筛选操作</h5>
-                <div class="ops-toolbar-actions">
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="fleet-export-list-btn">
-                        <i class="bi bi-download"></i> 导出无人机 CSV
-                    </button>
-                    <button type="button" class="btn btn-outline-success btn-sm" id="fleet-export-history-btn">
-                        <i class="bi bi-file-earmark-bar-graph"></i> 导出历史 CSV
-                    </button>
-                    <a class="btn btn-outline-secondary btn-sm" href="/fleet/detail/">
-                        <i class="bi bi-eye"></i> 详情页
-                    </a>
-                </div>
-            </div>
-            <form id="fleet-filter-form" class="row g-3 ops-filter-form">
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">开始日期</label>
-                    <input id="fleet-start-date" type="date" class="form-control">
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">结束日期</label>
-                    <input id="fleet-end-date" type="date" class="form-control">
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">聚合方式</label>
-                    <select id="fleet-grain" class="form-select">
-                        <option value="day">按日</option>
-                        <option value="week">按周</option>
-                        <option value="month">按月</option>
-                    </select>
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">状态</label>
-                    <select id="fleet-status" class="form-select">
-                        <option value="">全部状态</option>
-                    </select>
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">区域</label>
-                    <select id="fleet-region" class="form-select">
-                        <option value="">全部区域</option>
-                    </select>
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">飞手</label>
-                    <select id="fleet-pilot" class="form-select">
-                        <option value="">全部飞手</option>
-                    </select>
-                </div>
-                <div class="col-lg-6 col-md-8">
-                    <label class="form-label">关键字</label>
-                    <input id="fleet-keyword" type="text" class="form-control" placeholder="名称、型号、编码、序列号">
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">每页条数</label>
-                    <select id="fleet-page-size" class="form-select">
-                        <option value="10" selected>10</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                    </select>
-                </div>
-                <div class="col-lg-4 ops-filter-actions">
-                    <button id="fleet-query-btn" type="button" class="btn btn-primary">
-                        <i class="bi bi-search"></i> 查询
-                    </button>
-                    <button id="fleet-reset-btn" type="button" class="btn btn-outline-secondary">
-                        <i class="bi bi-arrow-clockwise"></i> 重置
-                    </button>
-                </div>
-            </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3 ops-content-grid">
-        <div class="col-xl-7">
-            <div class="card ops-panel-card">
+    <div class="ops-lower-layout mt-3">
+        <!-- 左侧筛选面板 -->
+        <div class="ops-filter-panel">
+            <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">历史任务趋势 <span>| 完成 / 执行中 / 待执行</span></h5>
-                    <div id="fleet-history-chart" class="ops-chart"></div>
-                    <div id="fleet-chart-legend" class="ops-legend mt-3">
-                        <span class="ops-legend-item is-clickable" data-series="已完成"><span class="ops-legend-dot" style="background:#0d6efd;"></span> 已完成</span>
-                        <span class="ops-legend-item is-clickable" data-series="执行中"><span class="ops-legend-dot" style="background:#198754;"></span> 执行中</span>
-                        <span class="ops-legend-item is-clickable" data-series="待执行"><span class="ops-legend-dot" style="background:#fd7e14;"></span> 待执行</span>
-                    </div>
+                    <h5 class="card-title mb-3">筛选条件</h5>
+                    <form id="fleet-filter-form" class="ops-filter-form">
+                        <div class="mb-3">
+                            <label class="form-label">开始日期</label>
+                            <input id="fleet-start-date" type="date" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">结束日期</label>
+                            <input id="fleet-end-date" type="date" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">聚合方式</label>
+                            <select id="fleet-grain" class="form-select">
+                                <option value="day">按日</option>
+                                <option value="week">按周</option>
+                                <option value="month">按月</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">状态</label>
+                            <select id="fleet-status" class="form-select">
+                                <option value="">全部状态</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">区域</label>
+                            <select id="fleet-region" class="form-select">
+                                <option value="">全部区域</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">飞手</label>
+                            <select id="fleet-pilot" class="form-select">
+                                <option value="">全部飞手</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">关键字</label>
+                            <input id="fleet-keyword" type="text" class="form-control" placeholder="名称、型号、编码、序列号">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">每页条数</label>
+                            <select id="fleet-page-size" class="form-select">
+                                <option value="10" selected>10</option>
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="d-grid gap-2 mt-4">
+                            <button id="fleet-query-btn" type="button" class="btn btn-primary">
+                                <i class="bi bi-search"></i> 查询
+                            </button>
+                            <button id="fleet-reset-btn" type="button" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-clockwise"></i> 重置
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
-            <div class="card ops-panel-card">
+        </div>
+
+        <!-- 右侧表格列表 -->
+        <div class="ops-table-panel">
+            <div class="card h-100">
                 <div class="card-body">
                     <div class="ops-toolbar mb-3">
                         <h5 class="card-title mb-0">无人机列表</h5>
-                        <div class="ops-legend">
-                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#0d6efd;"></span> 已完成</span>
-                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#198754;"></span> 执行中</span>
-                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#fd7e14;"></span> 待执行</span>
+                        <div class="ops-toolbar-actions">
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="fleet-export-list-btn">
+                                <i class="bi bi-download"></i> 导出 CSV
+                            </button>
+                            <button type="button" class="btn btn-outline-primary btn-sm fleet-refresh-btn">
+                                <i class="bi bi-arrow-repeat"></i> 刷新
+                            </button>
+                            <a class="btn btn-outline-primary btn-sm" href="/fleet/detail/" id="fleet-detail-btn-top">
+                                <i class="bi bi-eye"></i> 详情
+                            </a>
                         </div>
                     </div>
+                    
                     <div class="table-responsive ops-table-wrap">
                         <table class="table table-hover align-middle">
                             <thead>
                                 <tr>
-                                    <th>无人机名称</th>
-                                    <th>状态</th>
-                                    <th>电量</th>
-                                    <th>所属区域</th>
+                                    <th>无人机</th>
+                                    <th>状态与电量</th>
+                                    <th>绑定地形 / 区域</th>
+                                    <th>飞手 / 起降点</th>
+                                    <th>任务表现</th>
                                     <th>最近活动</th>
-                                    <th>任务数</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody id="fleet-drone-tbody"></tbody>
                         </table>
                     </div>
+                    
                     <div class="ops-pagination mt-3">
                         <div id="fleet-page-info" class="page-info">第 1 / 1 页，共 0 条</div>
                         <div class="d-flex gap-2">
                             <button id="fleet-prev-page" type="button" class="btn btn-outline-secondary btn-sm">上一页</button>
                             <button id="fleet-next-page" type="button" class="btn btn-outline-secondary btn-sm">下一页</button>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-5">
-            <div class="card ops-panel-card">
-                <div class="card-body">
-                    <div class="ops-map-shell">
-                        <div class="ops-map-toolbar">
-                            <div>
-                                <h5 class="card-title mb-0">GIS 历史轨迹与热力</h5>
-                                <div class="ops-map-note">支持时间段回放、轨迹密度调节和节点悬停说明。</div>
-                            </div>
-                            <div class="ops-toolbar-actions">
-                                <select id="fleet-replay-date" class="form-select form-select-sm">
-                                    <option value="">全部日期</option>
-                                </select>
-                                <select id="fleet-map-density" class="form-select form-select-sm ops-density-select">
-                                    <option value="coarse">稀疏</option>
-                                    <option value="normal" selected>标准</option>
-                                    <option value="dense">精细</option>
-                                </select>
-                                <button id="fleet-replay-play" type="button" class="btn btn-outline-primary btn-sm">轨迹回放</button>
-                            </div>
-                        </div>
-                        <div id="fleet-map" class="ops-map"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="card ops-detail-card">
-                <div class="card-body">
-                    <h5 class="card-title">无人机详细历史数据</h5>
-                    <div id="fleet-status-alert" class="ops-inline-alert"></div>
-                    <div id="fleet-detail-panel" class="mb-3"></div>
-                    <div class="table-responsive ops-mini-table">
-                        <table class="table table-sm align-middle">
-                            <thead>
-                                <tr>
-                                    <th>周期</th>
-                                    <th>电量</th>
-                                    <th>完成/总数</th>
-                                    <th>飞行时长</th>
-                                    <th>耗电</th>
-                                    <th>状态</th>
-                                </tr>
-                            </thead>
-                            <tbody id="fleet-history-tbody"></tbody>
-                        </table>
                     </div>
                 </div>
             </div>

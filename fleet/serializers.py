@@ -71,11 +71,13 @@ class DroneSerializer(AwareDateTimeMixin, serializers.ModelSerializer):
     name = serializers.CharField(source="drone_name", read_only=True)
     model = serializers.CharField(source="model_name", read_only=True)
     battery = serializers.SerializerMethodField()
+    battery_percentage = serializers.IntegerField(read_only=True)
     last_active = serializers.SerializerMethodField()
     region_id = serializers.SerializerMethodField()
     region = serializers.SerializerMethodField()
     pilot_name = serializers.SerializerMethodField()
     launch_site_name = serializers.SerializerMethodField()
+    terrain_name = serializers.SerializerMethodField()
     task_count = serializers.SerializerMethodField()
     flight_duration = serializers.SerializerMethodField()
     completion_rate = serializers.SerializerMethodField()
@@ -93,6 +95,7 @@ class DroneSerializer(AwareDateTimeMixin, serializers.ModelSerializer):
             "model_name",
             "serial_no",
             "battery",
+            "battery_percentage",
             "battery_capacity",
             "status",
             "last_active",
@@ -102,6 +105,8 @@ class DroneSerializer(AwareDateTimeMixin, serializers.ModelSerializer):
             "launch_site_name",
             "pilot_id",
             "pilot_name",
+            "terrain_id",
+            "terrain_name",
             "task_count",
             "flight_duration",
             "completion_rate",
@@ -111,6 +116,8 @@ class DroneSerializer(AwareDateTimeMixin, serializers.ModelSerializer):
         )
 
     def get_battery(self, obj):
+        if getattr(obj, "battery_percentage", None) is not None:
+            return obj.battery_percentage
         battery_map = self.context.get("drone_battery_map") or {}
         if obj.id in battery_map:
             return battery_map[obj.id]
@@ -123,7 +130,7 @@ class DroneSerializer(AwareDateTimeMixin, serializers.ModelSerializer):
         return max(15, min(100, base - ((obj.id * 11 + age_hours * 3) % 48)))
 
     def get_last_active(self, obj):
-        return self._serialize_datetime(obj.updated_at)
+        return self._serialize_datetime(getattr(obj, "last_active", None) or obj.updated_at)
 
     def get_region_id(self, obj):
         site = self._get_launch_site(obj)
@@ -141,6 +148,11 @@ class DroneSerializer(AwareDateTimeMixin, serializers.ModelSerializer):
     def get_launch_site_name(self, obj):
         site = self._get_launch_site(obj)
         return site.site_name if site else ""
+
+    def get_terrain_name(self, obj):
+        terrain_map = self.context.get("terrain_map") or {}
+        terrain = terrain_map.get(obj.terrain_id)
+        return getattr(terrain, "name", "") if terrain else ""
 
     def get_task_count(self, obj):
         return (self.context.get("drone_task_count_map") or {}).get(obj.id, 0)

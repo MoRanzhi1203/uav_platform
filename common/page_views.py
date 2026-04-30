@@ -1,6 +1,17 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 
+from common.db_health import check_ops_database_health
+
+
+def _ops_page_context():
+    health = check_ops_database_health()
+    return {
+        "ops_health_ok": health["ok"],
+        "ops_health_error": "；".join(health["errors"]) if health["errors"] else "",
+        "ops_database_info": health["database_info"],
+    }
+
 
 def login_page(request):
     return render(request, "login.html", {"hide_nav": True})
@@ -13,7 +24,7 @@ def dashboard_page(request):
 
 @login_required(login_url="/login/")
 def fleet_list_page(request):
-    return render(request, "fleet_list.html")
+    return render(request, "fleet_list.html", _ops_page_context())
 
 
 @login_required(login_url="/login/")
@@ -43,7 +54,7 @@ def agri_detail_page(request):
 
 @login_required(login_url="/login/")
 def tasking_list_page(request):
-    return render(request, "tasking_list.html")
+    return render(request, "tasking_list.html", _ops_page_context())
 
 
 @login_required(login_url="/login/")

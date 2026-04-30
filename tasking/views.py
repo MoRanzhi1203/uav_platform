@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time
 
 from django.db import models
 from django.db.models import Q
@@ -126,6 +126,8 @@ def _filter_tasks(request):
     status_value = (request.GET.get("status") or "").strip()
     type_value = (request.GET.get("type") or request.GET.get("scene_type") or "").strip()
     start_date, end_date = resolve_time_window(request.GET.get("start_date"), request.GET.get("end_date"), default_days=90)
+    start_dt = timezone.make_aware(datetime.combine(start_date, time.min), timezone.get_current_timezone())
+    end_dt = timezone.make_aware(datetime.combine(end_date, time.max), timezone.get_current_timezone())
 
     if status_value:
         queryset = queryset.filter(status__iexact=status_value)
@@ -136,9 +138,9 @@ def _filter_tasks(request):
             Q(task_name__icontains=keyword) | Q(task_code__icontains=keyword) | Q(description__icontains=keyword)
         )
     queryset = queryset.filter(
-        Q(planned_start__date__range=(start_date, end_date))
-        | Q(created_at__date__range=(start_date, end_date))
-        | Q(planned_start__isnull=True, created_at__date__range=(start_date, end_date))
+        Q(planned_start__range=(start_dt, end_dt))
+        | Q(created_at__range=(start_dt, end_dt))
+        | Q(planned_start__isnull=True, created_at__range=(start_dt, end_dt))
     )
     return queryset.order_by("-planned_start", "-created_at", "-id")
 
@@ -155,7 +157,11 @@ def _task_summary_payload(task_rows):
     total = len(task_rows)
     running = sum(1 for item in task_rows if normalize_task_status(item["status"]) == "running")
     completed = sum(1 for item in task_rows if normalize_task_status(item["status"]) == "completed")
-    abnormal = sum(1 for item in task_rows if item.get("delayed"))
+    abnormal = sum(
+        1
+        for item in task_rows
+        if normalize_task_status(item["status"]) == "abnormal" or item.get("delayed")
+    )
     return {
         "task_total": total,
         "running_total": running,

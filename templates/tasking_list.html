@@ -10,222 +10,155 @@
 {% endblock %}
 {% block content %}
 <section class="section">
+    {% if not ops_health_ok %}
+    <div class="alert alert-danger ops-page-alert" role="alert">
+        <i class="bi bi-exclamation-octagon me-2"></i>
+        <strong>数据库连接异常：</strong>{{ ops_health_error }}
+    </div>
+    {% endif %}
+
     <div class="row g-3 ops-stat-grid">
-        <div class="col-lg-3 col-md-6 d-flex">
+        <div class="col-lg-3 col-md-6">
             <div class="card info-card ops-stat-card ops-tone-primary">
                 <div class="card-body">
-                    <div class="ops-stat-header">
-                        <h5 class="card-title">任务总数 <span>| Task</span></h5>
-                        <a class="ops-quick-link" href="/tasking/detail/">
-                            <i class="bi bi-eye"></i> 详情
-                        </a>
+                    <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                        <i class="bi bi-kanban"></i>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
-                            <i class="bi bi-kanban text-primary"></i>
-                        </div>
-                        <div class="ps-3">
-                            <h6 id="tasking-stat-total">0</h6>
-                            <div class="trend-text">统计所选周期内任务总量</div>
-                                <div class="ops-stat-meta">
-                                    <span class="ops-chip">任务总览</span>
-                                </div>
-                        </div>
-                    </div>
+                    <h5 class="card-title">任务总数</h5>
+                    <h6 id="tasking-stat-total">0</h6>
+                    <div class="trend-text">周期内任务总量</div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6 d-flex">
+        <div class="col-lg-3 col-md-6">
             <div class="card info-card ops-stat-card ops-tone-success">
                 <div class="card-body">
-                    <div class="ops-stat-header">
-                        <h5 class="card-title">执行中任务 <span>| Running</span></h5>
-                        <button type="button" class="ops-quick-link border-0" id="tasking-card-refresh-btn">
-                            <i class="bi bi-arrow-repeat"></i> 刷新
-                        </button>
+                    <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                        <i class="bi bi-play-circle"></i>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
-                            <i class="bi bi-play-circle text-success"></i>
-                        </div>
-                        <div class="ps-3">
-                            <h6 id="tasking-stat-running">0</h6>
-                            <div class="trend-text">自动联动分派执行状态</div>
-                            <div class="ops-stat-meta">
-                                <span class="ops-chip">实时执行</span>
-                            </div>
-                        </div>
-                    </div>
+                    <h5 class="card-title">执行中任务</h5>
+                    <h6 id="tasking-stat-running">0</h6>
+                    <div class="trend-text">实时分派态势</div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6 d-flex">
+        <div class="col-lg-3 col-md-6">
             <div class="card info-card ops-stat-card ops-tone-warning">
                 <div class="card-body">
-                    <div class="ops-stat-header">
-                        <h5 class="card-title">已完成任务 <span>| Done</span></h5>
-                        <a class="ops-quick-link" href="/tasking/detail/">
-                            <i class="bi bi-clipboard-data"></i> 记录
-                        </a>
+                    <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                        <i class="bi bi-check2-circle"></i>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
-                            <i class="bi bi-check2-circle text-warning"></i>
-                        </div>
-                        <div class="ps-3">
-                            <h6 id="tasking-stat-completed">0</h6>
-                            <div class="trend-text">统计完成率与执行闭环</div>
-                            <div class="ops-stat-meta">
-                                <span class="ops-chip">完成闭环</span>
-                            </div>
-                        </div>
-                    </div>
+                    <h5 class="card-title">已完成任务</h5>
+                    <h6 id="tasking-stat-completed">0</h6>
+                    <div class="trend-text">任务执行闭环</div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6 d-flex">
+        <div class="col-lg-3 col-md-6">
             <div class="card info-card ops-stat-card ops-tone-danger">
                 <div class="card-body">
-                    <div class="ops-stat-header">
-                        <h5 class="card-title">异常任务数 <span>| Delay</span></h5>
-                        <button type="button" class="ops-quick-link border-0" id="tasking-focus-alerts-btn">
-                            <i class="bi bi-bell"></i> 告警
-                        </button>
+                    <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                        <i class="bi bi-exclamation-triangle"></i>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
-                            <i class="bi bi-exclamation-triangle text-danger"></i>
-                        </div>
-                        <div class="ps-3">
-                            <h6 id="tasking-stat-abnormal">0</h6>
-                            <div class="trend-text">自动识别延误与异常记录</div>
-                            <div class="ops-stat-meta">
-                                <span class="ops-chip">风险提示</span>
-                            </div>
-                        </div>
-                    </div>
+                    <h5 class="card-title">异常任务数</h5>
+                    <h6 id="tasking-stat-abnormal">0</h6>
+                    <div class="trend-text">延误与异常记录</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card ops-filter-card">
-        <div class="card-body">
-            <div class="ops-filter-shell">
-                <div class="ops-filter-summary">
-                    <div>
-                        <h5 class="card-title mb-1">任务历史筛选与导出</h5>
-                        <div class="trend-text">支持任务、区域、无人机、飞手多维组合筛选，并联动轨迹与分派记录。</div>
-                    </div>
-                    <div class="ops-filter-chips">
-                        <span class="ops-chip">时间维度</span>
-                        <span class="ops-chip">执行状态</span>
-                        <span class="ops-chip">资源筛选</span>
-                    </div>
-                </div>
-            <div class="ops-toolbar mb-3">
-                <h5 class="card-title mb-0">筛选操作</h5>
-                <div class="ops-toolbar-actions">
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="tasking-export-task-btn">
-                        <i class="bi bi-download"></i> 导出任务 CSV
-                    </button>
-                    <button type="button" class="btn btn-outline-success btn-sm" id="tasking-export-history-btn">
-                        <i class="bi bi-file-earmark-bar-graph"></i> 导出历史 CSV
-                    </button>
-                    <a class="btn btn-outline-secondary btn-sm" href="/tasking/detail/">
-                        <i class="bi bi-eye"></i> 详情页
-                    </a>
-                </div>
-            </div>
-            <form id="tasking-filter-form" class="row g-3 ops-filter-form">
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">开始日期</label>
-                    <input id="tasking-start-date" type="date" class="form-control">
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">结束日期</label>
-                    <input id="tasking-end-date" type="date" class="form-control">
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">聚合方式</label>
-                    <select id="tasking-grain" class="form-select">
-                        <option value="day">按日</option>
-                        <option value="week">按周</option>
-                        <option value="month">按月</option>
-                    </select>
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">状态</label>
-                    <select id="tasking-status" class="form-select">
-                        <option value="">全部状态</option>
-                    </select>
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">任务类型</label>
-                    <select id="tasking-type" class="form-select">
-                        <option value="">全部类型</option>
-                    </select>
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">区域</label>
-                    <select id="tasking-region" class="form-select">
-                        <option value="">全部区域</option>
-                    </select>
-                </div>
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">无人机</label>
-                    <select id="tasking-drone" class="form-select">
-                        <option value="">全部无人机</option>
-                    </select>
-                </div>
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">飞手</label>
-                    <select id="tasking-pilot" class="form-select">
-                        <option value="">全部飞手</option>
-                    </select>
-                </div>
-                <div class="col-lg-4 col-md-8">
-                    <label class="form-label">关键字</label>
-                    <input id="tasking-keyword" type="text" class="form-control" placeholder="任务名称、编码、描述">
-                </div>
-                <div class="col-lg-2 col-md-4 ops-filter-actions">
-                    <button id="tasking-query-btn" type="button" class="btn btn-primary">
-                        <i class="bi bi-search"></i> 查询
-                    </button>
-                    <button id="tasking-reset-btn" type="button" class="btn btn-outline-secondary">
-                        <i class="bi bi-arrow-clockwise"></i> 重置
-                    </button>
-                </div>
-            </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3 ops-content-grid">
-        <div class="col-xl-7">
-            <div class="card ops-panel-card">
+    <div class="ops-lower-layout mt-3">
+        <!-- 左侧筛选面板 -->
+        <div class="ops-filter-panel">
+            <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">历史任务趋势 <span>| 已完成 / 执行中 / 待执行</span></h5>
-                    <div id="tasking-history-chart" class="ops-chart"></div>
-                    <div id="tasking-chart-legend" class="ops-legend mt-3">
-                        <span class="ops-legend-item is-clickable" data-series="已完成"><span class="ops-legend-dot" style="background:#0d6efd;"></span> 已完成</span>
-                        <span class="ops-legend-item is-clickable" data-series="执行中"><span class="ops-legend-dot" style="background:#198754;"></span> 执行中</span>
-                        <span class="ops-legend-item is-clickable" data-series="待执行"><span class="ops-legend-dot" style="background:#fd7e14;"></span> 待执行</span>
-                    </div>
+                    <h5 class="card-title mb-3">任务筛选</h5>
+                    <form id="tasking-filter-form" class="ops-filter-form">
+                        <div class="mb-3">
+                            <label class="form-label">开始日期</label>
+                            <input id="tasking-start-date" type="date" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">结束日期</label>
+                            <input id="tasking-end-date" type="date" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">聚合方式</label>
+                            <select id="tasking-grain" class="form-select">
+                                <option value="day">按日</option>
+                                <option value="week">按周</option>
+                                <option value="month">按月</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">状态</label>
+                            <select id="tasking-status" class="form-select">
+                                <option value="">全部状态</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">任务类型</label>
+                            <select id="tasking-type" class="form-select">
+                                <option value="">全部类型</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">区域</label>
+                            <select id="tasking-region" class="form-select">
+                                <option value="">全部区域</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">无人机</label>
+                            <select id="tasking-drone" class="form-select">
+                                <option value="">全部无人机</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">飞手</label>
+                            <select id="tasking-pilot" class="form-select">
+                                <option value="">全部飞手</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">关键字</label>
+                            <input id="tasking-keyword" type="text" class="form-control" placeholder="任务名称、编码、描述">
+                        </div>
+                        <div class="d-grid gap-2 mt-4">
+                            <button id="tasking-query-btn" type="button" class="btn btn-primary">
+                                <i class="bi bi-search"></i> 查询
+                            </button>
+                            <button id="tasking-reset-btn" type="button" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-clockwise"></i> 重置
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
-            <div class="card ops-panel-card">
+        </div>
+
+        <!-- 右侧任务列表 -->
+        <div class="ops-table-panel">
+            <div class="card h-100">
                 <div class="card-body">
                     <div class="ops-toolbar mb-3">
                         <h5 class="card-title mb-0">任务列表</h5>
                         <div class="ops-toolbar-actions">
-                            <select id="tasking-task-page-size" class="form-select form-select-sm">
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="tasking-export-task-btn">
+                                <i class="bi bi-download"></i> 导出 CSV
+                            </button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="tasking-card-refresh-btn">
+                                <i class="bi bi-arrow-repeat"></i> 刷新
+                            </button>
+                            <select id="tasking-task-page-size" class="form-select form-select-sm d-inline-block w-auto">
                                 <option value="10" selected>10 条</option>
                                 <option value="20">20 条</option>
                                 <option value="50">50 条</option>
                             </select>
                         </div>
                     </div>
+                    
                     <div class="table-responsive ops-table-wrap">
                         <table class="table table-hover align-middle">
                             <thead>
@@ -243,6 +176,7 @@
                             <tbody id="tasking-task-tbody"></tbody>
                         </table>
                     </div>
+                    
                     <div class="ops-pagination mt-3">
                         <div id="tasking-page-info" class="page-info">第 1 / 1 页，共 0 条</div>
                         <div class="d-flex gap-2">
@@ -250,81 +184,6 @@
                             <button id="tasking-next-page" type="button" class="btn btn-outline-secondary btn-sm">下一页</button>
                         </div>
                     </div>
-                </div>
-            </div>
-            <div class="card ops-panel-card">
-                <div class="card-body">
-                    <div class="ops-toolbar mb-3">
-                        <h5 class="card-title mb-0">任务分派历史</h5>
-                        <div class="ops-toolbar-actions">
-                            <select id="tasking-assignment-page-size" class="form-select form-select-sm">
-                                <option value="8" selected>8 条</option>
-                                <option value="20">20 条</option>
-                                <option value="50">50 条</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="table-responsive ops-mini-table">
-                        <table class="table table-sm align-middle">
-                            <thead>
-                                <tr>
-                                    <th>任务</th>
-                                    <th>无人机</th>
-                                    <th>飞手</th>
-                                    <th>状态</th>
-                                    <th>时间</th>
-                                    <th>区域</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tasking-assignment-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div class="ops-pagination mt-3">
-                        <div id="tasking-assignment-page-info" class="page-info">第 1 / 1 页，共 0 条</div>
-                        <div class="d-flex gap-2">
-                            <button id="tasking-assignment-prev-page" type="button" class="btn btn-outline-secondary btn-sm">上一页</button>
-                            <button id="tasking-assignment-next-page" type="button" class="btn btn-outline-secondary btn-sm">下一页</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-5">
-            <div class="card ops-panel-card">
-                <div class="card-body">
-                    <div class="ops-map-shell">
-                        <div class="ops-map-toolbar">
-                            <div>
-                                <h5 class="card-title mb-0">GIS 任务轨迹与热力</h5>
-                                <div class="ops-map-note">按时间回放任务轨迹，调节密度后查看热区与节点说明。</div>
-                            </div>
-                            <div class="ops-toolbar-actions">
-                                <select id="tasking-replay-date" class="form-select form-select-sm">
-                                    <option value="">全部日期</option>
-                                </select>
-                                <select id="tasking-map-density" class="form-select form-select-sm ops-density-select">
-                                    <option value="coarse">稀疏</option>
-                                    <option value="normal" selected>标准</option>
-                                    <option value="dense">精细</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="ops-legend mb-0">
-                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#0d6efd;"></span> 完成</span>
-                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#198754;"></span> 执行中</span>
-                            <span class="ops-legend-item"><span class="ops-legend-dot" style="background:#fd7e14;"></span> 待执行</span>
-                        </div>
-                        <div id="tasking-map" class="ops-map"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="card ops-detail-card">
-                <div class="card-body">
-                    <h5 class="card-title">任务详情与分派记录</h5>
-                    <div id="tasking-status-alert" class="ops-inline-alert"></div>
-                    <div id="tasking-detail-panel" class="mb-3"></div>
-                    <div id="tasking-detail-assignments"></div>
                 </div>
             </div>
         </div>

@@ -51,6 +51,9 @@ class Drone(models.Model):
     launch_site_id = models.BigIntegerField(default=0)
     pilot_id = models.BigIntegerField(default=0)
     terrain_id = models.BigIntegerField(default=0, verbose_name="绑定地形ID")
+    bound_terrain_id = models.BigIntegerField(default=0, verbose_name="关联地形区域ID")
+    battery_percentage = models.IntegerField(default=100, verbose_name="当前电量百分比")
+    last_active = models.DateTimeField(null=True, blank=True, verbose_name="最近活动时间")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
