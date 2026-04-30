@@ -122,7 +122,7 @@
         </div>
         <div class="terrain-filter-feedback">
           <span class="badge bg-light text-primary border d-none" id="terrainFilterStateBadge">已筛选</span>
-          <span class="text-muted small" id="terrainFilterSummary">共 0 条，当前显示 0 条</span>
+          <span class="text-muted small" id="terrainFilterSummary">支持按名称、风险等级与时间范围筛选</span>
         </div>
       </div>
       <form class="terrain-filter-form" id="terrainFilterForm">
@@ -177,7 +177,6 @@
               <h5 class="card-title mb-1">地形区域列表</h5>
               <p class="terrain-list-subtitle mb-0">点击左侧行可联动右侧地图与详细信息</p>
             </div>
-            <span class="terrain-list-count" id="terrainListCount">0 条</span>
           </div>
 
           <div class="terrain-list-shell">
@@ -408,30 +407,13 @@
     </div>
   </section>
 
-  <section class="card terrain-plot-detail-panel" id="terrainPlotDetailPanel">
-    <div class="card-body">
-      <div class="terrain-plot-panel-header">
-        <div>
-          <h5 class="card-title mb-1">地块明细</h5>
-          <p class="text-muted mb-0" id="terrainPlotPanelSubtitle">展示当前地形的组成地块，可展开详情并在地图中定位。</p>
-        </div>
-        <span class="terrain-plot-panel-count" id="terrainPlotPanelCount">0 个地块</span>
-      </div>
-      <div class="terrain-plot-list" id="terrainPlotList">
-        <div class="terrain-module-empty">请先选择地形后查看地块明细</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 移除详情抽屉 -->
-
   <!-- 底部业务模块 -->
   <section class="card terrain-bottom-insights" id="terrainBottomInsights">
     <div class="card-body">
       <div class="terrain-bottom-header mb-3">
         <div>
           <h5 class="card-title mb-1">地形业务模块</h5>
-          <p class="text-muted mb-0">展示风险区域、测绘记录与风险统计分析，支持分页、班次详情与自动刷新。</p>
+          <p class="text-muted mb-0">展示地块明细、风险区域、测绘记录与风险统计分析，支持定位、分页、班次详情与自动刷新。</p>
         </div>
         <div class="terrain-bottom-actions">
           <span class="badge bg-light text-primary border" id="terrainBottomRefreshHint">自动刷新：5 分钟</span>
@@ -446,6 +428,9 @@
       <ul class="nav nav-tabs nav-tabs-bordered d-flex mb-3" id="terrainBottomTabs" role="tablist">
         <li class="nav-item flex-fill" role="presentation">
           <button class="nav-link w-100 active" id="risk-tab" data-bs-toggle="tab" data-bs-target="#risk-content" type="button" role="tab">风险区域</button>
+        </li>
+        <li class="nav-item flex-fill" role="presentation">
+          <button class="nav-link w-100" id="plot-tab" data-bs-toggle="tab" data-bs-target="#plot-content" type="button" role="tab">地块明细</button>
         </li>
         <li class="nav-item flex-fill" role="presentation">
           <button class="nav-link w-100" id="survey-tab" data-bs-toggle="tab" data-bs-target="#survey-content" type="button" role="tab">测绘记录</button>
@@ -465,6 +450,22 @@
             </div>
             <div class="terrain-module-list fixed-height-scroll" id="terrainRiskModuleList" style="height: 400px; overflow-y: auto;"></div>
             <div class="terrain-module-pagination mt-2" id="terrainRiskModulePagination"></div>
+          </div>
+        </div>
+
+        <!-- 地块明细 Tab -->
+        <div class="tab-pane fade" id="plot-content" role="tabpanel" aria-labelledby="plot-tab">
+          <div class="terrain-module-card border-0">
+            <div class="terrain-plot-panel-header">
+              <div>
+                <h5 class="card-title mb-1">地块明细</h5>
+                <p class="text-muted mb-0" id="terrainPlotPanelSubtitle">展示当前地形的组成地块，可展开详情并在地图中定位。</p>
+              </div>
+              <span class="terrain-plot-panel-count" id="terrainPlotPanelCount">0 个地块</span>
+            </div>
+            <div class="terrain-plot-list" id="terrainPlotList">
+              <div class="terrain-module-empty">请先选择地形后查看地块明细</div>
+            </div>
           </div>
         </div>
 

@@ -327,6 +327,9 @@ function resizeTerrainAnalysisChart() {
 
 async function loadTerrainBottomTabModule(targetId, options = {}) {
   switch (targetId) {
+    case '#plot-content':
+      renderPlotDetailModule(terrainData.currentTerrain);
+      break;
     case '#survey-content':
       await loadSurveyRecordModule(options);
       break;
@@ -1959,11 +1962,6 @@ function showToast(message, type = 'success') {
   t.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
   container.appendChild(t);
   setTimeout(() => t.remove(), 3000);
-}
-
-function updateTerrainListCount(f, t) {
-  const el = document.getElementById('terrainListCount');
-  if (el) el.textContent = `${f} / ${t} 条`;
 }
 
 function setTerrainEditButtonDisabled(d) {
