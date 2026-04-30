@@ -468,14 +468,51 @@ function buildRiskAnalysisDetails(items, total) {
   return detailItems;
 }
 
+function buildSelectedTerrainRiskAnalysis(terrain) {
+  if (!terrain?.id) {
+    return {
+      items: terrainData.riskAnalysis,
+      details: terrainData.riskAnalysisDetails
+    };
+  }
+  const items = [
+    {
+      risk_level: 'high',
+      risk_level_label: '高风险',
+      count: Number(terrain.high_risk_plot_count || 0)
+    },
+    {
+      risk_level: 'medium',
+      risk_level_label: '中风险',
+      count: Number(terrain.medium_risk_plot_count || 0)
+    },
+    {
+      risk_level: 'low',
+      risk_level_label: '低风险',
+      count: Number(terrain.low_risk_plot_count || 0)
+    },
+    {
+      risk_level: 'none',
+      risk_level_label: '未评估',
+      count: Number(terrain.unknown_risk_plot_count || 0)
+    }
+  ];
+  const total = items.reduce((sum, item) => sum + Number(item.count || 0), 0);
+  return {
+    items,
+    details: buildRiskAnalysisDetails(items, total)
+  };
+}
+
 function renderRiskAreaModule() {
   const listNode = document.getElementById('terrainRiskModuleList');
   if (!listNode) return;
 
-  if (!terrainData.riskAreas.length) {
-    listNode.innerHTML = '<div class="terrain-module-empty">暂无高风险或中风险地块数据</div>';
+  const filteredItems = getCurrentTerrainFilteredItems(terrainData.riskAreas, matchesCurrentTerrain);
+  if (!filteredItems.length) {
+    listNode.innerHTML = `<div class="terrain-module-empty">${terrainData.currentTerrain ? '当前地形暂无高风险或中风险地块数据' : '暂无高风险或中风险地块数据'}</div>`;
   } else {
-    listNode.innerHTML = terrainData.riskAreas.map((area, index) => `
+    listNode.innerHTML = filteredItems.map((area, index) => `
       <article class="terrain-module-item" title="${escapeHtml(area.detail_text || '')}">
         <div class="terrain-module-item-header">
           <div class="terrain-module-item-title">
@@ -507,10 +544,11 @@ function renderSurveyRecordModule() {
   const listNode = document.getElementById('terrainSurveyModuleList');
   if (!listNode) return;
 
-  if (!terrainData.surveys.length) {
-    listNode.innerHTML = `<div class="terrain-module-empty">${escapeHtml(terrainData.surveyMessage || '暂无测绘记录')}</div>`;
+  const filteredItems = getCurrentTerrainFilteredItems(terrainData.surveys, matchesCurrentTerrain);
+  if (!filteredItems.length) {
+    listNode.innerHTML = `<div class="terrain-module-empty">${escapeHtml(terrainData.currentTerrain ? '当前地形暂无测绘记录' : (terrainData.surveyMessage || '暂无测绘记录'))}</div>`;
   } else {
-    listNode.innerHTML = terrainData.surveys.map((survey, index) => `
+    listNode.innerHTML = filteredItems.map((survey, index) => `
       <article class="terrain-module-item">
         <div class="terrain-module-item-header">
           <div class="terrain-module-item-title">
@@ -552,9 +590,10 @@ function ensureTerrainAnalysisChart() {
 }
 
 function renderRiskAnalysisModule() {
+  const riskAnalysisPayload = buildSelectedTerrainRiskAnalysis(terrainData.currentTerrain);
   const summaryNode = document.getElementById('terrainAnalysisSummary');
   if (summaryNode) {
-    summaryNode.innerHTML = terrainData.riskAnalysisDetails.map(item => `
+    summaryNode.innerHTML = riskAnalysisPayload.details.map(item => `
       <div class="analysis-item mb-2 p-2 border rounded">
         <div class="d-flex justify-content-between">
           <span class="small text-muted">${item.title}</span>
@@ -568,9 +607,9 @@ function renderRiskAnalysisModule() {
   const chart = ensureTerrainAnalysisChart();
   if (!chart) return;
 
-  const labels = terrainData.riskAnalysis.map(item => item.risk_level_label || '未评估');
-  const values = terrainData.riskAnalysis.map(item => Number(item.count || 0));
-  const colors = ['#22c55e', '#f59e0b', '#ef4444'];
+  const labels = riskAnalysisPayload.items.map(item => item.risk_level_label || '未评估');
+  const values = riskAnalysisPayload.items.map(item => Number(item.count || 0));
+  const colors = ['#ef4444', '#f59e0b', '#22c55e', '#94a3b8'];
 
   const option = terrainDashboardState.chartType === 'pie'
     ? {
@@ -582,7 +621,7 @@ function renderRiskAnalysisModule() {
             type: 'pie',
             radius: ['38%', '68%'],
             center: ['50%', '45%'],
-            data: terrainData.riskAnalysis.map((item, index) => ({
+            data: riskAnalysisPayload.items.map((item, index) => ({
               name: item.risk_level_label || '未评估',
               value: Number(item.count || 0),
               itemStyle: { color: colors[index % colors.length] }
@@ -694,6 +733,11 @@ function formatArea(area) {
   return isFinite(numericArea) && numericArea > 0 ? `${numericArea.toFixed(2)} 公顷` : '-';
 }
 
+function formatAreaCompact(area) {
+  const numericArea = Number(area);
+  return Number.isFinite(numericArea) && numericArea > 0 ? `${numericArea.toFixed(2)} 公顷` : '面积待补充';
+}
+
 function toFiniteNumber(value) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : null;
@@ -765,6 +809,139 @@ function buildCoverageRangeLabel(terrain) {
 function getCurrentLayerModeLabel() {
   const boundaryButton = document.getElementById('btn-boundary');
   return boundaryButton?.classList.contains('active') ? '边界' : '地块';
+}
+
+function setText(id, value) {
+  const element = document.getElementById(id);
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+function toggleCommandBoardState(hasTerrain) {
+  const emptyState = document.getElementById('terrainCommandEmptyState');
+  const detailPanel = document.getElementById('terrainDetailPanel');
+  if (emptyState) {
+    emptyState.classList.toggle('d-none', hasTerrain);
+  }
+  if (detailPanel) {
+    detailPanel.classList.toggle('d-none', !hasTerrain);
+  }
+}
+
+function getCurrentTerrainFilteredItems(items, resolver) {
+  if (!terrainData.currentTerrain) {
+    return Array.isArray(items) ? items : [];
+  }
+  return (Array.isArray(items) ? items : []).filter((item) => resolver(item, terrainData.currentTerrain));
+}
+
+function matchesCurrentTerrain(item, terrain) {
+  if (!terrain) {
+    return true;
+  }
+  if (item?.terrain_id && String(item.terrain_id) === String(terrain.id)) {
+    return true;
+  }
+  const terrainName = String(terrain?.name || '').trim();
+  return terrainName && String(item?.terrain_name || '').trim() === terrainName;
+}
+
+function getPlotGeometry(plot) {
+  return plot?.geometry || plot?.geom_json || plot?.boundary_json || null;
+}
+
+function focusPlotGeometryOnMap(plot) {
+  const geometry = getPlotGeometry(plot);
+  if (!geometry || !terrainMap?.map || typeof L === 'undefined') {
+    terrainMap?.focusTerrainTopic?.(terrainData.currentTerrain);
+    return;
+  }
+  try {
+    const layer = L.geoJSON(geometry);
+    const bounds = layer.getBounds?.();
+    if (bounds?.isValid?.()) {
+      terrainMap.map.fitBounds(bounds, {
+        padding: [28, 28],
+        maxZoom: 17
+      });
+      return;
+    }
+  } catch (error) {
+    console.warn('定位地块失败，改为定位地形:', error);
+  }
+  terrainMap?.focusTerrainTopic?.(terrainData.currentTerrain);
+}
+
+function buildPlotRiskBadge(level, display) {
+  const normalizedLevel = normalizeTerrainRiskLevel(level);
+  return `<span class="terrain-risk-badge ${getRiskBadgeClass(normalizedLevel)}">${escapeHtml(display || translateRiskLevel(normalizedLevel))}</span>`;
+}
+
+function renderPlotDetailModule(terrain) {
+  const listNode = document.getElementById('terrainPlotList');
+  const countNode = document.getElementById('terrainPlotPanelCount');
+  const subtitleNode = document.getElementById('terrainPlotPanelSubtitle');
+  if (!listNode) {
+    return;
+  }
+
+  const plots = Array.isArray(terrain?.plots) ? terrain.plots : [];
+  if (countNode) {
+    countNode.textContent = `${plots.length} 个地块`;
+  }
+  if (subtitleNode) {
+    subtitleNode.textContent = terrain?.name
+      ? `展示 ${terrain.name} 的组成地块，可展开详情并在地图中定位。`
+      : '展示当前地形的组成地块，可展开详情并在地图中定位。';
+  }
+
+  if (!terrain?.id) {
+    listNode.innerHTML = '<div class="terrain-module-empty">请先选择地形后查看地块明细</div>';
+    return;
+  }
+
+  if (!plots.length) {
+    listNode.innerHTML = '<div class="terrain-module-empty">当前地形暂无地块明细数据</div>';
+    return;
+  }
+
+  listNode.innerHTML = plots.map((plot, index) => {
+    const plotName = plot?.name || plot?.plot_name || `地块 ${index + 1}`;
+    const typeLabel = plot?.type_label || TERRAIN_PLOT_TYPE_LABELS[plot?.category] || plot?.category || '未分类';
+    const subtypeLabel = plot?.subtype_label || plot?.subtype || '';
+    const areaLabel = formatAreaCompact(plot?.area);
+    const riskLabel = plot?.risk_level_display || plot?.risk_level_label || translateRiskLevel(plot?.risk_level);
+    const description = plot?.description || plot?.remark || '暂无地块说明';
+    return `
+      <article class="terrain-plot-item" data-plot-index="${index}">
+        <div class="terrain-plot-item-header">
+          <div>
+            <div class="terrain-plot-item-name">${escapeHtml(plotName)}</div>
+            <div class="terrain-plot-item-meta">
+              <span>${escapeHtml(typeLabel)}${subtypeLabel ? ` / ${escapeHtml(subtypeLabel)}` : ''}</span>
+              <span>${escapeHtml(areaLabel)}</span>
+            </div>
+          </div>
+          ${buildPlotRiskBadge(plot?.risk_level, riskLabel)}
+        </div>
+        <div class="terrain-plot-item-footer">
+          <div class="terrain-plot-item-meta">
+            <span>编号：${escapeHtml(plot?.id || '--')}</span>
+            <span>更新时间：${escapeHtml(formatTimestamp(plot?.updated_at) || '--')}</span>
+          </div>
+          <div class="terrain-plot-item-actions">
+            <button type="button" class="btn btn-sm btn-outline-primary" data-plot-locate="${index}">定位地块</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-plot-toggle="${index}">展开详情</button>
+          </div>
+        </div>
+        <div class="terrain-plot-detail">
+          <div>风险说明：${escapeHtml(description)}</div>
+          <div>坐标数据：${getPlotGeometry(plot) ? '已同步' : '待补充'}</div>
+        </div>
+      </article>
+    `;
+  }).join('');
 }
 
 function getTerrainById(id) {
@@ -1120,12 +1297,6 @@ function renderBindDroneChecklist(drones, selectedIds = []) {
 }
 
 function updateTerrainMapSummary(terrain) {
-  const setText = (id, value) => {
-    const element = document.getElementById(id);
-    if (element) {
-      element.textContent = value;
-    }
-  };
   const layerMode = getCurrentLayerModeLabel();
   const centerCoord = formatCenterCoord(terrain);
   const coverageRange = buildCoverageRangeLabel(terrain);
@@ -1142,11 +1313,11 @@ function updateTerrainMapSummary(terrain) {
   );
   setText('terrainMapCenter', centerCoord);
   setText('terrainMapArea', terrain?.areaLabel || '-');
-  setText('terrainMapRange', coverageRange);
+  setText('terrainMapPlotCount', terrain?.plotCountLabel || '-');
   setText('terrainMapLayerMode', layerMode);
-  setText('terrainMapStatus', topicStatus);
-  setText('infoCenterCoord', centerCoord);
-  setText('infoCoverageRange', coverageRange);
+  setText('terrainMapAccuracy', terrain?.dataAccuracyLabel || '待补充');
+  setText('infoCenterCoord', `中心坐标：${centerCoord}`);
+  setText('infoCoverageRange', `覆盖范围：${coverageRange}`);
   setText('infoLayerModeSummary', `当前图层：${layerMode}`);
   setText('infoTopicStatus', `状态：${topicStatus}`);
 }
@@ -1161,6 +1332,10 @@ async function selectTerrainRow(id, options = {}) {
   }
 
   updateDetailPanel(terrain);
+  renderPlotDetailModule(terrain);
+  renderRiskAreaModule();
+  renderSurveyRecordModule();
+  renderRiskAnalysisModule();
   
   if (options.syncMap && terrainMap) {
     terrainMap.selectTerrain(terrain, options);
@@ -1175,6 +1350,10 @@ function clearCurrentSelection(options = {}) {
     vueInstances.terrainTable.selectedTerrainId = null;
   }
   resetDetailPanel();
+  renderPlotDetailModule(null);
+  renderRiskAreaModule();
+  renderSurveyRecordModule();
+  renderRiskAnalysisModule();
   const hintNode = document.getElementById('terrainMapSelectionHint');
   if (hintNode) hintNode.textContent = options.emptyMessage || '当前未选中地形。';
   setTerrainEditButtonDisabled(true);
@@ -1287,9 +1466,10 @@ function updatePageData() {
 }
 
 function updateDetailPanel(terrain) {
-  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   const dronePresentation = getTerrainDronePresentation(terrain);
   const surveyPresentation = getTerrainSurveyPresentation(terrain);
+  toggleCommandBoardState(Boolean(terrain?.id));
+  setText('terrainCommandSubtitle', terrain?.name ? `当前地形：${terrain.name}` : '请先从上方地形区域列表中选择一个地形');
   setText('infoName', terrain.name || '未命名地形');
   setText('infoArea', terrain.areaLabel);
   setText('infoAccuracy', terrain.dataAccuracyLabel);
@@ -1304,9 +1484,6 @@ function updateDetailPanel(terrain) {
   setText('infoRiskComposition', terrain.riskCompositionText);
   setText('infoRiskScore', terrain.risk_score || 0);
   setText('infoRiskReason', terrain.risk_reason || '暂无风险判定说明');
-  setText('infoBboxMin', terrain.bbox ? `${terrain.bbox.minLng.toFixed(4)}, ${terrain.bbox.minLat.toFixed(4)}` : '-');
-  setText('infoBboxMax', terrain.bbox ? `${terrain.bbox.maxLng.toFixed(4)}, ${terrain.bbox.maxLat.toFixed(4)}` : '-');
-  setText('infoSpatialSummary', buildSpatialSummary(terrain));
   setText('infoDescription', terrain.description || '无补充描述');
   const r = document.getElementById('infoRisk');
   if (r) { r.textContent = terrain.riskLabel; r.className = `badge ${terrain.riskClass}`; }
@@ -1327,6 +1504,13 @@ function initEvents() {
   document.getElementById('addTerrainBtn').addEventListener('click', () => { window.location.href = '/terrain/editor/'; });
   document.getElementById('editTerrainMapBtn').addEventListener('click', () => {
     openTerrainEditor(terrainData.currentTerrain);
+  });
+  document.getElementById('locateTerrainBtn').addEventListener('click', () => {
+    if (!terrainData.currentTerrain) {
+      showToast('请先选择地形', 'warning');
+      return;
+    }
+    terrainMap?.focusTerrainTopic?.(terrainData.currentTerrain);
   });
 
   document.getElementById('terrainBottomRefreshBtn').addEventListener('click', async () => {
@@ -1361,9 +1545,33 @@ function initEvents() {
       else if (m === 'survey') loadSurveyRecordModule({ page: p });
     }
 
+    const selectTerrainBtn = e.target.closest('[data-select-terrain-id]');
+    if (selectTerrainBtn) {
+      selectTerrainRow(selectTerrainBtn.dataset.selectTerrainId, { syncMap: true, fit: true });
+    }
+
     const taskDetailBtn = e.target.closest('[data-task-detail-id]');
     if (taskDetailBtn) {
       showTaskDetail(taskDetailBtn.dataset.taskDetailId);
+    }
+
+    const plotLocateBtn = e.target.closest('[data-plot-locate]');
+    if (plotLocateBtn) {
+      const plotIndex = Number(plotLocateBtn.dataset.plotLocate);
+      const plots = Array.isArray(terrainData.currentTerrain?.plots) ? terrainData.currentTerrain.plots : [];
+      const plot = plots[plotIndex];
+      if (plot) {
+        focusPlotGeometryOnMap(plot);
+      }
+    }
+
+    const plotToggleBtn = e.target.closest('[data-plot-toggle]');
+    if (plotToggleBtn) {
+      const item = plotToggleBtn.closest('.terrain-plot-item');
+      if (item) {
+        item.classList.toggle('is-expanded');
+        plotToggleBtn.textContent = item.classList.contains('is-expanded') ? '收起详情' : '展开详情';
+      }
     }
   });
 
@@ -1701,13 +1909,17 @@ function setTerrainEditButtonDisabled(d) {
   const b = document.getElementById('editTerrainMapBtn');
   const e = document.getElementById('executeTaskBtn');
   const bind = document.getElementById('bindDroneBtn');
+  const locate = document.getElementById('locateTerrainBtn');
   if (b) b.disabled = d;
   if (e) e.disabled = d;
   if (bind) bind.disabled = d;
+  if (locate) locate.disabled = d;
 }
 
 function resetDetailPanel() {
-  ['infoName','infoArea','infoAccuracy','infoUpdatedAt','infoPlotCount','infoRiskComposition','infoRiskScore','infoRiskReason','infoBboxMin','infoBboxMax','infoDescription','infoSpatialSummary','infoDroneCount','infoDroneCountMetric','infoSurveyStatus','infoSurveyStatusMetric','infoRiskJudgement','infoRiskSource','infoCenterCoord','infoCoverageRange','terrainMapCenter','terrainMapArea','terrainMapRange','terrainMapLayerMode','terrainMapStatus'].forEach(id => {
+  toggleCommandBoardState(false);
+  setText('terrainCommandSubtitle', '请先从上方地形区域列表中选择一个地形');
+  ['infoName','infoArea','infoAccuracy','infoUpdatedAt','infoPlotCount','infoRiskComposition','infoRiskScore','infoRiskReason','infoDescription','infoDroneCount','infoDroneCountMetric','infoSurveyStatus','infoSurveyStatusMetric','infoRiskJudgement','infoRiskSource','terrainMapCenter','terrainMapArea','terrainMapPlotCount','terrainMapLayerMode','terrainMapAccuracy'].forEach(id => {
     const el = document.getElementById(id); if (el) el.textContent = '-';
   });
   const droneStatus = document.getElementById('infoDroneStatus');
@@ -1723,10 +1935,10 @@ function resetDetailPanel() {
   if (droneGroupCount) droneGroupCount.textContent = '0 组';
   const droneMeta = document.getElementById('infoDroneMeta');
   if (droneMeta) droneMeta.textContent = '绑定后可直接执行测绘任务，并支持多机协同执行。';
-  const spatialSummary = document.getElementById('infoSpatialSummary');
-  if (spatialSummary) spatialSummary.textContent = '待选择地形后显示';
   const coverageRange = document.getElementById('infoCoverageRange');
-  if (coverageRange) coverageRange.textContent = '待选择地形后显示';
+  if (coverageRange) coverageRange.textContent = '覆盖范围：待选择地形后显示';
+  const centerCoord = document.getElementById('infoCenterCoord');
+  if (centerCoord) centerCoord.textContent = '中心坐标：-';
   const riskBreakdown = document.getElementById('infoRiskBreakdown');
   if (riskBreakdown) {
     riskBreakdown.innerHTML = `
@@ -1764,13 +1976,12 @@ function resetDetailPanel() {
   if (mapHint) mapHint.textContent = '当前未选中地形，请从左侧列表选择。';
   const mapLayerMode = document.getElementById('terrainMapLayerMode');
   if (mapLayerMode) mapLayerMode.textContent = '地块';
-  const mapStatus = document.getElementById('terrainMapStatus');
-  if (mapStatus) mapStatus.textContent = '待选择地形';
   const infoLayerModeSummary = document.getElementById('infoLayerModeSummary');
   if (infoLayerModeSummary) infoLayerModeSummary.textContent = '当前图层：地块';
   const infoTopicStatus = document.getElementById('infoTopicStatus');
   if (infoTopicStatus) infoTopicStatus.textContent = '状态：待选择地形';
   const r = document.getElementById('infoRisk'); if (r) { r.textContent = '-'; r.className = 'badge bg-secondary'; }
+  renderPlotDetailModule(null);
 }
 
 function initFilterForm() {

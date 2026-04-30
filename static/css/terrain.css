@@ -72,7 +72,7 @@
 /* 主业务区 Bootstrap 栅格补充样式 */
 .terrain-main-layout {
   align-items: stretch;
-  min-height: clamp(700px, calc(100vh - 280px), 860px);
+  min-height: clamp(430px, calc(100vh - 360px), 560px);
   position: relative;
 }
 
@@ -95,10 +95,12 @@
 
 .terrain-list-card {
   overflow: hidden;
+  min-height: clamp(430px, 52vh, 560px);
 }
 
 .terrain-topic-card {
   overflow: hidden;
+  min-height: clamp(430px, 52vh, 560px);
 }
 
 .terrain-list-card-body {
@@ -139,6 +141,10 @@
   border-radius: 8px;
   background: #fff;
   position: relative;
+}
+
+.terrain-table-wrap {
+  min-height: 0;
 }
 
 .terrain-pagination-wrap {
@@ -512,8 +518,8 @@
 
 .terrain-topic-map {
   flex: 0 0 auto;
-  height: clamp(360px, 42vh, 500px);
-  min-height: 360px;
+  height: clamp(380px, 44vh, 460px);
+  min-height: 380px;
 }
 
 /* 地图标题与指示 */
@@ -526,22 +532,69 @@
   margin-right: 6px;
 }
 
-/* 地图下方信息面板 */
-.terrain-info-panel {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.terrain-info-panel .card-body {
-  min-height: 0;
-}
-
-.terrain-command-header {
-  margin-bottom: 0.85rem !important;
-}
-
 .terrain-command-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   flex-wrap: wrap;
+}
+
+.terrain-command-board,
+.terrain-plot-detail-panel {
+  margin-top: 24px;
+}
+
+.terrain-command-board .card-body,
+.terrain-plot-detail-panel .card-body {
+  padding: 1.25rem;
+}
+
+.terrain-command-board-header,
+.terrain-plot-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.terrain-command-board-subtitle {
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.terrain-command-empty-state {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 180px;
+  padding: 1.25rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
+  color: #64748b;
+}
+
+.terrain-command-empty-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.terrain-command-empty-desc {
+  margin-top: 0.45rem;
+  line-height: 1.6;
+}
+
+.terrain-command-board-content {
+  min-height: 0;
+}
+
+.terrain-command-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
 }
 
 .terrain-command-btn {
@@ -564,6 +617,12 @@
   color: #0f766e;
   background: #ecfeff;
   border-color: #99f6e4;
+}
+
+.terrain-command-btn-outline {
+  color: #334155;
+  background: #fff;
+  border-color: #cbd5e1;
 }
 
 .terrain-map-brief-strip {
@@ -599,20 +658,6 @@
   word-break: break-word;
 }
 
-.detail-content-area {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
-  gap: 1rem;
-}
-
-.terrain-description-region {
-  flex: 1 1 auto;
-  min-height: 120px;
-  min-width: 0;
-}
-
 .info-item {
   padding: 10px 12px;
   background: #f8fafc;
@@ -631,6 +676,7 @@
   background: linear-gradient(135deg, #f8fbff 0%, #edf5ff 58%, #f8fafc 100%);
   border-color: #d6e4ff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  grid-column: span 1;
 }
 
 .terrain-detail-overview-head {
@@ -734,10 +780,14 @@
 }
 
 .terrain-device-card,
-.terrain-risk-card,
-.terrain-spatial-card {
+.terrain-risk-card {
   padding: 1rem 1.05rem;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.terrain-device-card,
+.terrain-description-block {
+  min-height: 300px;
 }
 
 .terrain-drone-status {
@@ -821,6 +871,7 @@
 .terrain-drone-group-body {
   display: grid;
   gap: 0.7rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 0.85rem;
 }
 
@@ -1166,7 +1217,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 180px;
+  min-height: 300px;
   padding: 1rem 1.05rem;
   background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
@@ -1174,7 +1225,86 @@
 .terrain-description-block .info-description-text {
   overflow-y: auto;
   padding-right: 0.25rem;
-  min-height: 120px;
+  min-height: 180px;
+  max-height: 260px;
+}
+
+.terrain-plot-panel-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.terrain-plot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.terrain-plot-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  padding: 0.95rem 1rem;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
+}
+
+.terrain-plot-item-header,
+.terrain-plot-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.terrain-plot-item-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.terrain-plot-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+  color: #64748b;
+  font-size: 0.83rem;
+}
+
+.terrain-plot-item-footer {
+  margin-top: 0.8rem;
+}
+
+.terrain-plot-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.terrain-plot-detail {
+  display: none;
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed #dbe4f0;
+  color: #475569;
+  line-height: 1.6;
+  font-size: 0.875rem;
+}
+
+.terrain-plot-item.is-expanded .terrain-plot-detail {
+  display: block;
 }
 
 /* NiceAdmin 风格分页 */
@@ -1290,7 +1420,7 @@
   }
 
   .terrain-topic-map {
-    height: clamp(340px, 38vh, 440px);
+    height: clamp(340px, 38vh, 420px);
     min-height: 340px;
   }
 
@@ -1299,7 +1429,9 @@
   }
 
   .terrain-map-brief-strip,
-  .terrain-risk-tiles {
+  .terrain-risk-tiles,
+  .terrain-command-grid,
+  .terrain-drone-group-body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1346,7 +1478,7 @@
   .terrain-detail-overview,
   .terrain-device-card,
   .terrain-risk-card,
-  .terrain-spatial-card {
+  .terrain-description-block {
     padding: 0.9rem;
   }
 
@@ -1366,8 +1498,20 @@
   }
 
   .terrain-map-brief-strip,
-  .terrain-risk-tiles {
+  .terrain-risk-tiles,
+  .terrain-command-grid,
+  .terrain-drone-group-body {
     grid-template-columns: 1fr;
+  }
+
+  .terrain-command-board .card-body,
+  .terrain-plot-detail-panel .card-body {
+    padding: 1rem;
+  }
+
+  .terrain-command-empty-state {
+    min-height: 140px;
+    padding: 1rem;
   }
 }
 

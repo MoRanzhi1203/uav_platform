@@ -232,214 +232,196 @@
               <strong id="terrainMapArea">-</strong>
             </div>
             <div class="terrain-map-brief-item">
-              <span class="terrain-map-brief-label">覆盖范围</span>
-              <strong id="terrainMapRange">-</strong>
+              <span class="terrain-map-brief-label">地块数量</span>
+              <strong id="terrainMapPlotCount">-</strong>
             </div>
             <div class="terrain-map-brief-item">
               <span class="terrain-map-brief-label">图层模式</span>
               <strong id="terrainMapLayerMode">地块</strong>
             </div>
             <div class="terrain-map-brief-item">
-              <span class="terrain-map-brief-label">当前状态</span>
-              <strong id="terrainMapStatus">待选择地形</strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="terrain-info-panel border-top" id="terrainInfoPanel">
-          <div class="card-body">
-            <div class="row align-items-center mb-3 terrain-command-header">
-              <div class="col">
-                <h5 class="card-title mb-0">地形指挥看板</h5>
-              </div>
-              <div class="col-auto d-flex gap-2 terrain-command-actions">
-                <button class="btn btn-sm terrain-command-btn terrain-command-btn-secondary" id="executeTaskBtn">
-                  <i class="bi bi-play-circle"></i> 执行测绘任务
-                </button>
-                <button class="btn btn-sm terrain-command-btn terrain-command-btn-primary" id="editTerrainMapBtn">
-                  <i class="bi bi-pencil-square"></i> 编辑地形地图
-                </button>
-              </div>
-            </div>
-
-            <div id="terrainDetailPanel" class="detail-content-area">
-              <section class="terrain-detail-overview info-item">
-                <div class="terrain-detail-overview-head">
-                  <div>
-                    <div class="terrain-detail-caption">当前地形指挥概览</div>
-                    <div class="terrain-detail-title-row">
-                      <h4 class="terrain-detail-name mb-0" id="infoName">-</h4>
-                      <span class="badge bg-secondary" id="infoRisk">-</span>
-                    </div>
-                  </div>
-                  <div class="terrain-overview-status">
-                    <span class="terrain-overview-chip" id="infoSurveyStatus">待调度</span>
-                    <span class="terrain-overview-chip terrain-overview-chip-muted" id="infoDroneCount">0 台设备</span>
-                  </div>
-                </div>
-                <div class="terrain-detail-metrics">
-                  <div class="terrain-detail-metric">
-                    <span class="terrain-detail-metric-label">面积</span>
-                    <strong id="infoArea">-</strong>
-                  </div>
-                  <div class="terrain-detail-metric">
-                    <span class="terrain-detail-metric-label">地块数量</span>
-                    <strong id="infoPlotCount">-</strong>
-                  </div>
-                  <div class="terrain-detail-metric">
-                    <span class="terrain-detail-metric-label">数据精度</span>
-                    <strong id="infoAccuracy">-</strong>
-                  </div>
-                  <div class="terrain-detail-metric">
-                    <span class="terrain-detail-metric-label">更新时间</span>
-                    <strong id="infoUpdatedAt">-</strong>
-                  </div>
-                  <div class="terrain-detail-metric">
-                    <span class="terrain-detail-metric-label">当前测绘状态</span>
-                    <strong id="infoSurveyStatusMetric">-</strong>
-                  </div>
-                  <div class="terrain-detail-metric">
-                    <span class="terrain-detail-metric-label">已绑定无人机</span>
-                    <strong id="infoDroneCountMetric">-</strong>
-                  </div>
-                </div>
-              </section>
-
-              <div class="row g-3 terrain-detail-sections">
-                <div class="col-12 col-xl-5">
-                  <section class="info-item terrain-device-card h-100">
-                    <div class="terrain-section-heading">
-                      <div>
-                        <div class="terrain-section-title">无人机编组</div>
-                        <div class="terrain-section-subtitle" id="infoDroneGroupMode">按机型分组展示当前可调度无人机</div>
-                      </div>
-                      <div class="terrain-device-toolbar">
-                        <span class="terrain-device-count" id="infoDroneGroupCount">0 组</span>
-                        <button type="button" class="btn btn-sm btn-primary" id="bindDroneBtn">
-                          <i class="bi bi-link-45deg"></i> 管理绑定
-                        </button>
-                      </div>
-                    </div>
-                    <div class="terrain-drone-status" id="infoDroneStatus">未绑定无人机</div>
-                    <div class="terrain-drone-list terrain-drone-group-list" id="infoDroneList">
-                      <div class="terrain-drone-empty">当前未绑定无人机</div>
-                    </div>
-                    <div class="terrain-drone-meta" id="infoDroneMeta">绑定后可直接执行测绘任务，并支持多机协同执行。</div>
-                  </section>
-                </div>
-
-                <div class="col-12 col-xl-7">
-                  <section class="info-item terrain-risk-card h-100">
-                    <div class="terrain-section-heading">
-                      <div>
-                        <div class="terrain-section-title">风险分析</div>
-                        <div class="terrain-section-subtitle">聚合当前地形内地块的风险评估结果</div>
-                      </div>
-                      <div class="terrain-risk-score-pill">
-                        风险分值
-                        <strong id="infoRiskScore">-</strong>
-                      </div>
-                    </div>
-                    <div class="terrain-risk-tiles" id="infoRiskBreakdown">
-                      <div class="terrain-risk-tile risk-high" title="高风险区域：建议优先测绘或巡检">
-                        <span class="terrain-risk-tile-icon"><i class="bi bi-exclamation-diamond"></i></span>
-                        <strong>0</strong>
-                        <span>高风险</span>
-                      </div>
-                      <div class="terrain-risk-tile risk-medium" title="中风险区域：建议重点关注变化情况">
-                        <span class="terrain-risk-tile-icon"><i class="bi bi-exclamation-triangle"></i></span>
-                        <strong>0</strong>
-                        <span>中风险</span>
-                      </div>
-                      <div class="terrain-risk-tile risk-low" title="低风险区域：保持常规巡检">
-                        <span class="terrain-risk-tile-icon"><i class="bi bi-shield-check"></i></span>
-                        <strong>0</strong>
-                        <span>低风险</span>
-                      </div>
-                      <div class="terrain-risk-tile risk-none" title="未评估区域：需补充风险评估">
-                        <span class="terrain-risk-tile-icon"><i class="bi bi-question-diamond"></i></span>
-                        <strong>0</strong>
-                        <span>未评估</span>
-                      </div>
-                    </div>
-                    <div class="terrain-risk-summary-box">
-                      <div class="terrain-risk-summary-main">
-                        <span class="terrain-risk-summary-label">综合判断</span>
-                        <strong id="infoRiskJudgement">未完成风险评估</strong>
-                      </div>
-                      <div class="terrain-risk-summary-sub" id="infoRiskSource">风险数据来源待同步</div>
-                    </div>
-                    <div class="terrain-detail-field">
-                      <label class="text-muted small">风险构成</label>
-                      <div class="terrain-detail-field-value" id="infoRiskComposition">-</div>
-                    </div>
-                    <div class="terrain-detail-field mt-3">
-                      <label class="text-muted small">判定原因</label>
-                      <div class="info-description-text" id="infoRiskReason">暂无风险判定说明</div>
-                    </div>
-                  </section>
-                </div>
-
-                <div class="col-12">
-                  <section class="info-item terrain-spatial-card">
-                    <div class="terrain-section-heading">
-                      <div>
-                        <div class="terrain-section-title">空间信息</div>
-                        <div class="terrain-section-subtitle">用于快速判断地形覆盖范围与空间状态</div>
-                      </div>
-                    </div>
-                    <div class="row g-3 terrain-spatial-grid">
-                      <div class="col-md-6 col-xl-3">
-                        <div class="terrain-spatial-item">
-                          <label class="text-muted small">中心坐标</label>
-                          <div class="text-primary small fw-bold" id="infoCenterCoord">-</div>
-                        </div>
-                      </div>
-                      <div class="col-md-6 col-xl-3">
-                        <div class="terrain-spatial-item">
-                          <label class="text-muted small">左下角坐标</label>
-                          <div class="text-primary small fw-bold" id="infoBboxMin">-</div>
-                        </div>
-                      </div>
-                      <div class="col-md-6 col-xl-3">
-                        <div class="terrain-spatial-item">
-                          <label class="text-muted small">右上角坐标</label>
-                          <div class="text-primary small fw-bold" id="infoBboxMax">-</div>
-                        </div>
-                      </div>
-                      <div class="col-md-6 col-xl-3">
-                        <div class="terrain-spatial-item terrain-spatial-summary">
-                          <span class="terrain-spatial-summary-label">覆盖范围</span>
-                          <span class="terrain-spatial-summary-value" id="infoCoverageRange">待选择地形后显示</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="terrain-spatial-footer">
-                      <span class="terrain-spatial-footer-chip" id="infoSpatialSummary">待选择地形后显示</span>
-                      <span class="terrain-spatial-footer-chip" id="infoLayerModeSummary">当前图层：地块</span>
-                      <span class="terrain-spatial-footer-chip" id="infoTopicStatus">状态：待选择地形</span>
-                    </div>
-                  </section>
-                </div>
-              </div>
-
-              <div class="terrain-description-region">
-                <div class="info-item terrain-description-block" id="terrainDescriptionBlock">
-                  <div class="terrain-section-heading mb-3">
-                    <div>
-                      <div class="terrain-section-title">任务说明 / 地形备注</div>
-                      <div class="terrain-section-subtitle">承接当前地形的补充说明、作业提醒和注意事项</div>
-                    </div>
-                  </div>
-                  <div class="info-description-text" id="infoDescription">无补充描述</div>
-                </div>
-              </div>
+              <span class="terrain-map-brief-label">数据精度</span>
+              <strong id="terrainMapAccuracy">-</strong>
             </div>
           </div>
         </div>
       </div>
     </section>
   </div>
+
+  <section class="card terrain-command-board" id="terrainCommandBoard">
+    <div class="card-body">
+      <div class="terrain-command-board-header">
+        <div>
+          <h5 class="card-title mb-1">地形指挥看板</h5>
+          <p class="terrain-command-board-subtitle mb-0" id="terrainCommandSubtitle">请先从上方地形区域列表中选择一个地形</p>
+        </div>
+        <div class="terrain-command-actions">
+          <button class="btn btn-sm terrain-command-btn terrain-command-btn-secondary" id="executeTaskBtn">
+            <i class="bi bi-play-circle"></i> 执行测绘任务
+          </button>
+          <button class="btn btn-sm terrain-command-btn terrain-command-btn-primary" id="editTerrainMapBtn">
+            <i class="bi bi-pencil-square"></i> 编辑地形地图
+          </button>
+          <button class="btn btn-sm terrain-command-btn terrain-command-btn-outline" id="bindDroneBtn">
+            <i class="bi bi-link-45deg"></i> 管理绑定
+          </button>
+          <button class="btn btn-sm terrain-command-btn terrain-command-btn-outline" id="locateTerrainBtn">
+            <i class="bi bi-crosshair"></i> 定位地形
+          </button>
+        </div>
+      </div>
+
+      <div class="terrain-command-empty-state" id="terrainCommandEmptyState">
+        <div class="terrain-command-empty-title">请先从上方地形区域列表中选择一个地形</div>
+        <div class="terrain-command-empty-desc">选择地形后，这里会同步展示作战概览、风险态势、无人机编组和任务说明。</div>
+      </div>
+
+      <div id="terrainDetailPanel" class="terrain-command-board-content d-none">
+        <div class="terrain-command-grid">
+          <section class="terrain-detail-overview info-item">
+            <div class="terrain-detail-overview-head">
+              <div>
+                <div class="terrain-detail-caption">作战概览</div>
+                <div class="terrain-detail-title-row">
+                  <h4 class="terrain-detail-name mb-0" id="infoName">-</h4>
+                  <span class="badge bg-secondary" id="infoRisk">-</span>
+                </div>
+              </div>
+              <div class="terrain-overview-status">
+                <span class="terrain-overview-chip" id="infoSurveyStatus">待调度</span>
+                <span class="terrain-overview-chip terrain-overview-chip-muted" id="infoDroneCount">0 台设备</span>
+              </div>
+            </div>
+            <div class="terrain-detail-metrics">
+              <div class="terrain-detail-metric">
+                <span class="terrain-detail-metric-label">面积</span>
+                <strong id="infoArea">-</strong>
+              </div>
+              <div class="terrain-detail-metric">
+                <span class="terrain-detail-metric-label">地块数量</span>
+                <strong id="infoPlotCount">-</strong>
+              </div>
+              <div class="terrain-detail-metric">
+                <span class="terrain-detail-metric-label">数据精度</span>
+                <strong id="infoAccuracy">-</strong>
+              </div>
+              <div class="terrain-detail-metric">
+                <span class="terrain-detail-metric-label">更新时间</span>
+                <strong id="infoUpdatedAt">-</strong>
+              </div>
+              <div class="terrain-detail-metric">
+                <span class="terrain-detail-metric-label">当前测绘状态</span>
+                <strong id="infoSurveyStatusMetric">-</strong>
+              </div>
+              <div class="terrain-detail-metric">
+                <span class="terrain-detail-metric-label">已绑定无人机</span>
+                <strong id="infoDroneCountMetric">-</strong>
+              </div>
+            </div>
+            <div class="terrain-spatial-footer">
+              <span class="terrain-spatial-footer-chip" id="infoCenterCoord">中心坐标：-</span>
+              <span class="terrain-spatial-footer-chip" id="infoCoverageRange">覆盖范围：-</span>
+              <span class="terrain-spatial-footer-chip" id="infoLayerModeSummary">当前图层：地块</span>
+              <span class="terrain-spatial-footer-chip" id="infoTopicStatus">状态：待选择地形</span>
+            </div>
+          </section>
+
+          <section class="info-item terrain-risk-card">
+            <div class="terrain-section-heading">
+              <div>
+                <div class="terrain-section-title">风险态势</div>
+                <div class="terrain-section-subtitle">聚合当前地形内地块的风险评估结果</div>
+              </div>
+              <div class="terrain-risk-score-pill">
+                风险分值
+                <strong id="infoRiskScore">-</strong>
+              </div>
+            </div>
+            <div class="terrain-risk-tiles" id="infoRiskBreakdown">
+              <div class="terrain-risk-tile risk-high" title="高风险区域：建议优先测绘或巡检">
+                <span class="terrain-risk-tile-icon"><i class="bi bi-exclamation-diamond"></i></span>
+                <strong>0</strong>
+                <span>高风险</span>
+              </div>
+              <div class="terrain-risk-tile risk-medium" title="中风险区域：建议重点关注变化情况">
+                <span class="terrain-risk-tile-icon"><i class="bi bi-exclamation-triangle"></i></span>
+                <strong>0</strong>
+                <span>中风险</span>
+              </div>
+              <div class="terrain-risk-tile risk-low" title="低风险区域：保持常规巡检">
+                <span class="terrain-risk-tile-icon"><i class="bi bi-shield-check"></i></span>
+                <strong>0</strong>
+                <span>低风险</span>
+              </div>
+              <div class="terrain-risk-tile risk-none" title="未评估区域：需补充风险评估">
+                <span class="terrain-risk-tile-icon"><i class="bi bi-question-diamond"></i></span>
+                <strong>0</strong>
+                <span>未评估</span>
+              </div>
+            </div>
+            <div class="terrain-risk-summary-box">
+              <div class="terrain-risk-summary-main">
+                <span class="terrain-risk-summary-label">综合判断</span>
+                <strong id="infoRiskJudgement">未完成风险评估</strong>
+              </div>
+              <div class="terrain-risk-summary-sub" id="infoRiskSource">风险数据来源待同步</div>
+            </div>
+            <div class="terrain-detail-field">
+              <label class="text-muted small">风险构成</label>
+              <div class="terrain-detail-field-value" id="infoRiskComposition">-</div>
+            </div>
+            <div class="terrain-detail-field mt-3">
+              <label class="text-muted small">判定原因</label>
+              <div class="info-description-text" id="infoRiskReason">暂无风险判定说明</div>
+            </div>
+          </section>
+
+          <section class="info-item terrain-device-card">
+            <div class="terrain-section-heading">
+              <div>
+                <div class="terrain-section-title">无人机编组</div>
+                <div class="terrain-section-subtitle" id="infoDroneGroupMode">按机型分组展示当前可调度无人机</div>
+              </div>
+              <div class="terrain-device-toolbar">
+                <span class="terrain-device-count" id="infoDroneGroupCount">0 组</span>
+              </div>
+            </div>
+            <div class="terrain-drone-status" id="infoDroneStatus">未绑定无人机</div>
+            <div class="terrain-drone-list terrain-drone-group-list" id="infoDroneList">
+              <div class="terrain-drone-empty">当前未绑定无人机</div>
+            </div>
+            <div class="terrain-drone-meta" id="infoDroneMeta">绑定后可直接执行测绘任务，并支持多机协同执行。</div>
+          </section>
+
+          <section class="info-item terrain-description-block" id="terrainDescriptionBlock">
+            <div class="terrain-section-heading mb-3">
+              <div>
+                <div class="terrain-section-title">任务说明 / 地形备注</div>
+                <div class="terrain-section-subtitle">承接当前地形的补充说明、作业提醒和注意事项</div>
+              </div>
+            </div>
+            <div class="info-description-text" id="infoDescription">无补充描述</div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card terrain-plot-detail-panel" id="terrainPlotDetailPanel">
+    <div class="card-body">
+      <div class="terrain-plot-panel-header">
+        <div>
+          <h5 class="card-title mb-1">地块明细</h5>
+          <p class="text-muted mb-0" id="terrainPlotPanelSubtitle">展示当前地形的组成地块，可展开详情并在地图中定位。</p>
+        </div>
+        <span class="terrain-plot-panel-count" id="terrainPlotPanelCount">0 个地块</span>
+      </div>
+      <div class="terrain-plot-list" id="terrainPlotList">
+        <div class="terrain-module-empty">请先选择地形后查看地块明细</div>
+      </div>
+    </div>
+  </section>
 
   <!-- 移除详情抽屉 -->
 
