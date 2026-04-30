@@ -233,6 +233,8 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
     plots = serializers.SerializerMethodField()
     drone = serializers.SerializerMethodField()
     drone_id = serializers.SerializerMethodField()
+    drones = serializers.SerializerMethodField()
+    drone_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = TerrainArea
@@ -260,6 +262,8 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
             'plots',
             'drone',
             'drone_id',
+            'drones',
+            'drone_ids',
             'created_at',
             'updated_at',
             'is_deleted',
@@ -507,11 +511,11 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
         return []
 
     def get_drone_id(self, obj):
-        drone = Drone.objects.filter(terrain_id=obj.id).first()
+        drone = Drone.objects.filter(terrain_id=obj.id).order_by('id').first()
         return drone.id if drone else 0
 
     def get_drone(self, obj):
-        drone = Drone.objects.filter(terrain_id=obj.id).first()
+        drone = Drone.objects.filter(terrain_id=obj.id).order_by('id').first()
         if drone:
             return {
                 "id": drone.id,
@@ -520,6 +524,21 @@ class TerrainAreaSerializer(GeoJSONCompatibilityMixin, serializers.ModelSerializ
                 "model_name": drone.model_name,
             }
         return None
+
+    def get_drones(self, obj):
+        queryset = Drone.objects.filter(terrain_id=obj.id).order_by('id')
+        return [
+            {
+                "id": drone.id,
+                "drone_code": drone.drone_code,
+                "drone_name": drone.drone_name,
+                "model_name": drone.model_name,
+            }
+            for drone in queryset
+        ]
+
+    def get_drone_ids(self, obj):
+        return list(Drone.objects.filter(terrain_id=obj.id).order_by('id').values_list('id', flat=True))
 
 class TerrainSubCategorySerializer(serializers.ModelSerializer):
     class Meta:

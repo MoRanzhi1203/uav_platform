@@ -13,7 +13,7 @@
 {% block content %}
 <div class="container-fluid">
   <!-- 页面标题区 -->
-  <div class="row">
+  <div class="row terrain-page-header-row">
     <div class="col-12">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -38,7 +38,7 @@
   </div>
 
   <!-- 统计卡片区 -->
-  <div class="row">
+  <div class="row terrain-stats-row">
     <div class="col-lg-3 col-md-6">
       <div class="card info-card">
         <div class="card-body">
@@ -240,81 +240,120 @@
             </div>
 
             <div id="terrainDetailPanel" class="detail-content-area">
-              <div class="row g-3 terrain-detail-grid">
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">地形名称</label>
-                    <div class="fw-bold" id="infoName">-</div>
+              <section class="terrain-detail-overview info-item">
+                <div class="terrain-detail-overview-head">
+                  <div>
+                    <div class="terrain-detail-caption">当前选中地形</div>
+                    <div class="terrain-detail-title-row">
+                      <h4 class="terrain-detail-name mb-0" id="infoName">-</h4>
+                      <span class="badge bg-secondary" id="infoRisk">-</span>
+                    </div>
                   </div>
                 </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">风险等级</label>
-                    <div id="infoRisk">-</div>
+                <div class="terrain-detail-metrics">
+                  <div class="terrain-detail-metric">
+                    <span class="terrain-detail-metric-label">面积</span>
+                    <strong id="infoArea">-</strong>
+                  </div>
+                  <div class="terrain-detail-metric">
+                    <span class="terrain-detail-metric-label">地块数量</span>
+                    <strong id="infoPlotCount">-</strong>
+                  </div>
+                  <div class="terrain-detail-metric">
+                    <span class="terrain-detail-metric-label">数据精度</span>
+                    <strong id="infoAccuracy">-</strong>
+                  </div>
+                  <div class="terrain-detail-metric">
+                    <span class="terrain-detail-metric-label">更新时间</span>
+                    <strong id="infoUpdatedAt">-</strong>
                   </div>
                 </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">面积</label>
-                    <div class="fw-bold" id="infoArea">-</div>
-                  </div>
+              </section>
+
+              <div class="row g-3 terrain-detail-sections">
+                <div class="col-12 col-xl-5">
+                  <section class="info-item terrain-device-card h-100">
+                    <div class="terrain-section-heading">
+                      <div>
+                        <div class="terrain-section-title">无人机信息</div>
+                        <div class="terrain-section-subtitle">支持同时绑定多台不同类型的执行设备</div>
+                      </div>
+                      <div class="terrain-device-toolbar">
+                        <span class="terrain-device-count" id="infoDroneCount">0 台设备</span>
+                        <button type="button" class="btn btn-sm btn-primary" id="bindDroneBtn">
+                          <i class="bi bi-link-45deg"></i> 管理绑定
+                        </button>
+                      </div>
+                    </div>
+                    <div class="terrain-drone-status" id="infoDroneStatus">未绑定无人机</div>
+                    <div class="terrain-drone-list" id="infoDroneList">
+                      <div class="terrain-drone-empty">当前未绑定无人机</div>
+                    </div>
+                    <div class="terrain-drone-meta" id="infoDroneMeta">绑定后可直接执行测绘任务，并支持多机协同执行。</div>
+                  </section>
                 </div>
 
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">地块数量</label>
-                    <div class="fw-bold" id="infoPlotCount">-</div>
-                  </div>
+                <div class="col-12 col-xl-7">
+                  <section class="info-item terrain-risk-card h-100">
+                    <div class="terrain-section-heading">
+                      <div>
+                        <div class="terrain-section-title">风险分析</div>
+                        <div class="terrain-section-subtitle">聚合当前地形内地块的风险评估结果</div>
+                      </div>
+                      <div class="terrain-risk-score-pill">
+                        风险分值
+                        <strong id="infoRiskScore">-</strong>
+                      </div>
+                    </div>
+                    <div class="terrain-risk-breakdown" id="infoRiskBreakdown">
+                      <span class="terrain-risk-chip risk-high">高风险 0</span>
+                      <span class="terrain-risk-chip risk-medium">中风险 0</span>
+                      <span class="terrain-risk-chip risk-low">低风险 0</span>
+                      <span class="terrain-risk-chip risk-none">未评估 0</span>
+                    </div>
+                    <div class="terrain-detail-field">
+                      <label class="text-muted small">风险构成</label>
+                      <div class="terrain-detail-field-value" id="infoRiskComposition">-</div>
+                    </div>
+                    <div class="terrain-detail-field mt-3">
+                      <label class="text-muted small">判定原因</label>
+                      <div class="info-description-text" id="infoRiskReason">暂无风险判定说明</div>
+                    </div>
+                  </section>
                 </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">绑定无人机</label>
-                    <div class="fw-bold" id="infoDrone">未绑定</div>
-                  </div>
-                </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">风险构成</label>
-                    <div class="fw-bold" id="infoRiskComposition">-</div>
-                  </div>
-                </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">风险分值</label>
-                    <div class="fw-bold" id="infoRiskScore">-</div>
-                  </div>
-                </div>
-                <div class="col-md-6 col-sm-12">
-                  <div class="info-item">
-                    <label class="text-muted small">判定原因</label>
-                    <div class="info-description-text" id="infoRiskReason">暂无风险判定说明</div>
-                  </div>
-                </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">数据精度</label>
-                    <div class="fw-bold" id="infoAccuracy">-</div>
-                  </div>
-                </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">左下角坐标</label>
-                    <div class="text-primary small fw-bold" id="infoBboxMin">-</div>
-                  </div>
-                </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">右上角坐标</label>
-                    <div class="text-primary small fw-bold" id="infoBboxMax">-</div>
-                  </div>
-                </div>
-                <div class="col-md-3 col-sm-6">
-                  <div class="info-item">
-                    <label class="text-muted small">更新时间</label>
-                    <div class="fw-bold" id="infoUpdatedAt">-</div>
-                  </div>
+
+                <div class="col-12">
+                  <section class="info-item terrain-spatial-card">
+                    <div class="terrain-section-heading">
+                      <div>
+                        <div class="terrain-section-title">空间信息</div>
+                        <div class="terrain-section-subtitle">查看地形范围坐标与数据质量信息</div>
+                      </div>
+                    </div>
+                    <div class="row g-3 terrain-spatial-grid">
+                      <div class="col-md-6 col-xl-4">
+                        <div class="terrain-spatial-item">
+                          <label class="text-muted small">左下角坐标</label>
+                          <div class="text-primary small fw-bold" id="infoBboxMin">-</div>
+                        </div>
+                      </div>
+                      <div class="col-md-6 col-xl-4">
+                        <div class="terrain-spatial-item">
+                          <label class="text-muted small">右上角坐标</label>
+                          <div class="text-primary small fw-bold" id="infoBboxMax">-</div>
+                        </div>
+                      </div>
+                      <div class="col-md-12 col-xl-4">
+                        <div class="terrain-spatial-item terrain-spatial-summary">
+                          <span class="terrain-spatial-summary-label">空间状态</span>
+                          <span class="terrain-spatial-summary-value" id="infoSpatialSummary">待选择地形后显示</span>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
                 </div>
               </div>
+
               <div class="terrain-description-region">
                 <div class="info-item terrain-description-block" id="terrainDescriptionBlock">
                   <label class="text-muted small">描述</label>
@@ -410,6 +449,42 @@
       </div>
     </div>
   </section>
+</div>
+
+<!-- 绑定无人机弹窗 -->
+<div class="modal fade" id="bindDroneModal" tabindex="-1" aria-labelledby="bindDroneModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bindDroneModalLabel">绑定无人机</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">目标地形</label>
+          <input type="text" class="form-control" id="bindDroneTerrainName" readonly>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">当前绑定</label>
+          <div id="bindDroneCurrentInfo" class="alert alert-light border small mb-0">当前未绑定无人机</div>
+        </div>
+        <div class="mb-2">
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
+            <label class="form-label mb-0">选择无人机</label>
+            <span class="terrain-bind-summary" id="bindDroneSelectionSummary">已选择 0 台</span>
+          </div>
+          <div class="bind-drone-checklist" id="bindDroneChecklist">
+            <div class="terrain-module-loading">无人机列表加载中...</div>
+          </div>
+          <div class="form-text">仅显示未绑定无人机，或当前已绑定到该地形的无人机；可多选。</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="saveBindDroneBtn">保存绑定</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- 执行测绘任务弹窗 -->

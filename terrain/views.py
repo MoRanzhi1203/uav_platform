@@ -1076,9 +1076,9 @@ def execute_survey_task(request):
         description = data.get('description', '')
         
         terrain = get_object_or_404(TerrainArea, id=terrain_id, is_deleted=False)
-        drone = Drone.objects.filter(terrain_id=terrain.id).first()
+        drones = list(Drone.objects.filter(terrain_id=terrain.id).order_by('id'))
         
-        if not drone:
+        if not drones:
             return api_error(msg="该地形尚未绑定无人机，请先绑定无人机后再执行任务")
             
         # 创建全局任务
@@ -1098,11 +1098,12 @@ def execute_survey_task(request):
         # 假设每次飞行 1.5 小时，间隔 30 分钟充电
         flight_duration = 1.5
         rest_duration = 0.5
-        total_shifts = 2 # 演示用，固定2个班次
+        total_shifts = max(2, len(drones))
         
         for i in range(total_shifts):
             shift_start = now + timezone.timedelta(hours=(flight_duration + rest_duration) * i)
             shift_end = shift_start + timezone.timedelta(hours=flight_duration)
+            drone = drones[i % len(drones)]
             SurveyShift.objects.create(
                 task_id=task.id,
                 drone_id=drone.id,
@@ -1115,7 +1116,8 @@ def execute_survey_task(request):
         return api_response(data={
             "task_id": task.id,
             "task_code": task_code,
-            "shifts_count": total_shifts
+            "shifts_count": total_shifts,
+            "drone_count": len(drones)
         }, msg="测绘任务创建成功")
     except Exception as e:
         logger.error(f"创建测绘任务异常: {str(e)}")
@@ -1146,6 +1148,71 @@ def get_available_drones(request):
         return api_response(data=data)
     except Exception as e:
         logger.error(f"获取无人机列表异常: {str(e)}")
+        return api_error(msg=str(e), status=500)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def bind_drone(request):
+    """为地形批量绑定或解除绑定无人机"""
+    try:
+        terrain_id = request.data.get('terrain_id')
+        drone_ids = request.data.get('drone_ids', None)
+        single_drone_id = request.data.get('drone_id')
+
+        if not terrain_id:
+            return api_error(msg="缺少地形ID")
+
+        terrain = get_object_or_404(TerrainArea, id=terrain_id, is_deleted=False)
+
+        if drone_ids is None:
+            if single_drone_id in (None, '', 0, '0'):
+                normalized_ids = []
+            else:
+                normalized_ids = [int(single_drone_id)]
+        else:
+            if not isinstance(drone_ids, list):
+                return api_error(msg="drone_ids 必须为数组")
+            normalized_ids = []
+            for item in drone_ids:
+                item_str = str(item).strip()
+                if not item_str or item_str == '0':
+                    continue
+                normalized_ids.append(int(item_str))
+
+        normalized_ids = list(dict.fromkeys(normalized_ids))
+
+        allowed_queryset = Drone.objects.filter(
+            id__in=normalized_ids
+        ).filter(
+            Q(terrain_id=0) | Q(terrain_id=terrain.id)
+        )
+        allowed_ids = list(allowed_queryset.values_list('id', flat=True))
+        if set(allowed_ids) != set(normalized_ids):
+            return api_error(msg="存在不可绑定的无人机，请刷新后重试")
+
+        Drone.objects.filter(terrain_id=terrain.id).exclude(id__in=normalized_ids).update(terrain_id=0)
+        if normalized_ids:
+            Drone.objects.filter(id__in=normalized_ids).update(terrain_id=terrain.id)
+
+        bound_drones = list(Drone.objects.filter(terrain_id=terrain.id).order_by('id'))
+        return api_response(
+            data={
+                "terrain_id": terrain.id,
+                "drones": [
+                    {
+                        "id": drone.id,
+                        "drone_code": drone.drone_code,
+                        "drone_name": drone.drone_name,
+                        "model_name": drone.model_name,
+                    }
+                    for drone in bound_drones
+                ],
+                "drone_ids": [drone.id for drone in bound_drones],
+            },
+            msg="绑定成功" if bound_drones else "解除绑定成功"
+        )
+    except Exception as e:
+        logger.error(f"绑定无人机异常: {str(e)}")
         return api_error(msg=str(e), status=500)
 
 @api_view(['POST'])
@@ -1638,6 +1705,7 @@ def unified_save_terrain(request):
         terrain_data = data.get('terrain', {})
         plots_data = data.get('plots', []) # 支持批量地块
         drone_id = terrain_data.get('drone_id')
+        drone_ids = terrain_data.get('drone_ids')
 
         if not terrain_data.get('name'):
             return api_error(msg="地形名称不能为空")
@@ -1665,12 +1733,25 @@ def unified_save_terrain(request):
                 )
                 msg = "地形与地块已成功创建"
 
-            # 处理无人机绑定
-            # 1. 解除该地形之前绑定的所有无人机
-            Drone.objects.filter(terrain_id=terrain.id).update(terrain_id=0)
-            # 2. 如果提供了新的 drone_id，则绑定它
-            if drone_id:
-                Drone.objects.filter(id=drone_id).update(terrain_id=terrain.id)
+            # 处理无人机绑定，仅在显式传入时更新，避免编辑地块时误清空绑定关系
+            should_update_drone_binding = ('drone_id' in terrain_data) or ('drone_ids' in terrain_data)
+            if should_update_drone_binding:
+                if isinstance(drone_ids, list):
+                    normalized_drone_ids = []
+                    for item in drone_ids:
+                        item_str = str(item).strip()
+                        if not item_str or item_str == '0':
+                            continue
+                        normalized_drone_ids.append(int(item_str))
+                elif drone_id not in (None, '', 0, '0'):
+                    normalized_drone_ids = [int(drone_id)]
+                else:
+                    normalized_drone_ids = []
+
+                normalized_drone_ids = list(dict.fromkeys(normalized_drone_ids))
+                Drone.objects.filter(terrain_id=terrain.id).exclude(id__in=normalized_drone_ids).update(terrain_id=0)
+                if normalized_drone_ids:
+                    Drone.objects.filter(id__in=normalized_drone_ids).update(terrain_id=terrain.id)
 
             # 2. 批量处理地块 (TerrainZone)
             saved_plots = []

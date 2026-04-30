@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/terrain/save/', views.unified_save_terrain, name='unified_save_terrain'),
     path('api/terrain/execute-task/', views.execute_survey_task, name='execute_survey_task'),
     path('api/drones/available/', views.get_available_drones, name='get_available_drones'),
+    path('api/drones/bind/', views.bind_drone, name='bind_drone'),
     path('api/drones/unbind/', views.unbind_drone, name='unbind_drone'),
     
     # TerrainZone API
