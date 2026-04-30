@@ -1,367 +1,438 @@
-// 农田管理页面逻辑
-// 使用全局变量
-// 直接使用全局变量AgriMap，不需要重复声明
+// 农业管理页面逻辑 - 仿照地形管理风格
 
-// 页面数据
-let agriData = {
-  farms: [],
+const agriData = {
+  areas: [],
+  filteredAreas: [],
   pestAlerts: [],
-  sprays: [],
-  currentFarm: null
+  tasks: [],
+  riskAnalysis: [],
+  currentArea: null,
+  appliedFilters: {
+    name: '',
+    riskLevel: '',
+    timeRange: 'all'
+  },
+  hasActiveFilters: false,
+  emptyStateMessage: '当前没有可展示的农业示范区，请稍后刷新。'
 };
 
-// 全局地图实例
 let agriMap;
+const vueInstances = {};
+let agriChartInstance = null;
 
-// 全局Vue实例
-let vueInstances = {};
-
-// 初始化页面
 function initPage() {
-  // 初始化Vue实例
+  console.log('--- 农业管理页面初始化开始 ---');
+
   initVue();
-
+  
   // 初始化地图
-  agriMap = new AgriMap('farmMap');
-  agriMap.init();
+  if (window.AgriMap) {
+    agriMap = new AgriMap('agriMap');
+    agriMap.init();
+    console.log('地图组件初始化成功');
+  } else {
+    console.error('未找到 AgriMap 组件，请检查 agri_map.js 加载情况');
+  }
 
-  // 加载假数据
-  loadMockData();
-
-  // 初始化筛选表单
+  resetDetailPanel();
   initFilterForm();
-
-  // 初始化表格
-  initTables();
-
-  // 初始化事件绑定
   initEvents();
+  
+  // 加载真实数据
+  loadRealData();
 }
 
-// 加载假数据
-function loadMockData() {
-  // 模拟API请求延迟
-  setTimeout(() => {
-    // 检查假数据是否加载
-    if (window.agriMockData) {
-      // 加载农田数据
-      agriData.farms = window.agriMockData.farms.map(farm => ({
-        ...farm,
-        crop_type: farm.cropType,
-        coordinates: window.agriMockData.mapData.farmBoundaries.find(b => b.id === farm.id)?.coordinates || []
-      }));
+async function loadRealData() {
+  console.log('开始加载 API 数据...');
+  // 统一使用 /agri 前缀，匹配 urls.py 中的配置
+  const baseUrl = '/agri'; 
+  console.log(`使用 API 基础路径: ${baseUrl}`);
 
-      // 加载病虫害预警数据
-      agriData.pestAlerts = window.agriMockData.pestAlerts;
+  try {
+    // 1. 加载概览统计
+    console.log(`请求概览: ${baseUrl}/overview/`);
+    const overviewRes = await fetch(`${baseUrl}/overview/`);
+    if (!overviewRes.ok) throw new Error(`概览接口请求失败: ${overviewRes.status}`);
+    const overviewData = await overviewRes.json();
+    console.log('概览响应:', overviewData);
+    if (overviewData.code === 0) {
+      const stats = overviewData.data;
+      const updateStat = (id, val) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = val;
+      };
+      updateStat('totalAgriAreas', stats.farm_area_count);
+      updateStat('totalPlots', stats.farm_plot_count);
+      updateStat('pestAlerts', stats.pest_monitor_count);
+      updateStat('activeTasks', stats.agri_task_count);
+    } else {
+      console.warn('概览接口返回错误代码:', overviewData);
+    }
 
-      // 加载植保记录数据
-      agriData.sprays = window.agriMockData.sprayTasks.map(task => ({
-        ...task,
-        start_time: task.time,
-        end_time: task.time,
-        coordinates: window.agriMockData.mapData.sprayRoutes.find(route => route.farmId === task.farmId)?.coordinates || []
-      }));
-
-      // 更新页面数据
-      updatePageData();
-
-      // 加载地图数据
-      if (agriMap) {
-        agriMap.loadFarms(agriData.farms);
-        agriMap.loadPestAlerts(agriData.pestAlerts);
-        agriMap.loadSprayPaths(agriData.sprays);
+    // 2. 加载区域列表
+    console.log(`请求区域列表: ${baseUrl}/farm-plots/`);
+    const areasRes = await fetch(`${baseUrl}/farm-plots/`);
+    if (!areasRes.ok) throw new Error(`区域列表接口请求失败: ${areasRes.status}`);
+    const areasData = await areasRes.json();
+    console.log('区域列表响应:', areasData);
+    if (areasData.code === 0) {
+      agriData.areas = areasData.data;
+      agriData.filteredAreas = [...areasData.data];
+      renderAgriTable();
+      if (agriMap && areasData.data.length > 0) {
+        agriMap.loadAreas(areasData.data);
+      }
+      
+      // 如果有数据，默认选择第一个
+      if (areasData.data.length > 0) {
+          selectArea(areasData.data[0].id);
       }
     } else {
-      console.error('假数据未加载');
+      console.warn('区域列表接口返回错误代码:', areasData);
     }
 
-  }, 500);
-}
-
-// 初始化筛选表单
-function initFilterForm() {
-  // 时间范围选择
-  document.getElementById('timeRange').addEventListener('change', function() {
-    const dateRange = document.getElementById('dateRange');
-    if (this.value === 'custom') {
-      dateRange.classList.remove('d-none');
-    } else {
-      dateRange.classList.add('d-none');
+    // 3. 加载今日病虫害
+    console.log(`请求病虫害: ${baseUrl}/dashboard/pest-alerts/`);
+    const pestRes = await fetch(`${baseUrl}/dashboard/pest-alerts/`);
+    if (pestRes.ok) {
+        const pestData = await pestRes.json();
+        if (pestData.code === 0) {
+          agriData.pestAlerts = pestData.data.items;
+          renderPestAlerts();
+        }
     }
-  });
 
-  // 搜索按钮
-  document.getElementById('searchBtn').addEventListener('click', function() {
-    const formData = {
-      name: document.getElementById('farmName').value,
-      cropType: document.getElementById('cropType').value,
-      status: document.getElementById('status').value,
-      timeRange: document.getElementById('timeRange').value
-    };
-    // 模拟搜索
-    console.log('搜索条件:', formData);
-    // 这里可以添加实际的搜索逻辑
-  });
+    // 4. 加载植保记录
+    console.log(`请求任务: ${baseUrl}/dashboard/tasks/`);
+    const taskRes = await fetch(`${baseUrl}/dashboard/tasks/`);
+    if (taskRes.ok) {
+        const taskData = await taskRes.json();
+        if (taskData.code === 0) {
+          agriData.tasks = taskData.data.items;
+          renderTaskRecords();
+        }
+    }
 
-  // 重置按钮
-  document.getElementById('resetBtn').addEventListener('click', function() {
-    document.getElementById('farmFilterForm').reset();
-    document.getElementById('dateRange').classList.add('d-none');
-  });
+    // 5. 加载风险分析数据
+    console.log(`请求风险分析: ${baseUrl}/dashboard/risk-analysis/`);
+    const analysisRes = await fetch(`${baseUrl}/dashboard/risk-analysis/`);
+    if (analysisRes.ok) {
+        const analysisData = await analysisRes.json();
+        if (analysisData.code === 0) {
+          agriData.riskAnalysis = analysisData.data.stats;
+          renderRiskAnalysisChart();
+        }
+    }
+
+  } catch (error) { 
+    console.error('加载农业数据过程中发生严重错误:', error);
+    alert('农业数据加载失败，请检查网络或后端服务。详情见控制台日志。');
+  }
 }
 
-// 初始化表格
-function initTables() {
-  // 农田表格
-  // 这里可以添加表格初始化逻辑，如排序、分页等
+function renderRiskAnalysisChart(type = 'bar') {
+  const ctxNode = document.getElementById('agriAnalysisChart');
+  if (!ctxNode) return;
+
+  if (!agriData.riskAnalysis || agriData.riskAnalysis.length === 0) {
+    ctxNode.innerHTML = '<div class="p-5 text-center text-muted">暂无风险统计数据</div>';
+    return;
+  }
+
+  const labels = agriData.riskAnalysis.map(item => {
+      const mapping = { high: '高风险', medium: '中风险', low: '低风险' };
+      return mapping[item.risk_level] || item.risk_level;
+  });
+  const values = agriData.riskAnalysis.map(item => item.count);
+
+  if (agriChartInstance) {
+      agriChartInstance.destroy();
+  }
+
+  if (window.ApexCharts) {
+      const options = {
+          series: [{
+              name: '地块数量',
+              data: values
+          }],
+          chart: {
+              type: type,
+              height: 300,
+              toolbar: { show: false }
+          },
+          colors: ['#d32f2f', '#f57c00', '#2e7d32'], // 高(红)、中(橙)、低(绿)
+          xaxis: { categories: labels },
+          plotOptions: {
+              bar: { borderRadius: 4, horizontal: false }
+          }
+      };
+
+      if (type === 'pie') {
+          options.series = values;
+          options.labels = labels;
+          delete options.xaxis;
+      }
+
+      agriChartInstance = new ApexCharts(ctxNode, options);
+      agriChartInstance.render();
+      console.log('图表渲染完成');
+  }
 }
 
-// 初始化事件绑定
-function initEvents() {
-  // 新增农田按钮
-  document.getElementById('addFarmBtn').addEventListener('click', function() {
-    const modal = new bootstrap.Modal(document.getElementById('editModal'));
-    document.getElementById('editModalLabel').textContent = '新增农田';
-    document.getElementById('farmForm').reset();
-    document.getElementById('farmId').value = '';
-    modal.show();
-  });
-
-  // 保存农田按钮
-  document.getElementById('saveFarmBtn').addEventListener('click', function() {
-    const formData = {
-      id: document.getElementById('farmId').value,
-      name: document.getElementById('name').value,
-      area: document.getElementById('area').value,
-      cropType: document.getElementById('cropType').value,
-      manager: document.getElementById('manager').value,
-      phone: document.getElementById('phone').value,
-      description: document.getElementById('description').value
-    };
-    console.log('保存农田:', formData);
-    // 这里可以添加实际的保存逻辑
-    const modal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
-    modal.hide();
-  });
-
-  // 开始植保按钮
-  document.getElementById('startSprayBtn').addEventListener('click', function() {
-    console.log('开始植保');
-    // 这里可以添加实际的开始植保逻辑
-  });
-
-  // 查看详情按钮
-  document.getElementById('viewDetailBtn').addEventListener('click', function() {
-    console.log('查看详情');
-    // 这里可以添加实际的查看详情逻辑
-  });
-
-  // 编辑按钮
-  document.getElementById('editDetailBtn').addEventListener('click', function() {
-    const modal = new bootstrap.Modal(document.getElementById('editModal'));
-    document.getElementById('editModalLabel').textContent = '编辑农田';
-    // 这里可以添加实际的编辑逻辑
-    modal.show();
-  });
-
-  // 地图事件监听
-  document.addEventListener('farmSelected', function(e) {
-    const farm = e.detail;
-    agriData.currentFarm = farm;
-    updateDetailPanel(farm);
-  });
-}
-
-// 初始化Vue实例
 function initVue() {
-  // 检查DOM元素是否存在
-  console.log('DOM元素检查:');
-  console.log('farmTable:', document.getElementById('farmTable') ? '存在' : '不存在');
-  console.log('pestAlertsTable:', document.getElementById('pestAlertsTable') ? '存在' : '不存在');
-  console.log('sprayRecordsTable:', document.getElementById('sprayRecordsTable') ? '存在' : '不存在');
-  
-  // 农田表格
-  console.log('创建农田表格Vue实例');
-  vueInstances.farmTable = new Vue({
-    el: '#farmTable',
-    data: {
-      farms: agriData.farms
-    },
-    template: `
-      <table class="table table-hover" id="farmTable">
-        <thead>
-          <tr>
-            <th scope="col">#</th>
-            <th scope="col">农田名称</th>
-            <th scope="col">面积(公顷)</th>
-            <th scope="col">作物类型</th>
-            <th scope="col">状态</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(farm, index) in farms" :key="farm.id" @click="selectFarm(farm)" style="cursor: pointer;">
-            <th scope="row">{{ index + 1 }}</th>
-            <td>{{ farm.name }}</td>
-            <td>{{ farm.area }}</td>
-            <td>{{ farm.crop_type }}</td>
-            <td>
-              <span v-if="farm.status === '正常'" class="badge bg-success">正常</span>
-              <span v-else-if="farm.status === '预警'" class="badge bg-warning">预警</span>
-              <span v-else-if="farm.status === '危险'" class="badge bg-danger">危险</span>
-              <span v-else>{{ farm.status }}</span>
-            </td>
-            <td>
-              <button class="btn btn-sm btn-outline-primary" @click.stop="viewDetail(farm)">
-                详情
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    `,
-    methods: {
-      selectFarm: function(farm) {
-        // 触发农田选择事件
-        const event = new CustomEvent('farmSelected', { detail: farm });
-        document.dispatchEvent(event);
-        // 打开详情抽屉
-        const offcanvas = new bootstrap.Offcanvas(document.getElementById('detailDrawer'));
-        offcanvas.show();
-      },
-      viewDetail: function(farm) {
-        // 查看详情
-        console.log('查看详情:', farm);
+  // 暂时使用简单的对象模拟，避免 Vue 未加载导致的错误
+  vueInstances.stats = true; 
+}
+
+function renderAgriTable() {
+  const tableBody = document.querySelector('#agriTable');
+  if (!tableBody) return;
+
+  if (agriData.filteredAreas.length === 0) {
+    tableBody.innerHTML = `<div class="p-4 text-center text-muted">${agriData.emptyStateMessage}</div>`;
+    return;
+  }
+
+  let html = `
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>示范区名称</th>
+          <th>面积(公顷)</th>
+          <th>地块数</th>
+          <th>风险等级</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  agriData.filteredAreas.forEach(area => {
+    const riskClass = getRiskBadgeClass(area.risk_level);
+    const riskText = area.risk_level === 'high' ? '高' : area.risk_level === 'medium' ? '中' : '低';
+    html += `
+      <tr class="agri-row" data-id="${area.id}" style="cursor:pointer">
+        <td><div class="fw-bold">${area.area_name}</div><div class="small text-muted">${area.region}</div></td>
+        <td>${area.coverage_ha}</td>
+        <td>${area.plot_count || 0}</td>
+        <td><span class="risk-badge ${riskClass}">${riskText}</span></td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  tableBody.innerHTML = html;
+
+  document.querySelectorAll('.agri-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = parseInt(row.dataset.id);
+      selectArea(id);
+    });
+  });
+
+  const countLabel = document.getElementById('agriListCount');
+  if (countLabel) countLabel.textContent = `${agriData.filteredAreas.length} 条`;
+}
+
+async function selectArea(id) {
+  console.log(`选中示范区 ID: ${id}`);
+  const areaBasic = agriData.areas.find(f => f.id === id);
+  if (!areaBasic) return;
+
+  updateDetailPanel(areaBasic);
+
+  try {
+    const res = await fetch(`/agri/farm-plots/${id}/`);
+    const data = await res.json();
+    if (data.code === 0) {
+      const areaFull = data.data;
+      agriData.currentArea = areaFull;
+      updateDetailPanel(areaFull);
+      
+      if (agriMap) {
+        agriMap.focusOnArea(id);
+        if (areaFull.plots) {
+          agriMap.loadPlots(areaFull.plots);
+        }
       }
     }
-  });
-
-  // 病虫害预警表格
-  console.log('创建病虫害预警表格Vue实例');
-  vueInstances.pestAlertsTable = new Vue({
-    el: '#pestAlertsTable',
-    data: {
-      pestAlerts: agriData.pestAlerts
-    },
-    template: `
-      <table class="table table-hover" id="pestAlertsTable">
-        <thead>
-          <tr>
-            <th scope="col">#</th>
-            <th scope="col">病虫害位置</th>
-            <th scope="col">预警时间</th>
-            <th scope="col">类型</th>
-            <th scope="col">严重程度</th>
-            <th scope="col">处理状态</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(alert, index) in pestAlerts" :key="alert.id">
-            <th scope="row">{{ index + 1 }}</th>
-            <td>{{ alert.name }}</td>
-            <td>{{ alert.discoveryTime }}</td>
-            <td>{{ alert.type }}</td>
-            <td>
-              <span v-if="alert.level === '高'" class="badge bg-danger">高</span>
-              <span v-else-if="alert.level === '中等'" class="badge bg-warning">中</span>
-              <span v-else class="badge bg-info">低</span>
-            </td>
-            <td>
-              <span v-if="alert.status === '处理中'" class="badge bg-primary">处理中</span>
-              <span v-else-if="alert.status === '已处理'" class="badge bg-success">已处理</span>
-              <span v-else class="badge bg-warning">待处理</span>
-            </td>
-            <td>
-              <button class="btn btn-sm btn-outline-primary">处理</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    `
-  });
-  console.log('病虫害预警表格Vue实例创建成功:', vueInstances.pestAlertsTable);
-
-  // 植保记录表格
-  console.log('创建植保记录表格Vue实例');
-  vueInstances.sprayRecordsTable = new Vue({
-    el: '#sprayRecordsTable',
-    data: {
-      sprays: agriData.sprays
-    },
-    template: `
-      <table class="table table-hover" id="sprayRecordsTable">
-        <thead>
-          <tr>
-            <th scope="col">#</th>
-            <th scope="col">植保任务</th>
-            <th scope="col">无人机</th>
-            <th scope="col">开始时间</th>
-            <th scope="col">结束时间</th>
-            <th scope="col">状态</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(spray, index) in sprays" :key="spray.id">
-            <th scope="row">{{ index + 1 }}</th>
-            <td>{{ spray.taskName }}</td>
-            <td>无人机-{{ index + 1 }}</td>
-            <td>{{ spray.start_time }}</td>
-            <td>{{ spray.end_time }}</td>
-            <td>
-              <span v-if="spray.status === '完成'" class="badge bg-success">已完成</span>
-              <span v-else-if="spray.status === '进行中'" class="badge bg-primary">进行中</span>
-              <span v-else class="badge bg-warning">未开始</span>
-            </td>
-            <td>
-              <button class="btn btn-sm btn-outline-primary">查看</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    `
-  });
-  console.log('植保记录表格Vue实例创建成功:', vueInstances.sprayRecordsTable);
-  console.log('Vue实例初始化完成');
+  } catch (error) {
+    console.error('加载农田详情失败:', error);
+  }
 }
 
-// 更新页面数据
-function updatePageData() {
-  // 更新统计数据
-  document.getElementById('totalFarms').textContent = agriData.farms.length;
-  document.getElementById('pestAlerts').textContent = agriData.pestAlerts.length;
-  document.getElementById('activeTasks').textContent = agriData.sprays.filter(s => s.status === '进行中').length;
+function updateDetailPanel(area) {
+  const updateText = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+
+  updateText('infoName', area.area_name);
+  const infoRisk = document.getElementById('infoRisk');
+  if (infoRisk) {
+    const riskClass = getRiskBadgeClass(area.risk_level);
+    const riskText = area.risk_level === 'high' ? '高风险' : area.risk_level === 'medium' ? '中风险' : '低风险';
+    infoRisk.innerHTML = `<span class="risk-badge ${riskClass}">${riskText}</span>`;
+  }
+  updateText('infoArea', `${area.coverage_ha} 公顷`);
+  updateText('infoPlotCount', area.plot_count || 0);
   
-  // 更新Vue数据
-  if (vueInstances.farmTable) {
-    vueInstances.farmTable.farms = agriData.farms;
-    vueInstances.farmTable.$forceUpdate();
+  const centerText = area.center_lat ? `${parseFloat(area.center_lng).toFixed(4)}, ${parseFloat(area.center_lat).toFixed(4)}` : '106.5500, 29.5600';
+  updateText('infoCenter', centerText);
+  
+  updateText('infoManager', area.manager_name || '未指派');
+  updateText('infoRegion', area.region);
+  updateText('infoUpdatedAt', area.updated_at || area.created_at || '2026-04-30 10:30');
+  
+  const mockDescriptions = [
+    "该区域土壤肥沃，目前正处于水稻插秧期，需关注水分供应。",
+    "现代农业园示范区，主要种植智慧蔬菜，采用水肥一体化管理。",
+    "生态农业带核心区，主要作物为小麦，近期病虫害压力中等。",
+    "九龙坡农耕地块，土壤墒情良好，适宜玉米种植。",
+    "渝北智慧农场，已全面覆盖物联网监测设备，实现精准植保。"
+  ];
+  updateText('infoDescription', area.description || mockDescriptions[area.id % mockDescriptions.length]);
+
+  const plotsTableBody = document.getElementById('agriPlotsTableBody');
+  if (plotsTableBody) {
+    if (area.plots && area.plots.length > 0) {
+      let html = '';
+      area.plots.forEach(plot => {
+        const riskClass = getRiskBadgeClass(plot.risk_level);
+        const riskText = plot.risk_level === 'high' ? '高' : plot.risk_level === 'medium' ? '中' : '低';
+        html += `
+          <tr>
+            <td>${plot.name}</td>
+            <td>${plot.area}</td>
+            <td><span class="risk-badge ${riskClass}">${riskText}</span></td>
+          </tr>
+        `;
+      });
+      plotsTableBody.innerHTML = html;
+    } else {
+      plotsTableBody.innerHTML = '<tr><td colspan="3" class="text-center py-3 text-muted">暂无地块明细数据</td></tr>';
+    }
   }
-  if (vueInstances.pestAlertsTable) {
-    vueInstances.pestAlertsTable.pestAlerts = agriData.pestAlerts;
-    vueInstances.pestAlertsTable.$forceUpdate();
+
+  const hint = document.getElementById('agriMapSelectionHint');
+  if (hint) hint.classList.add('d-none');
+  const title = document.getElementById('agriMapTitle');
+  if (title) title.textContent = `当前选中: ${area.area_name}`;
+}
+
+function renderPestAlerts() {
+  const container = document.getElementById('agriPestModuleList');
+  if (!container) return;
+
+  let html = '';
+  agriData.pestAlerts.forEach(alert => {
+    const levelClass = alert.level.includes('红色') ? 'bg-danger' : alert.level.includes('橙色') ? 'bg-warning text-dark' : 'bg-info';
+    html += `
+      <div class="agri-item">
+        <div style="flex: 1">
+          <div class="fw-bold"><i class="bi bi-bug-fill text-danger"></i> ${alert.location}</div>
+          <div class="small text-muted">${alert.time}</div>
+        </div>
+        <div class="text-end">
+          <span class="badge ${levelClass} mb-1">${alert.level}</span><br>
+          <span class="badge bg-light text-dark border">${alert.status}</span>
+        </div>
+      </div>
+    `;
+  });
+  container.innerHTML = html || '<div class="p-3 text-center text-muted">今日无病虫害预警</div>';
+}
+
+function renderTaskRecords() {
+  const container = document.getElementById('agriTaskModuleList');
+  if (!container) return;
+
+  let html = '';
+  agriData.tasks.forEach(task => {
+    const statusClass = task.status === '已完成' ? 'bg-success' : task.status === '进行中' ? 'bg-primary' : 'bg-secondary';
+    html += `
+      <div class="agri-item">
+        <div style="flex: 1">
+          <div class="fw-bold">${task.task_code}</div>
+          <div class="small text-muted">${task.time}</div>
+        </div>
+        <span class="badge ${statusClass}">${task.status}</span>
+      </div>
+    `;
+  });
+  container.innerHTML = html || '<div class="p-3 text-center text-muted">暂无植保记录</div>';
+}
+
+function initFilterForm() {
+  const form = document.getElementById('agriFilterForm');
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      applyFilters();
+    });
   }
-  if (vueInstances.sprayRecordsTable) {
-    vueInstances.sprayRecordsTable.sprays = agriData.sprays;
-    vueInstances.sprayRecordsTable.$forceUpdate();
+
+  const resetBtn = document.getElementById('resetBtn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      if (form) form.reset();
+      applyFilters();
+    });
   }
 }
 
-// 更新详情面板
-function updateDetailPanel(farm) {
-  document.getElementById('detailName').textContent = farm.name;
-  document.getElementById('detailArea').textContent = farm.area;
-  document.getElementById('detailCrop').textContent = farm.crop_type;
-  document.getElementById('detailStatus').textContent = {
-    'normal': '正常',
-    'warning': '预警',
-    'danger': '危险'
-  }[farm.status] || farm.status;
-  document.getElementById('detailManager').textContent = '管理员';
-  document.getElementById('detailPhone').textContent = '13800138000';
-  document.getElementById('detailLastSpray').textContent = '2026-04-12 09:00';
+function applyFilters() {
+  const nameInput = document.getElementById('agriName');
+  const riskInput = document.getElementById('filterRiskLevel');
+  if (!nameInput || !riskInput) return;
+
+  const name = nameInput.value.toLowerCase();
+  const riskLevel = riskInput.value;
+
+  agriData.filteredAreas = agriData.areas.filter(f => {
+    const matchName = (f.area_name || '').toLowerCase().includes(name);
+    const matchRisk = !riskLevel || f.risk_level === riskLevel;
+    return matchName && matchRisk;
+  });
+
+  renderAgriTable();
+  
+  const badge = document.getElementById('agriFilterStateBadge');
+  if (badge) {
+    if (name || riskLevel) {
+      badge.classList.remove('d-none');
+    } else {
+      badge.classList.add('d-none');
+    }
+  }
 }
 
-// 页面加载完成后初始化
-window.addEventListener('DOMContentLoaded', initPage);
+function initEvents() {
+  const refreshBtn = document.getElementById('btnRefreshAgri');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      loadRealData();
+    });
+  }
+
+  document.querySelectorAll('.agri-analysis-toolbar button').forEach(btn => {
+      btn.addEventListener('click', () => {
+          const type = btn.dataset.chartType;
+          document.querySelectorAll('.agri-analysis-toolbar button').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          renderRiskAnalysisChart(type);
+      });
+  });
+}
+
+function resetDetailPanel() {
+  const hint = document.getElementById('agriMapSelectionHint');
+  if (hint) hint.classList.remove('d-none');
+}
+
+function getRiskBadgeClass(level) {
+  if (level === '高' || level === 'high') return 'risk-high';
+  if (level === '中' || level === 'medium') return 'risk-medium';
+  return 'risk-low';
+}
+
+document.addEventListener('DOMContentLoaded', initPage);

@@ -10,6 +10,7 @@ class ForestMap {
     this.layerManager = new LayerManager(this.map);
     this.currentForest = null;
     this.forestPolygons = [];
+    this.plotPolygons = [];
     this.fireMarkers = [];
     this.patrolPaths = [];
     
@@ -106,8 +107,18 @@ class ForestMap {
     
     // 添加新的林区多边形
     forests.forEach(forest => {
-      if (forest.coordinates && forest.coordinates.length > 0) {
-        const polygon = L.polygon(forest.coordinates, {
+      // 优先使用 coordinates，如果没有则尝试从 boundary_json 解析 (后端可能返回)
+      let coords = forest.coordinates;
+      if (!coords && forest.boundary_json) {
+          try {
+              const geojson = JSON.parse(forest.boundary_json);
+              // 简化的解析逻辑，实际可能更复杂
+              if (geojson.coordinates) coords = geojson.coordinates;
+          } catch(e) {}
+      }
+
+      if (coords && coords.length > 0) {
+        const polygon = L.polygon(coords, {
           ...this.polygonStyles.default,
           className: `forest-polygon forest-${forest.id}`
         });
@@ -118,7 +129,7 @@ class ForestMap {
         });
         
         // 添加弹出信息
-        polygon.bindPopup(`<strong>${forest.name}</strong><br>面积: ${forest.area} 公顷`);
+        polygon.bindPopup(`<strong>${forest.area_name}</strong><br>面积: ${forest.coverage_km2} km²`);
         
         this.layerManager.addLayer(`forest-${forest.id}`, polygon, 'forests');
         this.forestPolygons.push(polygon);
@@ -127,6 +138,59 @@ class ForestMap {
     
     // 自动适配地图范围
     this.fitToForests();
+  }
+
+  // 定位到指定林区
+  focusOnForest(forestId) {
+      const polygon = this.forestPolygons.find(p => p.options.className.includes(`forest-${forestId}`));
+      if (polygon) {
+          this.map.fitBounds(polygon.getBounds());
+          this.highlightForest(forestId);
+      }
+  }
+
+  // 加载并展示地块明细
+  loadPlots(plots) {
+    this.clearPlots();
+    if (!plots || plots.length === 0) return;
+
+    plots.forEach(plot => {
+      let coords = null;
+      if (plot.geom_json) {
+        try {
+          const geojson = JSON.parse(plot.geom_json);
+          if (geojson.type === 'Polygon') {
+            coords = geojson.coordinates[0].map(p => [p[1], p[0]]); // GeoJSON is [lng, lat]
+          } else if (geojson.type === 'MultiPolygon') {
+            coords = geojson.coordinates[0][0].map(p => [p[1], p[0]]);
+          }
+        } catch(e) {
+          console.error('解析地块坐标失败:', e);
+        }
+      }
+
+      if (coords) {
+        const polygon = L.polygon(coords, {
+          fillColor: '#2ecc71',
+          weight: 1,
+          opacity: 0.8,
+          color: '#27ae60',
+          fillOpacity: 0.4,
+          className: `plot-polygon plot-${plot.id}`
+        });
+        
+        polygon.bindPopup(`<strong>${plot.name}</strong><br>面积: ${plot.area} 公顷<br>风险等级: ${plot.risk_level}`);
+        this.layerManager.addLayer(`plot-${plot.id}`, polygon, 'forests'); // 暂时放在 forests 组
+        this.plotPolygons.push(polygon);
+      }
+    });
+  }
+
+  clearPlots() {
+    this.plotPolygons.forEach(p => {
+      this.map.removeLayer(p);
+    });
+    this.plotPolygons = [];
   }
   
   // 加载火点数据
@@ -253,6 +317,7 @@ class ForestMap {
       this.map.removeLayer(polygon);
     });
     this.forestPolygons = [];
+    this.clearPlots();
   }
   
   // 清空火点

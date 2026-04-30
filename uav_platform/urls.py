@@ -39,7 +39,7 @@ urlpatterns = [
     path("api/system/", include("system.urls")),
     path("api/fleet/", include("fleet.urls")),
     path("api/forest/", include("forest.urls")),
-    path("api/agri/", include("agri.urls")),
+    # path("api/agri/", include("agri.urls")),
     path("api/tasking/", include("tasking.urls")),
     path("api/federation/", include("federation.urls")),
     path("api/telemetry/", include("telemetry.urls")),
